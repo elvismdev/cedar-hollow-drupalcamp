@@ -1,0 +1,18 @@
+$schema: https://git.drupalcode.org/project/drupal/-/raw/HEAD/core/assets/schemas/v1/metadata.schema.json
+name: Date
+status: stable
+group: Atoms
+description: "A date or date range with a calendar icon. Ported from Surface."
+props:
+  type: object
+  required: [text]
+  properties:
+    text:
+      type: string
+      title: Text
+      examples: ["November 23, 2023"]
+    size:
+      type: string
+      title: Size
+      enum: ["default", "small"]
+      examples: ["default"]

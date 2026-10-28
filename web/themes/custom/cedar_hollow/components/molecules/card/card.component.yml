@@ -1,0 +1,54 @@
+$schema: https://git.drupalcode.org/project/drupal/-/raw/HEAD/core/assets/schemas/v1/metadata.schema.json
+name: Card
+status: stable
+group: Components
+description: "A content card for events, articles and pages. Ported from Surface; the footer slot is a Cedar Hollow addition for seat counts."
+props:
+  type: object
+  required: [heading]
+  properties:
+    heading:
+      type: string
+      title: Heading
+      examples: ["Leaders in the Field Seminar"]
+    url:
+      type: string
+      title: URL
+      format: uri-reference
+      examples: ["/sessions/keynote"]
+    eyebrow:
+      type: string
+      title: Event type
+      examples: ["Virtual"]
+    date_text:
+      type: string
+      title: Date
+      examples: ["October 31, 2024 | 1:30 pm - 2:30 pm"]
+    date_month:
+      type: string
+      title: Badge month
+      examples: ["Oct"]
+    date_day:
+      type: string
+      title: Badge day
+      examples: ["31"]
+    readtime:
+      type: string
+      title: Read time
+      examples: ["5 min read"]
+    summary:
+      type: string
+      title: Summary
+      examples: ["Integer posuere erat a ante venenatis dapibus."]
+    more_dates_url:
+      type: string
+      title: More dates URL
+      format: uri-reference
+      examples: ["/sessions"]
+slots:
+  image:
+    title: Image
+  organization:
+    title: Organization
+  footer:
+    title: Footer

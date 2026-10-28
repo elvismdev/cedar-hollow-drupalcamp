@@ -1,0 +1,27 @@
+$schema: https://git.drupalcode.org/project/drupal/-/raw/HEAD/core/assets/schemas/v1/metadata.schema.json
+name: Date badge
+status: stable
+group: Atoms
+description: "The month and day of an event. Ported from Surface."
+props:
+  type: object
+  required: [month, day]
+  properties:
+    month:
+      type: string
+      title: Month
+      examples: ["Oct"]
+    day:
+      type: string
+      title: Day
+      examples: ["31"]
+    size:
+      type: string
+      title: Size
+      enum: ["default", "small"]
+      examples: ["default"]
+    tone:
+      type: string
+      title: Tone
+      enum: ["default", "light"]
+      examples: ["default"]

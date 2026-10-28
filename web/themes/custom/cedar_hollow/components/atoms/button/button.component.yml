@@ -1,0 +1,23 @@
+$schema: https://git.drupalcode.org/project/drupal/-/raw/HEAD/core/assets/schemas/v1/metadata.schema.json
+name: Button
+status: stable
+group: Atoms
+description: "A link, or a button when there is no URL. Ported from Surface."
+props:
+  type: object
+  required: [text]
+  properties:
+    text:
+      type: string
+      title: Text
+      examples: ["Browse sessions"]
+    url:
+      type: string
+      title: URL
+      format: uri-reference
+      examples: ["/sessions"]
+    variant:
+      type: string
+      title: Variant
+      enum: ["default", "primary", "secondary", "outlined", "link"]
+      examples: ["primary"]

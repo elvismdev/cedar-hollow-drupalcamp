@@ -1,0 +1,13 @@
+$schema: https://git.drupalcode.org/project/drupal/-/raw/HEAD/core/assets/schemas/v1/metadata.schema.json
+name: Breadcrumb
+status: stable
+group: Atoms
+description: "The breadcrumb trail, fed by Drupal's breadcrumb template. Ported from Surface."
+noUi: true
+props:
+  type: object
+  properties:
+    breadcrumb:
+      type: array
+      title: Links
+      items: {"type": "object", "properties": {"text": {"type": "string"}, "url": {"type": "string"}}}

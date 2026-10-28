@@ -175,4 +175,9 @@
       color: var(--brand-primary);
     }
   }
+
+  /* Cedar Hollow addition: the footer slot that holds a session's seats. */
+  .card__footer {
+    margin-block-start: var(--size-3);
+  }
 }

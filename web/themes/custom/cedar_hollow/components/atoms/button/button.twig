@@ -1,0 +1,11 @@
+{# Markup from uclahs/surface source/patterns/elements/button (GPL-2.0-or-later). #}
+{% set attributes = attributes ?: create_attribute() %}
+{% set classes = ['button'] %}
+{% if variant and variant != 'default' %}
+  {% set classes = classes|merge(['button--' ~ variant]) %}
+{% endif %}
+{% if url %}
+  <a{{ attributes.addClass(classes).setAttribute('href', url) }}>{{ text }}</a>
+{% else %}
+  <button{{ attributes.addClass(classes).setAttribute('type', 'button') }}>{{ text }}</button>
+{% endif %}

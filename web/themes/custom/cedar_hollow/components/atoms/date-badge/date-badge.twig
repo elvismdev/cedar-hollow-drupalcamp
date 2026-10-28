@@ -1,0 +1,13 @@
+{# Markup from uclahs/surface source/patterns/elements/date-badge (GPL-2.0-or-later). #}
+{% set attributes = attributes ?: create_attribute() %}
+{% set classes = ['date-badge'] %}
+{% if size == 'small' %}
+  {% set classes = classes|merge(['date-badge--small']) %}
+{% endif %}
+{% if tone == 'light' %}
+  {% set classes = classes|merge(['date-badge--light']) %}
+{% endif %}
+<div{{ attributes.addClass(classes) }}>
+  <span class="date-badge__month">{{ month }}</span>
+  <span class="date-badge__day">{{ day }}</span>
+</div>

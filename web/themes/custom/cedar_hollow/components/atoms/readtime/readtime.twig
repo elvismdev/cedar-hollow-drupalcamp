@@ -1,0 +1,6 @@
+{# Markup from uclahs/surface source/patterns/elements/readtime (GPL-2.0-or-later). #}
+{% set attributes = attributes ?: create_attribute() %}
+<div{{ attributes.addClass('readtime') }}>
+  <svg class="icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24" width="16" height="16"><path fill="currentColor" d="M12 2a10 10 0 1 1 0 20 10 10 0 0 1 0-20zm1 5h-2v6l5 3 1-1.7-4-2.3V7z"/></svg>
+  <span>{{ text }}</span>
+</div>

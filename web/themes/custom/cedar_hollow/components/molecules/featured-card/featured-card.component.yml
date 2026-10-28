@@ -1,0 +1,58 @@
+$schema: https://git.drupalcode.org/project/drupal/-/raw/HEAD/core/assets/schemas/v1/metadata.schema.json
+name: Featured card
+status: stable
+group: Components
+description: "A large card with an image and a call to action. Ported from Surface."
+props:
+  type: object
+  required: [heading]
+  properties:
+    heading:
+      type: string
+      title: Heading
+      examples: ["Front end day"]
+    url:
+      type: string
+      title: URL
+      format: uri-reference
+      examples: ["/sessions"]
+    eyebrow:
+      type: string
+      title: Event type
+      examples: ["In-Person"]
+    subtitle:
+      type: string
+      title: Subtitle
+      examples: ["Two days of sessions on themes, components and site building."]
+    date_text:
+      type: string
+      title: Date
+      examples: ["March 12, 2027 | 9:00 AM to 5:00 PM"]
+    readtime:
+      type: string
+      title: Read time
+      examples: ["5 min read"]
+    cta_text:
+      type: string
+      title: Button text
+      examples: ["See the full event"]
+    cta_url:
+      type: string
+      title: Button URL
+      format: uri-reference
+      examples: ["/sessions"]
+    cta_variant:
+      type: string
+      title: Button variant
+      enum: ["primary", "secondary", "outlined"]
+      examples: ["secondary"]
+    more_dates_url:
+      type: string
+      title: More dates URL
+      format: uri-reference
+      examples: ["/sessions"]
+slots:
+  image:
+    title: Image
+  organization:
+    title: Organization

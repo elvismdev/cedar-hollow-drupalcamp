@@ -1,0 +1,23 @@
+$schema: https://git.drupalcode.org/project/drupal/-/raw/HEAD/core/assets/schemas/v1/metadata.schema.json
+name: Eyebrow
+status: stable
+group: Atoms
+description: "A short label above a title, optionally linked. Ported from Surface."
+props:
+  type: object
+  required: [text]
+  properties:
+    text:
+      type: string
+      title: Text
+      examples: ["This is a label"]
+    url:
+      type: string
+      title: URL
+      format: uri-reference
+      examples: ["/sessions"]
+    tone:
+      type: string
+      title: Tone
+      enum: ["default", "light"]
+      examples: ["default"]

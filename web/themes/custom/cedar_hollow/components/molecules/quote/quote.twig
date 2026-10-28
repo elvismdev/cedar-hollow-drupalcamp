@@ -1,0 +1,17 @@
+{# Markup from uclahs/surface source/patterns/components/quote (GPL-2.0-or-later). #}
+{% set attributes = attributes ?: create_attribute() %}
+<div{{ attributes.addClass('quote') }}>
+  <div class="quote__content">
+    <div class="quote__text">
+      <blockquote class="quote__wrapper">
+        {{ quote }}
+        <span class="quote__author">{{ author }}</span>
+      </blockquote>
+    </div>
+    {% if image %}
+      <div class="quote__image">
+        {{ image }}
+      </div>
+    {% endif %}
+  </div>
+</div>

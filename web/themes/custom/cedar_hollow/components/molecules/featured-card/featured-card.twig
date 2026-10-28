@@ -1,0 +1,33 @@
+{# Markup from uclahs/surface source/patterns/components/featured-card (GPL-2.0-or-later). #}
+{% set attributes = attributes ?: create_attribute() %}
+<div{{ attributes.addClass('featured-card') }}>
+  <div class="featured-card__image">
+    {{ image }}
+  </div>
+  <div class="featured-card__content">
+    {% if eyebrow %}
+      {% include 'cedar_hollow:eyebrow' with {text: eyebrow, attributes: create_attribute({class: ['featured-card__type']})} only %}
+    {% endif %}
+    {% include 'cedar_hollow:title' with {text: heading, url: url, level: '3', attributes: create_attribute({class: ['featured-card__title']})} only %}
+    {% if subtitle %}
+      {% include 'cedar_hollow:title' with {text: subtitle, level: '4', attributes: create_attribute({class: ['featured-card__subtitle']})} only %}
+    {% endif %}
+    {% if organization %}
+      <div class="featured-card__organization-name"><svg class="icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24" width="16" height="16"><path fill="currentColor" d="M12 2a7 7 0 0 1 7 7c0 5-7 13-7 13S5 14 5 9a7 7 0 0 1 7-7zm0 4.5a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5z"/></svg>{{ organization }}</div>
+    {% endif %}
+    {% if date_text %}
+      <div class="featured-card__date--wrapper">
+        {% include 'cedar_hollow:date' with {text: date_text} only %}
+        {% if more_dates_url %}
+          {% include 'cedar_hollow:button' with {text: '+ more dates'|t, url: more_dates_url, variant: 'link', attributes: create_attribute({class: ['featured-card__more-dates']})} only %}
+        {% endif %}
+      </div>
+    {% endif %}
+    {% if readtime %}
+      {% include 'cedar_hollow:readtime' with {text: readtime} only %}
+    {% endif %}
+    {% if cta_text and cta_url %}
+      {% include 'cedar_hollow:button' with {text: cta_text, url: cta_url, variant: cta_variant ?: 'secondary'} only %}
+    {% endif %}
+  </div>
+</div>

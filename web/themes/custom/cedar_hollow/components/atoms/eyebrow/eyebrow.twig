@@ -1,0 +1,10 @@
+{# Markup from uclahs/surface source/patterns/elements/eyebrow (GPL-2.0-or-later). #}
+{% set attributes = attributes ?: create_attribute() %}
+{% set classes = tone == 'light' ? ['eyebrow', 'eyebrow--light'] : ['eyebrow'] %}
+<div{{ attributes.addClass(classes) }}>
+  {% if url %}
+    <a href="{{ url }}" class="eyebrow__link">{{ text }}</a>
+  {% else %}
+    <span class="eyebrow__text">{{ text }}</span>
+  {% endif %}
+</div>
