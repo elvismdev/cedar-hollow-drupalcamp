@@ -14,7 +14,7 @@ test('an attendee finds sessions, adds two that overlap and keeps them after a r
   await page.goto('/sessions');
   await page.getByRole('radio', { name: 'Front end' }).check();
   await page.getByRole('button', { name: 'Show sessions' }).click();
-  await expect(page.locator('.session-list .card__title').first()).toHaveText('Theming with SDC');
+  await expect(page.locator('.session-list').getByRole('heading', { level: 2 }).first()).toHaveText('Theming with SDC');
 
   await page.goto('/agenda');
   await page.getByRole('button', { name: FIRST }).click();

@@ -2,7 +2,7 @@ import { test, expect } from '../fixtures';
 
 test('the sessions listing filters by track, then by day', async ({ page }) => {
   await page.goto('/sessions');
-  const titles = page.locator('.session-list .card__title');
+  const titles = page.locator('.session-list').getByRole('heading', { level: 2 });
   await expect(titles).toHaveCount(12);
 
   await page.getByRole('radio', { name: 'Back end' }).check();
