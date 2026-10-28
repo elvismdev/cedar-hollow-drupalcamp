@@ -1,7 +1,7 @@
 {# Markup from uclahs/surface source/patterns/elements/title (GPL-2.0-or-later). #}
 {% set attributes = attributes ?: create_attribute() %}
 {% set level = level ?: '2' %}
-<h{{ level }}{{ attributes }}>
+<h{{ level }}{{ attributes.addClass('title', 'title--h' ~ level) }}>
   {% if url %}
     <a href="{{ url }}" class="title__link">{{ text }}</a>
   {% else %}

@@ -1,0 +1,41 @@
+/**
+ * @file
+ * Title (Atomic Design: atom). Cedar Hollow addition: Surface's title has no
+ * styles of its own and is sized by its parent's class; these sizes apply
+ * where no parent class does, such as directly on a Canvas page. Parent
+ * classes such as card__title are in a later layer and win.
+ */
+
+@layer reset, tokens, base, atoms, components, collections, layouts, utilities;
+
+@layer atoms {
+  .title {
+    margin-block: 0 var(--space-s);
+    font-family: var(--font-heading);
+    font-weight: var(--font-weight-400);
+    line-height: var(--line-height-tight);
+  }
+
+  .title--h2 {
+    font-size: var(--font-size-xl);
+  }
+
+  .title--h3 {
+    font-size: var(--font-size-l);
+  }
+
+  .title--h4,
+  .title--h5,
+  .title--h6 {
+    font-size: var(--font-size-m);
+    font-weight: var(--font-weight-700);
+  }
+
+  .title__link {
+    text-decoration: none;
+
+    &:hover {
+      text-decoration: underline;
+    }
+  }
+}
