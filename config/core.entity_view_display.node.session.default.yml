@@ -35,7 +35,7 @@ content:
     label: hidden
     settings:
       title: 'Forward this [forward:entity-type] to a friend'
-      style: 2
+      style: 0
       icon: ''
       nofollow: true
     third_party_settings: {  }
