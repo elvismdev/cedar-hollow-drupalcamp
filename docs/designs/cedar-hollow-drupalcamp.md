@@ -68,7 +68,6 @@ Every goal below must ship; there is no stretch tier. Each goal names the check 
 
 *   **Code components in recipe default content.** Drupal.org issue #3580989 (open) reports that code component configuration is generated incorrectly during recipe install, so the agenda page in the content recipe may fail on a clean install. Resolved by spike: install the recipe on a fresh site and load the page.
 *   **Does a configuration import write the code component's asset file?** Drupal.org issue #3591075 (open). Resolved by spike: after `drush deploy` on a clean database, request the agenda builder's script URL from the page source and expect HTTP 200.
-*   **How does the agenda builder reach Canvas?** Pasted into the local Canvas editor from the repository's source file and exported to configuration, or pushed with the Canvas command-line tool (which also needs the `canvas_oauth` and `simple_oauth` modules). Resolved by spike; both outcomes keep the repository file as the source of truth.
 
 ## Critical User Journeys (CUJs)
 
@@ -204,7 +203,7 @@ Canvas reserves the group name `Elements` (Surface's name for atoms), so the ato
 ### Canvas
 
 *   **Pages.** Home, agenda, "about this demo" and "try Canvas here" are Canvas pages built from theme components. The agenda page contains the agenda builder. "Try Canvas here" is the page reviewers may edit.
-*   **Code component.** The agenda builder is a Canvas code component. Its source of truth is a JSX and CSS file in the theme's repository folder. It reaches Canvas through the path the spike selects and is deployed as configuration. It is never edited on Pantheon, because Drupal.org issue #3591147 reports that a configuration import deletes code components created on the target site.
+*   **Code component.** The agenda builder is a Canvas code component. Its source of truth is a JSX and CSS file in the theme's repository folder. A script compiles it with esbuild into the ES module format Canvas expects and saves it as the code component, which is then exported and deployed as configuration; nobody pastes code into the Canvas editor. It is never edited on Pantheon, because Drupal.org issue #3591147 reports that a configuration import deletes code components created on the target site.
 
 ### Agenda builder and the seats endpoint
 
@@ -224,7 +223,7 @@ Every outgoing message (Registration confirmations, Forward) is written to Drupa
 
 *   **Configuration sync** in `config/` holds all site configuration and is applied with `drush deploy` on every environment. Canvas regenerates its `canvas.component.*` configuration on cache rebuild, so it is exported after every SDC change.
 *   **Recipe `cedar_hollow_sessions`** packages the session feature (content types, fields, vocabulary, Registration type, View) as a reusable recipe, with `uuid` and `_core` removed from every configuration file. It is not applied to the demo site, whose configuration already contains it; it is proven by the PHPUnit functional tests, which apply it in `setUp()` with core's `RecipeTestTrait` to build their test site. The write-up contrasts it with Features and WP-CFM, a WordPress plugin that stores site settings as files, which the author once maintained.
-*   **Recipe `cedar_hollow_demo_content`** ships default content made with core's `content:export` script: tracks, speakers, sessions, registration settings and the Canvas pages. The first spike checks that registration settings attach to the right sessions after a clean install. If they do not, default capacity and wait-list settings move to the Registration field's default value (configuration) and per-session values are set by a deploy hook keyed by node UUID.
+*   **Recipe `cedar_hollow_demo_content`** ships default content exported with `drush content:export`: tracks, speakers, sessions, registration settings and the Canvas pages. The first spike checks that registration settings attach to the right sessions after a clean install. If they do not, default capacity and wait-list settings move to the Registration field's default value (configuration) and per-session values are set by a deploy hook keyed by node UUID.
 
 ### Editor access for reviewers
 
@@ -529,7 +528,7 @@ One rule, implemented twice (PHP in item 22, JavaScript in item 29): `unlimited`
 | Spike | Check | If it fails |
 | --- | --- | --- |
 | (a) | An SDC with `group: Atoms` appears in the Canvas library at `/admin/appearance/component/status` with no rejection. | Read the rejection reason and fix the component metadata before Phase 3. |
-| (b) | A code component pasted into the local Canvas code editor fetches a same-origin JSON route and renders on a published Canvas page. | Stop and update the design: the fallback is a Vite library build of the same JSX into `web/themes/custom/cedar_hollow/dist/agenda-builder.js`, attached by a `cedar_hollow_core` block plugin (`#[Block(id: 'cedar_hollow_agenda_builder')]`) placed on the `/agenda` Canvas page. |
+| (b) | A code component compiled with esbuild and saved by script fetches a same-origin JSON route and renders on a published Canvas page. | Stop and update the design: the fallback is a Vite library build of the same JSX into `web/themes/custom/cedar_hollow/dist/agenda-builder.js`, attached by a `cedar_hollow_core` block plugin (`#[Block(id: 'cedar_hollow_agenda_builder')]`) placed on the `/agenda` Canvas page. |
 | (c) | A recipe with a Canvas page containing that code component installs on a fresh site and the page renders (Drupal.org issue #3580989). | The agenda page leaves the content recipe; `cedar_hollow_core_deploy_place_agenda()` in `cedar_hollow_core.deploy.php` creates it after install. |
 | (d) | After `drush deploy` on a clean database, the code component's script URL from the page source returns HTTP 200 (Drupal.org issue #3591075). | `cedar_hollow_core_deploy_resave_agenda_builder()` loads and saves the `agenda_builder` code component. |
 | (e) | `registration_settings` exported as default content attach to their sessions after a clean install. | Defaults move to the `field_registration` default value (config) and `cedar_hollow_core_deploy_session_settings()` sets per-session values keyed by node UUID. |
@@ -720,7 +719,11 @@ One rule, implemented twice (PHP in item 22, JavaScript in item 29): `unlimited`
     *   Conflicts when `a.start < b.end && b.start < a.end`; the C3 conflict text next to each session in a conflict; one `role="status"` region with the C3 status text, changed only when the set of conflicting pairs changes; seat updates are not announced.
     *   Each session: a `<button>` with `aria-pressed` and a fixed label ("Add to agenda"); C2 state text; the register link when `registerUrl` is not null; focus stays on the pressed button.
     *   Styles use the theme's tokens through custom properties; no Tailwind.
-*   **Delivery to Canvas**: `agenda-builder.jsx` is pasted into the local Canvas code editor's JavaScript field and `agenda-builder.css` into its CSS field, as component `agenda_builder` with prop `heading` (string, required, example "Build your agenda"), saved, and exported (spike (b)). The repository file stays the source; any change is made there first and pasted again.
+*   **Delivery to Canvas** (proven by spikes (b) to (d)): `scripts/build-agenda-builder.sh` runs `npx esbuild agenda-builder.jsx --format=esm --jsx=automatic --jsx-import-source=react --outfile=<tmp>/agenda-builder.compiled.js` (Canvas's import map points `react` and `react/jsx-runtime` at Preact), then `ddev drush php:script scripts/sync-agenda-builder.php`. That script creates or updates the `agenda_builder` code component with `js.original` (the JSX), `js.compiled` (the esbuild output), `css.original` and `css.compiled` (the CSS file, unchanged), and prop `heading` (string, required, example "Build your agenda"), validates it, saves it, and fails on any violation. Then `ddev drush config:export -y`. Every change is made in the repository file and the script is run again.
+
+#### 29a. `scripts/build-agenda-builder.sh`, `scripts/sync-agenda-builder.php` (Create)
+
+*   **Proposed Changes**: The two scripts named in item 29. The PHP script loads the existing `JavaScriptComponent` by ID or creates it, sets the fields, calls `getTypedData()->validate()`, prints each violation and exits non-zero if there is one, then saves.
 *   **Phase 4 check**: `ddev drush config:export -y` and commit `canvas.js_component.agenda_builder` and its `canvas.component.*` entry; the agenda builder renders on a scratch Canvas page in DDEV; the item 30 story renders in Storybook.
 
 #### 30. `web/themes/custom/cedar_hollow/stories/agenda-builder.stories.js`, `stories/fixtures/agenda.json` (Create)
@@ -739,7 +742,7 @@ One rule, implemented twice (PHP in item 22, JavaScript in item 29): `unlimited`
 
 #### 32. `recipes/cedar_hollow_demo_content/recipe.yml` and `content/**` (Create)
 
-*   **Proposed Changes**: Content: 3 tracks; 8 speakers; 12 sessions across 12 and 13 March 2027 with at least two overlapping pairs; each session aliased `/sessions/<slug>`; every `registration_settings` with `status` enabled; capacity 40 for every session except "Theming with SDC" (capacity 1, wait list on, no registrations); no open or close dates; no speaker photos (so no managed files to sync); main menu links Home, Sessions, Agenda, About, Try Canvas; footer menu links Site map (`/sitemap`) and Log in; the four Canvas pages from item 31. Exported with `ddev exec -d /var/www/html/web php core/scripts/drupal content:export <entity_type> <id> --with-dependencies --dir=../recipes/cedar_hollow_demo_content/content`, run for each `canvas_page`, `node`, `taxonomy_term`, `menu_link_content` and `registration_settings` entity (registration settings are linked by host ID, not by reference, so they are exported separately).
+*   **Proposed Changes**: Content: 3 tracks; 8 speakers; 12 sessions across 12 and 13 March 2027 with at least two overlapping pairs; each session aliased `/sessions/<slug>`; every `registration_settings` with `status` enabled; capacity 40 for every session except "Theming with SDC" (capacity 1, wait list on, no registrations); no open or close dates; no speaker photos (so no managed files to sync); main menu links Home, Sessions, Agenda, About, Try Canvas; footer menu links Site map (`/sitemap`) and Log in; the four Canvas pages from item 31. Exported with `ddev drush content:export <entity_type> <id> --with-dependencies --dir=/var/www/html/recipes/cedar_hollow_demo_content/content` (Drupal 11.4's `core/scripts/drupal` fails in this Composer layout), run for each `canvas_page`, `node`, `taxonomy_term`, `menu_link_content` and `registration_settings` entity (registration settings are linked by host ID, not by reference, so they are exported separately).
 
 #### 33. `scripts/rebuild.sh` (Create)
 
