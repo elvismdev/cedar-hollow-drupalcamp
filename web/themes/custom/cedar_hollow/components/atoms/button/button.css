@@ -237,7 +237,7 @@
   /* Outlined button. */
   .button--outlined {
     background-color: transparent;
-    border-color: currentColor;
+    border-color: currentcolor;
     font-family: var(--font-body);
 
     &:hover {

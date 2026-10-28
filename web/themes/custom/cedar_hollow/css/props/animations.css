@@ -31,13 +31,13 @@
 
   @keyframes fade-in {
     to {
-      opacity: 100%;
+      opacity: 1;
     }
   }
 
   @keyframes fade-out {
     to {
-      opacity: 0%;
+      opacity: 0;
     }
   }
 
@@ -156,7 +156,7 @@
   @keyframes ping {
     90%,
     100% {
-      opacity: 0%;
+      opacity: 0;
       transform: scale(2);
     }
   }
@@ -164,11 +164,11 @@
   @keyframes blink {
     0%,
     100% {
-      opacity: 100%;
+      opacity: 1;
     }
 
     50% {
-      opacity: 50%;
+      opacity: 0.5;
     }
   }
 

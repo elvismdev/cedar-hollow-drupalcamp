@@ -36,7 +36,7 @@
     margin: 0;
     overflow-x: hidden;
     scrollbar-gutter: stable both-edges;
-    word-wrap: break-word;
+    overflow-wrap: break-word;
   }
 
   hr {
@@ -207,7 +207,7 @@
   input::placeholder,
   textarea::placeholder {
     color: var(--placeholder-color, var(--gray-400));
-    opacity: 100%;
+    opacity: 1;
   }
 
   ::selection {
@@ -244,7 +244,7 @@
 
   svg {
     block-size: auto;
-    fill: currentColor;
+    fill: currentcolor;
     max-inline-size: 100%;
     stroke: none;
 

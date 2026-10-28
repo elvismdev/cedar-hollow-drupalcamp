@@ -125,8 +125,7 @@
 
           .callout__wrapper {
             @media (width >= 1024px) {
-              margin-inline-end: 0;
-              margin-inline-start: calc(40% * -1);
+              margin-inline: calc(40% * -1) 0;
             }
           }
         }
