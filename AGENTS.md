@@ -28,6 +28,7 @@ clients.
 Read `docs/designs/cedar-hollow-drupalcamp.md` before changing architecture; it holds the contracts (the `/api/agenda` response, the seats display states, fixed values) that several files share.
 
 *   Drupal 11.4, Canvas 1.12, Entity Registration 3.4. Local environment is DDEV (`ddev start`); PHP 8.3 and MariaDB 10.6 match Pantheon.
+*   CSS, BEM and Atomic Design work loads the `vanilla-css-bem-atomic` skill first. `npm run lint:css` in the theme runs stylelint, `scripts/check_css.py` and `scripts/check_hierarchy.py` (a component includes only lower tiers).
 *   CSS is standard CSS: no Tailwind, Sass or utility classes. BEM class names, Atomic Design tiers in `components/atoms|molecules|organisms|layouts/`, cascade layers, tokens as custom properties.
 *   Every theme component is a Single Directory Component; Canvas group labels are Atoms, Components, Collections and Layouts (`Elements` is reserved by Canvas).
 *   Seat counts come only from Entity Registration's host entity. Any output that shows seats adds `$host->getRegistrationListCacheTag()`.
