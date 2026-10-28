@@ -1,0 +1,7 @@
+cedar_hollow_core.agenda:
+  path: '/api/agenda'
+  defaults:
+    _controller: '\Drupal\cedar_hollow_core\Controller\AgendaController::list'
+  methods: [GET]
+  requirements:
+    _permission: 'access content'

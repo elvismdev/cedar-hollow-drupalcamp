@@ -5,6 +5,7 @@ module:
   block: 0
   breakpoint: 0
   canvas: 0
+  cedar_hollow_core: 0
   ckeditor5: 0
   datetime: 0
   dblog: 0
