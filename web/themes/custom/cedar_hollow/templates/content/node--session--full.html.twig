@@ -13,7 +13,7 @@
     {% endif %}
     {% include 'cedar_hollow:session-meta' with {time_range: time_range, room: room, track: track_label} only %}
     {% if seats %}
-      {% include 'cedar_hollow:seats-indicator' with seats only %}
+      {% include 'cedar_hollow:seats-indicator' with seats|merge({attributes: create_attribute({class: ['session__seats']})}) only %}
     {% endif %}
   </div>
   {{ content.field_speakers }}

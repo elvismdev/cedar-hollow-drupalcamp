@@ -1,13 +1,15 @@
-{# Markup from uclahs/surface source/patterns/components/card (GPL-2.0-or-later). #}
+{# Markup based on uclahs/surface source/patterns/components/card (GPL-2.0-or-later). #}
 {% set attributes = attributes ?: create_attribute() %}
 <article{{ attributes.addClass('card') }}>
   {% if image|render|trim %}
     <div class="card__image">
       {{ image }}
-      {# Short date badge only displays if the content is an event. #}
+      {# The short date badge marks events. #}
       {% if date_month and date_day and eyebrow %}
-        {% include 'cedar_hollow:date-badge' with {month: date_month, day: date_day, size: 'small'} only %}
+        {% include 'cedar_hollow:date-badge' with {month: date_month, day: date_day, size: 'small', attributes: create_attribute({class: ['card__badge']})} only %}
       {% endif %}
+    </div>
+    {% if show_type %}
       {% if date_month %}
         {% set content_type = 'Event'|t %}
       {% elseif date_text %}
@@ -15,32 +17,32 @@
       {% else %}
         {% set content_type = 'Page'|t %}
       {% endif %}
-      <div class="card__content-type">{{ content_type }}</div>
-    </div>
+      <p class="card__type">{{ content_type }}</p>
+    {% endif %}
   {% endif %}
   <div class="card__content">
     {% if eyebrow %}
       {% include 'cedar_hollow:eyebrow' with {text: eyebrow} only %}
     {% endif %}
-    {% include 'cedar_hollow:title' with {text: heading, url: url, level: '3', attributes: create_attribute({class: ['card__title']})} only %}
+    {% include 'cedar_hollow:title' with {text: heading, url: url, level: heading_level ?: '3', size: 'small'} only %}
     {% if summary %}
-      <p class="card__subtitle">{{ summary }}</p>
+      <p class="card__summary">{{ summary }}</p>
     {% endif %}
     {% if organization|render|trim %}
-      <div class="card__organization"><svg class="icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24" width="16" height="16"><path fill="currentColor" d="M12 2a7 7 0 0 1 7 7c0 5-7 13-7 13S5 14 5 9a7 7 0 0 1 7-7zm0 4.5a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5z"/></svg>{{ organization }}</div>
+      <div class="card__organization"><svg class="card__organization-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24" width="16" height="16"><path fill="currentColor" d="M12 2a7 7 0 0 1 7 7c0 5-7 13-7 13S5 14 5 9a7 7 0 0 1 7-7zm0 4.5a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5z"/></svg>{{ organization }}</div>
     {% endif %}
-    {% if date_text or readtime %}
-      <div class="card__date--wrapper">
+    {% if date_text or readtime or more_dates_url %}
+      <div class="card__dates">
         {% if date_text %}
           {% include 'cedar_hollow:date' with {text: date_text, size: 'small'} only %}
         {% endif %}
         {% if readtime %}
           {% include 'cedar_hollow:readtime' with {text: readtime} only %}
         {% endif %}
+        {% if more_dates_url %}
+          {% include 'cedar_hollow:button' with {text: '+ more dates'|t, url: more_dates_url, variant: 'link'} only %}
+        {% endif %}
       </div>
-    {% endif %}
-    {% if more_dates_url %}
-      {% include 'cedar_hollow:button' with {text: '+ more dates'|t, url: more_dates_url, variant: 'link', attributes: create_attribute({class: ['card__more-dates']})} only %}
     {% endif %}
     {% if footer|render|trim %}
       <div class="card__footer">{{ footer }}</div>

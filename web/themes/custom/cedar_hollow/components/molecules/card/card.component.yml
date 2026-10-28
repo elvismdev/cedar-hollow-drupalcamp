@@ -2,7 +2,7 @@ $schema: https://git.drupalcode.org/project/drupal/-/raw/HEAD/core/assets/schema
 name: Card
 status: stable
 group: Components
-description: "A content card for events, articles and pages. Ported from Surface; the footer slot is a Cedar Hollow addition for seat counts."
+description: "A content card for events, articles and pages. Based on Surface; the footer slot is a Cedar Hollow addition for seat counts."
 props:
   type: object
   required: [heading]
@@ -11,6 +11,11 @@ props:
       type: string
       title: Heading
       examples: ["Leaders in the Field Seminar"]
+    heading_level:
+      type: string
+      title: Heading level
+      enum: ["2", "3", "4"]
+      examples: ["3"]
     url:
       type: string
       title: URL
@@ -40,6 +45,10 @@ props:
       type: string
       title: Summary
       examples: ["Integer posuere erat a ante venenatis dapibus."]
+    show_type:
+      type: boolean
+      title: Show content type label
+      examples: [false]
     more_dates_url:
       type: string
       title: More dates URL

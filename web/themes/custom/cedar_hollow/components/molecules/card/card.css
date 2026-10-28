@@ -1,183 +1,77 @@
 /**
  * @file
- * Content card component serves articles and events types of content.
+ * Card (Atomic Design: molecule). Based on uclahs/surface's card at 76e5dc6
+ * (GPL-2.0-or-later). The card fills the space its parent gives it; the
+ * parent sets that size. Child components keep their own look; the card only
+ * places the date badge, through its card__badge mix.
  */
-
-/* Ported from uclahs/surface source/patterns/components/card/card.css at 76e5dc6 (GPL-2.0-or-later). */
 
 @layer reset, tokens, base, atoms, components, collections, layouts, utilities;
 
 @layer components {
   .card {
-    background-color: var(--white);
-    block-size: auto;
-    border-radius: var(--radius-2);
-    box-shadow: var(--shadow-3);
-
-    /* Using display flex to allow us to position the date field at the bottom
-    of the card for consistency regardless of content in card. */
     display: flex;
-    flex: 1 1 var(--size-44);
     flex-direction: column;
-    max-inline-size: var(--size-80);
+    block-size: 100%;
     overflow: hidden;
-
-    .title__link {
-      color: var(--brand-primary);
-
-      &:hover {
-        color: var(--gray-900);
-      }
-    }
+    border-radius: var(--radius-2);
+    background-color: var(--color-surface);
+    box-shadow: var(--shadow-3);
   }
 
   .card__image {
     position: relative;
-
-    .date-badge {
-      inset-block-start: 0;
-      inset-inline-start: 0;
-      position: absolute;
-    }
-
-    /* In Drupal some of the image wrappers may have margin which adds unnecesssary
-    space in the card display. */
-    .field {
-      margin: 0;
-    }
   }
 
-  /* This label is only visible when the cards are within the Curated content component. */
-  .card__content-type {
-    background-color: var(--brand-primary);
-    color: var(--white);
-    display: none;
-    font-weight: var(--font-weight-600);
+  .card__badge {
+    position: absolute;
+    inset-block-start: 0;
+    inset-inline-start: 0;
+  }
+
+  .card__type {
+    margin: 0;
     padding: var(--size-2);
+    background-color: var(--color-accent);
+    color: var(--color-on-accent);
+    font-weight: var(--font-weight-600);
     text-align: center;
-
-    .curated-content & {
-      display: block;
-    }
   }
 
-  /* Using flex-grow to allow date to be positioned at the bottom of the card by
-  using margin-top: auto in the date wrapper field below. */
   .card__content {
     display: flex;
     flex-direction: column;
     flex-grow: 1;
+    gap: var(--size-3);
     padding: var(--size-4);
-
-    /* Reducing the right side padding to ensure the most long date possible can
-    still fit within a single line to keep semetry of fields. */
-    padding-inline-end: var(--size-1);
-
-    .eyebrow {
-      margin-block-end: var(--size-3);
-    }
-
-    .date {
-      align-items: center;
-      margin-inline-end: var(--size-4);
-    }
   }
 
-  .card__title {
-    font-family: var(--font-heading);
-    font-size: var(--font-size-2);
-    line-height: var(--leading-normal);
-    margin-block-end: var(--size-3);
-  }
-
-  /* Article cards use the meta_description content as subtitle, however, at the
-  moment only cards that are part of the Curated content component, display the
-  meta_description/subtitle. */
-  .card__subtitle {
-    display: none;
-    margin-block-end: var(--size-3);
-
-    .curated-content & {
-      display: block;
-    }
+  .card__summary {
+    margin: 0;
+    color: var(--color-text-muted);
   }
 
   .card__organization {
-    align-items: center;
     display: flex;
-    margin-block-end: var(--size-3);
-
-    a {
-      color: var(--brand-primary);
-      display: flex;
-    }
-
-    svg {
-      block-size: 1em;
-      color: var(--brand-primary);
-      display: inline-block;
-      font-size: inherit;
-      inline-size: 1em;
-      margin-inline-end: var(--size-1);
-      vertical-align: -0.125em;
-    }
-
-    span {
-      display: inline-block;
-      font-size: inherit;
-      line-height: var(--leading-tight);
-      margin-inline-start: 0;
-    }
+    gap: var(--size-1);
+    align-items: center;
+    color: var(--color-accent);
   }
 
-  .card__date--wrapper {
-    align-items: center;
-    color: inherit;
-    display: flex;
+  .card__organization-icon {
+    flex-shrink: 0;
+    inline-size: 1em;
+    block-size: 1em;
+  }
 
-    /* Margin auto allows for the date to always be placed at the bottom
-    of the card for position consistency when multiple cards are grouped together . */
+  /* Dates sit at the bottom so cards in a row line them up. */
+  .card__dates {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--size-1) var(--size-4);
+    align-items: center;
     margin-block-start: auto;
-
-    /* We need to know if there are upcoming dates to be able to show
-    the '+ more dates' link/label on cards, however,   we don't need
-    to display them. */
-    .recurring-output--wrapper {
-      details {
-        display: none;
-      }
-    }
-  }
-
-  .card__date {
-    align-items: center;
-    display: flex;
-    font-weight: var(--font-weight-600);
-    margin-block-end: var(--size-3);
-
-    .date {
-      font-weight: var(--font-weight-600);
-
-      svg {
-        margin-inline-end: var(--size-2);
-      }
-    }
-  }
-
-  /* For events, show the label '+ more dates' when an event is recurring. */
-  .card__more-dates {
-    color: var(--gray-500);
+    color: var(--color-text-subtle);
     font-size: var(--font-size-0);
-    font-weight: normal;
-    margin-block-start: var(--size-3);
-
-    &:hover {
-      color: var(--brand-primary);
-    }
-  }
-
-  /* Cedar Hollow addition: the footer slot that holds a session's seats. */
-  .card__footer {
-    margin-block-start: var(--size-3);
   }
 }

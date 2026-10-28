@@ -1,32 +1,34 @@
-{# Markup from uclahs/surface source/patterns/components/callout (GPL-2.0-or-later). #}
+{# Markup based on uclahs/surface source/patterns/components/callout (GPL-2.0-or-later). #}
 {% set attributes = attributes ?: create_attribute() %}
 {% set classes = ['callout'] %}
 {% if layout in ['horizontal', 'horizontal-reversed'] %}
-  {% set classes = classes|merge(['is-horizontal']) %}
+  {% set classes = classes|merge(['callout--horizontal']) %}
 {% endif %}
 {% if layout == 'horizontal-reversed' %}
-  {% set classes = classes|merge(['is-reversed']) %}
+  {% set classes = classes|merge(['callout--reversed']) %}
 {% endif %}
 {% if style == 'quote' %}
-  {% set classes = classes|merge(['is-quote']) %}
+  {% set classes = classes|merge(['callout--quote']) %}
 {% endif %}
 <article{{ attributes.addClass(classes) }}>
-  {% if image|render|trim %}
-    <div class="callout__image">
-      {{ image }}
-    </div>
-  {% endif %}
-  <div class="callout__text">
-    <div class="callout__wrapper">
-      {% include 'cedar_hollow:title' with {text: heading, level: '2', attributes: create_attribute({class: ['callout__title']})} only %}
-      {% if teaser %}
-        <div class="callout__teaser prose">
-          {{ teaser }}
-        </div>
-      {% endif %}
-      {% if cta_text and cta_url %}
-        {% include 'cedar_hollow:button' with {text: cta_text, url: cta_url, variant: cta_variant ?: 'primary'} only %}
-      {% endif %}
+  <div class="callout__layout">
+    {% if image|render|trim %}
+      <div class="callout__image">
+        {{ image }}
+      </div>
+    {% endif %}
+    <div class="callout__text">
+      <div class="callout__body">
+        {% include 'cedar_hollow:title' with {text: heading, level: '2', size: 'large'} only %}
+        {% if teaser %}
+          <div class="callout__teaser prose">
+            {{ teaser }}
+          </div>
+        {% endif %}
+        {% if cta_text and cta_url %}
+          {% include 'cedar_hollow:button' with {text: cta_text, url: cta_url, variant: cta_variant ?: 'primary'} only %}
+        {% endif %}
+      </div>
     </div>
   </div>
 </article>

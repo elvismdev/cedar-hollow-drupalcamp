@@ -10,16 +10,16 @@
   .session__summary {
     display: grid;
     grid-template-columns: auto 1fr;
-    gap: var(--space-s) var(--space-l);
+    gap: var(--size-3) var(--size-6);
     align-items: center;
   }
 
-  .session__summary > .seats-indicator {
+  .session__seats {
     grid-column: 1 / -1;
     justify-self: start;
   }
 
   .sessions-filters {
-    margin-block-end: var(--space-l);
+    margin-block-end: var(--size-6);
   }
 }

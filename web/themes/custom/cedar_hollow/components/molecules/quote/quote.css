@@ -1,147 +1,89 @@
 /**
  * @file
- * Quote styles.
+ * Quote (Atomic Design: molecule). Based on uclahs/surface's quote at 76e5dc6
+ * (GPL-2.0-or-later). With an image it is a media quote on the accent colour;
+ * without one it is a plain pull quote. Its colours are custom properties of
+ * the block, so they never leak to the page.
  */
-
-/* Ported from uclahs/surface source/patterns/components/quote/quote.css at 76e5dc6 (GPL-2.0-or-later). */
 
 @layer reset, tokens, base, atoms, components, collections, layouts, utilities;
 
 @layer components {
-  /* Set on the block, not on html, so the colours do not reach the rest of the page. */
   .quote {
-    --quote-background: var(--brand-primary);
-    --quote-text: var(--white);
+    --quote-background: var(--color-accent);
+    --quote-text: var(--color-on-accent);
+    --quote-rule: var(--color-highlight);
 
+    container: quote / inline-size;
     background-color: var(--quote-background);
     color: var(--quote-text);
-
-      /* Activates container query for the .quote wrapper. */
-    container: quote / inline-size;
-    inline-size: 100%;
-    margin-block-end: var(--size-10);
-
-    /** If there is no image, change the component as follows:
-     * Remove the default background color,
-     * Change text color to ucla-blue,
-     * Change left border color to ucla-blue,
-     * Change layout to a single column.
-     * With these changes the Media quote is transformed into the regular Quote.
-     */
-    &:not(:has(img)) {
-      background-color: transparent;
-      color: var(--brand-primary);
-
-      .quote__content {
-        grid-template-columns: 1fr;
-      }
-
-      .quote__wrapper {
-        border-inline-start-color: var(--brand-primary);
-        font-size: var(--font-size-4);
-        font-weight: var(--font-weight-400);
-
-        .bg-santa-barbara-sand &,
-        .bg-venice-canal & {
-          border-inline-start-color: var(--brand-accent);
-        }
-      }
-    }
-
-    /**
-     * If background colors are applied by users, hide the component's default
-     * background color by turning it transparent, to display the user-selected
-     * background color.
-     */
-    .bg-santa-barbara-sand &,
-    .bg-venice-canal & {
-      background-color: transparent;
-    }
-
-    .bg-santa-barbara-sand & {
-      color: var(--brand-primary-darkest);
-    }
-
-    .bg-venice-canal & {
-      color: var(--white);
-    }
-
-    /* Remove bottom margin if parent container has margin class. */
-    [class^="mb-"] & {
-      margin-block-end: 0;
-    }
   }
 
-  @container quote (max-inline-size: 96ch) { /* ~ 870 */
-    /* For narrow containers left/right margin is added to ensure the component
-    displays properly. */
-    .quote__content {
-      padding-inline: var(--size-4);
-    }
+  .quote:not(:has(.quote__image)) {
+    --quote-background: transparent;
+    --quote-text: var(--color-accent);
+    --quote-rule: var(--color-accent);
   }
 
   .quote__content {
     display: flex;
-    flex-direction: column-reverse; /* To place image above of text on mobile. */
+    flex-direction: column-reverse;
     gap: var(--size-4);
-    padding-block: var(--size-4);
+    padding: var(--size-4);
   }
 
-  @container quote (min-inline-size: 96ch) { /* ~ 870px */
-    .quote__content {
+  @container quote (inline-size >= 48rem) {
+    .quote:has(.quote__image) .quote__content {
       display: grid;
-      gap: var(--size-10);
       grid-template-columns: repeat(2, 1fr);
+      gap: var(--size-10);
       padding-block: var(--size-8);
     }
-
-    .quote__text {
-      align-items: center;
-      display: flex;
-      flex-direction: column;
-      justify-content: center;
-    }
   }
 
-  .quote__image {
-    img {
-      inline-size: 100%;
-    }
+  .quote__text {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
   }
 
-  .quote__wrapper {
-    border-inline-start: var(--size-1) solid var(--brand-accent);
+  .quote__image img {
+    inline-size: 100%;
+  }
+
+  .quote__body {
+    margin: 0;
+    padding-block: var(--size-6);
+    padding-inline-start: var(--size-6);
+    border-inline-start: var(--size-1) solid var(--quote-rule);
     font-size: var(--font-size-3);
     font-style: italic;
     font-weight: var(--font-weight-600);
-    inline-size: 100%;
-    padding-block: var(--size-6);
-    padding-inline-start: var(--size-6);
-    quotes: "\201C""\201D""\2018""\2019";
     text-wrap: pretty;
+    quotes: "\201C" "\201D" "\2018" "\2019";
 
     > * + * {
       margin-block-start: var(--size-4);
     }
 
-    /* Styles quotation marks. */
-    :where(p) {
-      &:first-of-type {
-        &::after {
-          content: close-quote;
-        }
-
-        &::before {
-          content: open-quote;
-        }
-      }
+    > :where(p):first-of-type::before {
+      content: open-quote;
     }
 
-    .quote__author {
-      display: block;
-      font-size: var(--font-size-2);
-      font-style: normal;
-      font-weight: var(--font-weight-400);
+    > :where(p):first-of-type::after {
+      content: close-quote;
     }
+  }
+
+  .quote:not(:has(.quote__image)) .quote__body {
+    font-size: var(--font-size-4);
+    font-weight: var(--font-weight-400);
+  }
+
+  .quote__author {
+    display: block;
+    font-size: var(--font-size-2);
+    font-style: normal;
+    font-weight: var(--font-weight-400);
   }
 }
