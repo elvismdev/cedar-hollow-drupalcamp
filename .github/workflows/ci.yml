@@ -46,6 +46,12 @@ jobs:
           cache-dependency-path: |
             web/themes/custom/cedar_hollow/package-lock.json
             tests/package-lock.json
+      # Storybook loads core's hidden.module.css, so Drupal core must be present.
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          tools: composer:v2
+      - run: composer install --no-interaction --no-progress --no-dev
       - run: npm ci
         working-directory: web/themes/custom/cedar_hollow
       - name: Stylelint, check_css.py and check_hierarchy.py
@@ -91,7 +97,18 @@ jobs:
         run: |
           mkdir -p web/sites/simpletest/browser_output
           php -S 127.0.0.1:8080 -t web web/.ht.router.php > /tmp/php-server.log 2>&1 &
+        # The built-in server handles one request at a time unless told otherwise.
+        env:
+          PHP_CLI_SERVER_WORKERS: '8'
       - run: vendor/bin/phpunit -c web/core/phpunit.xml.dist web/modules/custom/cedar_hollow_core
+      - if: failure()
+        run: tail -n 100 /tmp/php-server.log
+      - if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: phpunit-browser-output
+          path: web/sites/simpletest/browser_output
+          retention-days: 7
 
   e2e:
     name: Playwright end-to-end, accessibility and smoke on a site rebuilt from code
