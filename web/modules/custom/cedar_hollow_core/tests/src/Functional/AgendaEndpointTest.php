@@ -15,8 +15,14 @@ use PHPUnit\Framework\Attributes\RunTestsInSeparateProcesses;
 #[RunTestsInSeparateProcesses]
 final class AgendaEndpointTest extends SessionTestBase {
 
-  private const KEYS = ['id', 'title', 'url', 'start', 'end', 'day', 'room', 'track', 'registerUrl', 'capacity', 'remaining', 'full', 'waitlist', 'open'];
+  private const KEYS = [
+    'id', 'title', 'url', 'start', 'end', 'day', 'room', 'track',
+    'registerUrl', 'capacity', 'remaining', 'full', 'waitlist', 'open',
+  ];
 
+  /**
+   * Tests the agenda JSON contract and that a sign-up drops its cached copy.
+   */
   public function testSeatsAreNearLive(): void {
     $session = $this->createSession('Keynote', 40);
 

@@ -20,6 +20,9 @@ use PHPUnit\Framework\Attributes\RunTestsInSeparateProcesses;
 #[RunTestsInSeparateProcesses]
 final class SessionPageCacheTagTest extends SessionTestBase {
 
+  /**
+   * {@inheritdoc}
+   */
   protected function setUp(): void {
     parent::setUp();
     // The theme depends on cedar_hollow_core, which the recipe's modules must
@@ -29,6 +32,9 @@ final class SessionPageCacheTagTest extends SessionTestBase {
     $this->rebuildAll();
   }
 
+  /**
+   * Tests the seats text on the session page and the listing after a sign-up.
+   */
   public function testSeatsTextFollowsRegistrations(): void {
     $session = $this->createSession('Theming with SDC', 1);
     $tag = 'registration_list.host_entity:node:' . $session->id();

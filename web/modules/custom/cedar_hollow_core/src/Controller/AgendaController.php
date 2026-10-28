@@ -37,10 +37,16 @@ final class AgendaController implements ContainerInjectionInterface {
     private readonly EntityTypeManagerInterface $entityTypeManager,
   ) {}
 
+  /**
+   * {@inheritdoc}
+   */
   public static function create(ContainerInterface $container): static {
     return new static($container->get('entity_type.manager'));
   }
 
+  /**
+   * Returns every published session with its seats as JSON.
+   */
   public function list(): CacheableJsonResponse {
     $cacheability = (new CacheableMetadata())
       ->addCacheTags(['node_list:' . self::SESSION_BUNDLE])

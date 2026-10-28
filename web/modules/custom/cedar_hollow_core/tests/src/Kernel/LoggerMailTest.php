@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Drupal\Tests\cedar_hollow_core\Kernel;
 
+use Drupal\cedar_hollow_core\Plugin\Mail\LoggerMail;
 use Drupal\KernelTests\KernelTestBase;
 use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\Attributes\RunTestsInSeparateProcesses;
@@ -15,8 +16,14 @@ use PHPUnit\Framework\Attributes\RunTestsInSeparateProcesses;
 #[RunTestsInSeparateProcesses]
 final class LoggerMailTest extends KernelTestBase {
 
+  /**
+   * {@inheritdoc}
+   */
   protected static $modules = ['system', 'dblog', 'user'];
 
+  /**
+   * {@inheritdoc}
+   */
   protected function setUp(): void {
     parent::setUp();
     $this->installSchema('dblog', ['watchdog']);
@@ -25,10 +32,17 @@ final class LoggerMailTest extends KernelTestBase {
     require_once dirname(__DIR__, 3) . '/src/Plugin/Mail/LoggerMail.php';
   }
 
+  /**
+   * Tests that a message is written to the log and reported as sent.
+   */
   public function testMailIsLogged(): void {
     $subject = 'Probe ' . bin2hex(random_bytes(4));
-    $plugin = new \Drupal\cedar_hollow_core\Plugin\Mail\LoggerMail();
-    $message = $plugin->format(['to' => 'someone@example.com', 'subject' => $subject, 'body' => ['Line one', 'Line two']]);
+    $plugin = new LoggerMail();
+    $message = $plugin->format([
+      'to' => 'someone@example.com',
+      'subject' => $subject,
+      'body' => ['Line one', 'Line two'],
+    ]);
     $this->assertSame("Line one\n\nLine two", $message['body']);
     $this->assertTrue($plugin->mail($message));
 

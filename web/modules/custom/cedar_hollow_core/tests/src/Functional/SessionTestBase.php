@@ -18,10 +18,19 @@ abstract class SessionTestBase extends BrowserTestBase {
 
   use RecipeTestTrait;
 
+  /**
+   * {@inheritdoc}
+   */
   protected $defaultTheme = 'stark';
 
+  /**
+   * {@inheritdoc}
+   */
   protected static $modules = ['block', 'page_cache', 'dynamic_page_cache'];
 
+  /**
+   * {@inheritdoc}
+   */
   protected function setUp(): void {
     parent::setUp();
     $this->applyRecipe(realpath($this->root . '/../recipes/cedar_hollow_sessions'));

@@ -15,6 +15,9 @@ final class RegistrationFormHooks {
 
   use StringTranslationTrait;
 
+  /**
+   * Implements hook_form_FORM_ID_alter() for the attendee sign-up form.
+   */
   #[Hook('form_registration_attendee_register_form_alter')]
   public function registerFormAlter(array &$form, FormStateInterface $form_state): void {
     if (isset($form['anon_mail']['widget'][0]['value'])) {

@@ -18,11 +18,17 @@ use Drupal\Core\StringTranslation\TranslatableMarkup;
 )]
 final class LoggerMail implements MailInterface {
 
+  /**
+   * {@inheritdoc}
+   */
   public function format(array $message): array {
     $message['body'] = implode("\n\n", array_map('strval', (array) $message['body']));
     return $message;
   }
 
+  /**
+   * {@inheritdoc}
+   */
   public function mail(array $message): bool {
     \Drupal::logger('cedar_hollow_core')->notice('Mail to @to, subject "@subject": @body', [
       '@to' => $message['to'],

@@ -24,6 +24,9 @@ final class DemoEditorAccessTest extends SessionTestBase {
 
   private const ROLE_CONFIG = '/../config/user.role.demo_editor.yml';
 
+  /**
+   * {@inheritdoc}
+   */
   protected function setUp(): void {
     parent::setUp();
     $this->container->get('module_installer')->install(['canvas', 'dblog', 'toolbar']);
@@ -33,6 +36,9 @@ final class DemoEditorAccessTest extends SessionTestBase {
     Role::create($role)->save();
   }
 
+  /**
+   * Tests what the demo editor role is refused and allowed.
+   */
   public function testDemoEditorAccess(): void {
     $session = $this->createSession('Theming with SDC', 10);
     $page = Page::create(['title' => 'Try Canvas here']);

@@ -17,6 +17,9 @@ final class RegistrationCapacityTest extends SessionTestBase {
 
   use AssertMailTrait;
 
+  /**
+   * Tests the wait list and that only completed sign-ups get mail.
+   */
   public function testFullSessionWaitLists(): void {
     $session = $this->createSession('Theming with SDC', 1);
     $register = 'node/' . $session->id() . '/register';
