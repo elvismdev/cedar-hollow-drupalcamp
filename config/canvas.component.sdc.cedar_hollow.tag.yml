@@ -1,0 +1,30 @@
+uuid: cef22423-6bdf-42a0-b26c-4018dc7777a1
+langcode: en
+status: true
+dependencies:
+  theme:
+    - cedar_hollow
+active_version: 1f8f7c4018629568
+versioned_properties:
+  active:
+    settings:
+      prop_field_definitions:
+        label:
+          required: true
+          field_type: string
+          field_storage_settings: {  }
+          field_instance_settings: {  }
+          field_widget: string_textfield
+          default_value:
+            -
+              value: Twig
+          expression: ℹ︎string␟value
+          derived_schema_metadata:
+            string_shape: {  }
+    fallback_metadata:
+      slot_definitions: {  }
+label: Tag
+id: sdc.cedar_hollow.tag
+provider: cedar_hollow
+source: sdc
+source_local_id: 'cedar_hollow:tag'

@@ -1,0 +1,20 @@
+uuid: 68945047-6968-4b31-abce-4c4199e76900
+langcode: en
+status: true
+dependencies:
+  theme:
+    - cedar_hollow
+_core:
+  default_config_hash: Oh72CHUkp6cj6dbrXMK2hzCsM05w9cHVoD22rMLQUfk
+id: cedar_hollow_page_title
+theme: cedar_hollow
+region: content
+weight: -30
+provider: null
+plugin: page_title_block
+settings:
+  id: page_title_block
+  label: 'Page title'
+  label_display: '0'
+  provider: core
+visibility: {  }

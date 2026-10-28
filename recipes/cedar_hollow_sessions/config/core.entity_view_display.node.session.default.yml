@@ -44,9 +44,9 @@ content:
     type: registration_link
     label: hidden
     settings:
-      label: ''
+      label: 'Sign up for this session'
       show_reason: false
-      css_classes: ''
+      css_classes: 'button button--primary'
     third_party_settings: {  }
     weight: 5
     region: content

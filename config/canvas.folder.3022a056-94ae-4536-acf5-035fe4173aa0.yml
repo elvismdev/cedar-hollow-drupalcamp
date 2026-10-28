@@ -1,0 +1,27 @@
+uuid: 3022a056-94ae-4536-acf5-035fe4173aa0
+langcode: en
+status: true
+dependencies:
+  config:
+    - canvas.component.sdc.cedar_hollow.button
+    - canvas.component.sdc.cedar_hollow.date
+    - canvas.component.sdc.cedar_hollow.date-badge
+    - canvas.component.sdc.cedar_hollow.eyebrow
+    - canvas.component.sdc.cedar_hollow.heading
+    - canvas.component.sdc.cedar_hollow.readtime
+    - canvas.component.sdc.cedar_hollow.seats-indicator
+    - canvas.component.sdc.cedar_hollow.tag
+    - canvas.component.sdc.cedar_hollow.title
+name: Atoms
+configEntityTypeId: component
+weight: 0
+items:
+  - sdc.cedar_hollow.button
+  - sdc.cedar_hollow.date
+  - sdc.cedar_hollow.date-badge
+  - sdc.cedar_hollow.eyebrow
+  - sdc.cedar_hollow.heading
+  - sdc.cedar_hollow.readtime
+  - sdc.cedar_hollow.seats-indicator
+  - sdc.cedar_hollow.tag
+  - sdc.cedar_hollow.title

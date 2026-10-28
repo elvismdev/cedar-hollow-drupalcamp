@@ -1,0 +1,30 @@
+uuid: f43c399b-056a-4f8e-8439-f0743f0bb3fd
+langcode: en
+status: true
+dependencies:
+  theme:
+    - cedar_hollow
+active_version: c85bbb9f5d3b96f4
+versioned_properties:
+  active:
+    settings:
+      prop_field_definitions:
+        text:
+          required: true
+          field_type: string
+          field_storage_settings: {  }
+          field_instance_settings: {  }
+          field_widget: string_textfield
+          default_value:
+            -
+              value: '5 min read'
+          expression: ℹ︎string␟value
+          derived_schema_metadata:
+            string_shape: {  }
+    fallback_metadata:
+      slot_definitions: {  }
+label: 'Read time'
+id: sdc.cedar_hollow.readtime
+provider: cedar_hollow
+source: sdc
+source_local_id: 'cedar_hollow:readtime'

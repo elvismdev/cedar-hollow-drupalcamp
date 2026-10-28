@@ -1,0 +1,17 @@
+uuid: 94eed1f5-7091-4685-8097-1ccfc787595a
+langcode: en
+status: true
+dependencies:
+  config:
+    - canvas.component.sdc.cedar_hollow.card-grid
+    - canvas.component.sdc.cedar_hollow.session-list
+    - canvas.component.sdc.cedar_hollow.site-footer
+    - canvas.component.sdc.cedar_hollow.site-header
+name: Collections
+configEntityTypeId: component
+weight: 0
+items:
+  - sdc.cedar_hollow.card-grid
+  - sdc.cedar_hollow.session-list
+  - sdc.cedar_hollow.site-footer
+  - sdc.cedar_hollow.site-header

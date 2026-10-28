@@ -1,0 +1,54 @@
+uuid: 2ebcf170-acf8-45fe-9f9e-fcb252fc4abd
+langcode: en
+status: true
+dependencies:
+  theme:
+    - cedar_hollow
+active_version: 7a090cbe0b440da4
+versioned_properties:
+  active:
+    settings:
+      prop_field_definitions:
+        time_range:
+          required: true
+          field_type: string
+          field_storage_settings: {  }
+          field_instance_settings: {  }
+          field_widget: string_textfield
+          default_value:
+            -
+              value: 'Fri 12 Mar, 9:00am to 9:45am'
+          expression: ℹ︎string␟value
+          derived_schema_metadata:
+            string_shape: {  }
+        room:
+          required: true
+          field_type: string
+          field_storage_settings: {  }
+          field_instance_settings: {  }
+          field_widget: string_textfield
+          default_value:
+            -
+              value: 'Hall A'
+          expression: ℹ︎string␟value
+          derived_schema_metadata:
+            string_shape: {  }
+        track:
+          required: true
+          field_type: string
+          field_storage_settings: {  }
+          field_instance_settings: {  }
+          field_widget: string_textfield
+          default_value:
+            -
+              value: 'Front end'
+          expression: ℹ︎string␟value
+          derived_schema_metadata:
+            string_shape: {  }
+    fallback_metadata:
+      slot_definitions: {  }
+label: 'Session meta'
+id: sdc.cedar_hollow.session-meta
+provider: cedar_hollow
+source: sdc
+source_local_id: 'cedar_hollow:session-meta'

@@ -1,0 +1,46 @@
+uuid: b9fb1de0-1269-4d8d-9f3a-c42108334575
+langcode: en
+status: true
+dependencies:
+  module:
+    - options
+  theme:
+    - cedar_hollow
+active_version: a26f02d97185815b
+versioned_properties:
+  active:
+    settings:
+      prop_field_definitions:
+        heading:
+          required: false
+          field_type: string
+          field_storage_settings: {  }
+          field_instance_settings: {  }
+          field_widget: string_textfield
+          default_value:
+            -
+              value: 'Featured sessions'
+          expression: ℹ︎string␟value
+          derived_schema_metadata:
+            string_shape: {  }
+        width:
+          required: false
+          field_type: list_string
+          field_storage_settings:
+            allowed_values_function: canvas_load_allowed_values_for_component_prop
+          field_instance_settings: {  }
+          field_widget: options_select
+          default_value:
+            -
+              value: wide
+          expression: ℹ︎list_string␟value
+          derived_schema_metadata: {  }
+    fallback_metadata:
+      slot_definitions:
+        content:
+          title: Content
+label: 'Page section'
+id: sdc.cedar_hollow.page-section
+provider: cedar_hollow
+source: sdc
+source_local_id: 'cedar_hollow:page-section'

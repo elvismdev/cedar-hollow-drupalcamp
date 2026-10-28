@@ -1,0 +1,66 @@
+uuid: ba4cc120-8a2b-4266-ad83-870829238c3a
+langcode: en
+status: true
+dependencies:
+  module:
+    - options
+  theme:
+    - cedar_hollow
+active_version: fdc9ea2046499d6f
+versioned_properties:
+  active:
+    settings:
+      prop_field_definitions:
+        remaining:
+          required: false
+          field_type: integer
+          field_storage_settings: {  }
+          field_instance_settings: {  }
+          field_widget: number
+          default_value:
+            -
+              value: 12
+          expression: ℹ︎integer␟value
+          derived_schema_metadata: {  }
+        capacity:
+          required: true
+          field_type: integer
+          field_storage_settings: {  }
+          field_instance_settings: {  }
+          field_widget: number
+          default_value:
+            -
+              value: 40
+          expression: ℹ︎integer␟value
+          derived_schema_metadata: {  }
+        state:
+          required: true
+          field_type: list_string
+          field_storage_settings:
+            allowed_values_function: canvas_load_allowed_values_for_component_prop
+          field_instance_settings: {  }
+          field_widget: options_select
+          default_value:
+            -
+              value: open
+          expression: ℹ︎list_string␟value
+          derived_schema_metadata: {  }
+        text:
+          required: true
+          field_type: string
+          field_storage_settings: {  }
+          field_instance_settings: {  }
+          field_widget: string_textfield
+          default_value:
+            -
+              value: '12 of 40 seats left'
+          expression: ℹ︎string␟value
+          derived_schema_metadata:
+            string_shape: {  }
+    fallback_metadata:
+      slot_definitions: {  }
+label: 'Seats indicator'
+id: sdc.cedar_hollow.seats-indicator
+provider: cedar_hollow
+source: sdc
+source_local_id: 'cedar_hollow:seats-indicator'

@@ -1,0 +1,32 @@
+uuid: 64511618-1cb9-4ef5-8f47-4bac69f6dd8e
+langcode: en
+status: true
+dependencies:
+  theme:
+    - cedar_hollow
+active_version: 469470ea3e9a298f
+versioned_properties:
+  active:
+    settings:
+      prop_field_definitions:
+        empty_text:
+          required: false
+          field_type: string
+          field_storage_settings: {  }
+          field_instance_settings: {  }
+          field_widget: string_textfield
+          default_value:
+            -
+              value: 'No sessions match these filters.'
+          expression: ℹ︎string␟value
+          derived_schema_metadata:
+            string_shape: {  }
+    fallback_metadata:
+      slot_definitions:
+        items:
+          title: Items
+label: 'Session list'
+id: sdc.cedar_hollow.session-list
+provider: cedar_hollow
+source: sdc
+source_local_id: 'cedar_hollow:session-list'

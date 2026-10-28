@@ -1,0 +1,34 @@
+uuid: a0557bd6-ae17-42bc-90bc-e771a705a0de
+langcode: en
+status: true
+dependencies:
+  module:
+    - options
+  theme:
+    - cedar_hollow
+active_version: 30c295584912c931
+versioned_properties:
+  active:
+    settings:
+      prop_field_definitions:
+        columns:
+          required: false
+          field_type: list_string
+          field_storage_settings:
+            allowed_values_function: canvas_load_allowed_values_for_component_prop
+          field_instance_settings: {  }
+          field_widget: options_select
+          default_value:
+            -
+              value: '3'
+          expression: ℹ︎list_string␟value
+          derived_schema_metadata: {  }
+    fallback_metadata:
+      slot_definitions:
+        items:
+          title: Items
+label: 'Card grid'
+id: sdc.cedar_hollow.card-grid
+provider: cedar_hollow
+source: sdc
+source_local_id: 'cedar_hollow:card-grid'

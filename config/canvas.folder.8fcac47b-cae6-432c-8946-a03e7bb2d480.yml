@@ -1,0 +1,13 @@
+uuid: 8fcac47b-cae6-432c-8946-a03e7bb2d480
+langcode: en
+status: true
+dependencies:
+  config:
+    - canvas.component.sdc.cedar_hollow.page-section
+    - canvas.component.sdc.cedar_hollow.two-column
+name: Layouts
+configEntityTypeId: component
+weight: 0
+items:
+  - sdc.cedar_hollow.page-section
+  - sdc.cedar_hollow.two-column

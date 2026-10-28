@@ -1,0 +1,25 @@
+uuid: 03f98ec8-5f69-4610-8f05-dfd61bc96670
+langcode: en
+status: true
+dependencies:
+  config:
+    - system.menu.main
+  module:
+    - system
+  theme:
+    - cedar_hollow
+id: cedar_hollow_main_menu
+theme: cedar_hollow
+region: header
+weight: 0
+provider: null
+plugin: 'system_menu_block:main'
+settings:
+  id: 'system_menu_block:main'
+  label: ''
+  label_display: '0'
+  provider: system
+  level: 1
+  depth: 1
+  expand_all_items: false
+visibility: {  }

@@ -1,0 +1,23 @@
+uuid: a5171fc6-ea65-4c09-9f3a-535eaee8f009
+langcode: en
+status: true
+dependencies:
+  config:
+    - canvas.component.sdc.cedar_hollow.callout
+    - canvas.component.sdc.cedar_hollow.card
+    - canvas.component.sdc.cedar_hollow.featured-card
+    - canvas.component.sdc.cedar_hollow.filter-group
+    - canvas.component.sdc.cedar_hollow.quote
+    - canvas.component.sdc.cedar_hollow.session-meta
+    - canvas.component.sdc.cedar_hollow.speaker-byline
+name: Components
+configEntityTypeId: component
+weight: 0
+items:
+  - sdc.cedar_hollow.callout
+  - sdc.cedar_hollow.card
+  - sdc.cedar_hollow.featured-card
+  - sdc.cedar_hollow.filter-group
+  - sdc.cedar_hollow.quote
+  - sdc.cedar_hollow.session-meta
+  - sdc.cedar_hollow.speaker-byline

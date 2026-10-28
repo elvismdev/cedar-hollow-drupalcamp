@@ -1,0 +1,22 @@
+uuid: 32570241-3c30-49a5-8478-6bddade6feb2
+langcode: en
+status: true
+dependencies:
+  module:
+    - system
+  theme:
+    - cedar_hollow
+_core:
+  default_config_hash: aeqlWs7HwctZeZC7ADcbxfqehJzBRfZKmuZz3DsH3_4
+id: cedar_hollow_messages
+theme: cedar_hollow
+region: content
+weight: -10
+provider: null
+plugin: system_messages_block
+settings:
+  id: system_messages_block
+  label: 'Status messages'
+  label_display: '0'
+  provider: system
+visibility: {  }

@@ -1,0 +1,32 @@
+uuid: 574b9338-2246-4426-bb2c-e5ab6e80a988
+langcode: en
+status: true
+dependencies:
+  theme:
+    - cedar_hollow
+active_version: c64fbc41707f34b7
+versioned_properties:
+  active:
+    settings:
+      prop_field_definitions:
+        legend:
+          required: true
+          field_type: string
+          field_storage_settings: {  }
+          field_instance_settings: {  }
+          field_widget: string_textfield
+          default_value:
+            -
+              value: Track
+          expression: ℹ︎string␟value
+          derived_schema_metadata:
+            string_shape: {  }
+    fallback_metadata:
+      slot_definitions:
+        options:
+          title: Options
+label: 'Filter group'
+id: sdc.cedar_hollow.filter-group
+provider: cedar_hollow
+source: sdc
+source_local_id: 'cedar_hollow:filter-group'

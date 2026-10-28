@@ -1,0 +1,32 @@
+uuid: a1f88f04-1b8a-4c62-97d3-de187fe25181
+langcode: en
+status: true
+dependencies:
+  theme:
+    - cedar_hollow
+active_version: a849a7b507614016
+versioned_properties:
+  active:
+    settings:
+      prop_field_definitions:
+        name:
+          required: true
+          field_type: string
+          field_storage_settings: {  }
+          field_instance_settings: {  }
+          field_widget: string_textfield
+          default_value:
+            -
+              value: 'Alex Rivera'
+          expression: ℹ︎string␟value
+          derived_schema_metadata:
+            string_shape: {  }
+    fallback_metadata:
+      slot_definitions:
+        image:
+          title: Image
+label: 'Speaker byline'
+id: sdc.cedar_hollow.speaker-byline
+provider: cedar_hollow
+source: sdc
+source_local_id: 'cedar_hollow:speaker-byline'

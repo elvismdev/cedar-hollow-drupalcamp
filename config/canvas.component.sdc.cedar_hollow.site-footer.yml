@@ -1,0 +1,22 @@
+uuid: 2b41a185-9e70-4050-aa3e-93803d7951f3
+langcode: en
+status: true
+dependencies:
+  theme:
+    - cedar_hollow
+active_version: d1822046a0b1593b
+versioned_properties:
+  active:
+    settings:
+      prop_field_definitions: {  }
+    fallback_metadata:
+      slot_definitions:
+        links:
+          title: Links
+        notice:
+          title: Notice
+label: 'Site footer'
+id: sdc.cedar_hollow.site-footer
+provider: cedar_hollow
+source: sdc
+source_local_id: 'cedar_hollow:site-footer'

@@ -1,0 +1,20 @@
+uuid: 2617dd10-ce0e-4dd5-818d-b50869196168
+langcode: en
+status: true
+dependencies:
+  module:
+    - system
+  theme:
+    - cedar_hollow
+id: cedar_hollow_content
+theme: cedar_hollow
+region: content
+weight: 0
+provider: null
+plugin: system_main_block
+settings:
+  id: system_main_block
+  label: ''
+  label_display: '0'
+  provider: system
+visibility: {  }

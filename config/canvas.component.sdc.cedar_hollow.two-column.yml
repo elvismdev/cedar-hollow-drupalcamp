@@ -1,0 +1,36 @@
+uuid: 1c46acc9-d746-43db-ae7f-6e0ed75b34b4
+langcode: en
+status: true
+dependencies:
+  module:
+    - options
+  theme:
+    - cedar_hollow
+active_version: 5bdf085dac9a2824
+versioned_properties:
+  active:
+    settings:
+      prop_field_definitions:
+        ratio:
+          required: false
+          field_type: list_string
+          field_storage_settings:
+            allowed_values_function: canvas_load_allowed_values_for_component_prop
+          field_instance_settings: {  }
+          field_widget: options_select
+          default_value:
+            -
+              value: 60-40
+          expression: ℹ︎list_string␟value
+          derived_schema_metadata: {  }
+    fallback_metadata:
+      slot_definitions:
+        primary:
+          title: Primary
+        secondary:
+          title: Secondary
+label: 'Two columns'
+id: sdc.cedar_hollow.two-column
+provider: cedar_hollow
+source: sdc
+source_local_id: 'cedar_hollow:two-column'

@@ -1,0 +1,97 @@
+uuid: 07c188c5-77e7-4343-819e-9630a2bfd28c
+langcode: en
+status: true
+dependencies:
+  module:
+    - options
+  theme:
+    - cedar_hollow
+active_version: c99f6c8bd1427944
+versioned_properties:
+  active:
+    settings:
+      prop_field_definitions:
+        month:
+          required: true
+          field_type: string
+          field_storage_settings: {  }
+          field_instance_settings: {  }
+          field_widget: string_textfield
+          default_value:
+            -
+              value: Oct
+          expression: ℹ︎string␟value
+          derived_schema_metadata:
+            string_shape: {  }
+        day:
+          required: true
+          field_type: string
+          field_storage_settings: {  }
+          field_instance_settings: {  }
+          field_widget: string_textfield
+          default_value:
+            -
+              value: '31'
+          expression: ℹ︎string␟value
+          derived_schema_metadata:
+            string_shape: {  }
+        size:
+          required: false
+          field_type: list_string
+          field_storage_settings:
+            allowed_values_function: canvas_load_allowed_values_for_component_prop
+          field_instance_settings: {  }
+          field_widget: options_select
+          default_value:
+            -
+              value: default
+          expression: ℹ︎list_string␟value
+          derived_schema_metadata: {  }
+        tone:
+          required: false
+          field_type: list_string
+          field_storage_settings:
+            allowed_values_function: canvas_load_allowed_values_for_component_prop
+          field_instance_settings: {  }
+          field_widget: options_select
+          default_value:
+            -
+              value: default
+          expression: ℹ︎list_string␟value
+          derived_schema_metadata: {  }
+    fallback_metadata:
+      slot_definitions: {  }
+  07b6f590a9996b0b:
+    settings:
+      prop_field_definitions:
+        day:
+          required: true
+          field_type: string
+          field_storage_settings: {  }
+          field_instance_settings: {  }
+          field_widget: string_textfield
+          default_value:
+            -
+              value: '12'
+          expression: ℹ︎string␟value
+          derived_schema_metadata:
+            string_shape: {  }
+        month:
+          required: true
+          field_type: string
+          field_storage_settings: {  }
+          field_instance_settings: {  }
+          field_widget: string_textfield
+          default_value:
+            -
+              value: Mar
+          expression: ℹ︎string␟value
+          derived_schema_metadata:
+            string_shape: {  }
+    fallback_metadata:
+      slot_definitions: {  }
+label: 'Date badge'
+id: sdc.cedar_hollow.date-badge
+provider: cedar_hollow
+source: sdc
+source_local_id: 'cedar_hollow:date-badge'
