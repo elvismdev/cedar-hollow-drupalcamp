@@ -1,0 +1,16 @@
+name: cedar-hollow
+type: drupal11
+docroot: web
+# Pinned to Pantheon's pantheon.upstream.yml values.
+php_version: "8.3"
+database:
+  type: mariadb
+  version: "10.6"
+# Matches frontend_build node_version in pantheon.yml.
+nodejs_version: "22"
+web_environment:
+  - SIMPLETEST_DB=mysql://db:db@db/db
+  - SIMPLETEST_BASE_URL=http://web
+  - BROWSERTEST_OUTPUT_DIRECTORY=/var/www/html/web/sites/simpletest/browser_output
+  - DDEV_PANTHEON_SITE=cedar-hollow-demo
+  - DDEV_PANTHEON_ENVIRONMENT=dev
