@@ -6,7 +6,7 @@
   "scripts": {
     "storybook": "storybook dev -p 6006",
     "build": "storybook build -o storybook",
-    "lint:css": "stylelint 'components/**/*.css' 'css/**/*.css' 'agenda-builder/**/*.css' && python3 ../../../../scripts/check_css.py components css"
+    "lint:css": "stylelint 'components/**/*.css' 'css/**/*.css' 'agenda-builder/**/*.css' && python3 ../../../../scripts/check_css.py components css agenda-builder"
   },
   "devDependencies": {
     "@drupal/once": "1.0.1",

@@ -24,8 +24,11 @@ base:
       css/block.css: {}
     component:
       css/local-tasks.css: {}
+  # Global because markup outside SDC uses their classes: core's form buttons
+  # use the button, and the agenda builder code component uses both.
   dependencies:
     - core/components.cedar_hollow--button
+    - core/components.cedar_hollow--seats-indicator
 
 menu-toggle:
   css:
