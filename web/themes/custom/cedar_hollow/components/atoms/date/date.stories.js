@@ -15,3 +15,4 @@ export default {
 };
 
 export const Default = { args: {"text": "November 23, 2023", "size": "default"} };
+export const Small = { args: {"text": "Fri 12 Mar, 10:00am to 10:45am", "size": "small"} };
