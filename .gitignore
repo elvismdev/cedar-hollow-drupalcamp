@@ -101,9 +101,9 @@
 /web/themes/custom/cedar_hollow/node_modules/
 /web/themes/custom/cedar_hollow/storybook/
 /tests/node_modules/
-/test-results/
-/playwright-report/
-/a11y-results/
+/tests/test-results/
+/tests/playwright-report/
+/tests/a11y-results/
 /.ddev/config.local.yaml
 /web/sites/default/local.services.yml
 
