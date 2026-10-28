@@ -1,52 +1,49 @@
 /**
  * @file
- * Date badge styles.
+ * Date badge (Atomic Design: atom). Based on uclahs/surface's date-badge at
+ * 76e5dc6 (GPL-2.0-or-later).
  */
-
-/* Ported from uclahs/surface source/patterns/elements/date-badge/date-badge.css at 76e5dc6 (GPL-2.0-or-later). */
 
 @layer reset, tokens, base, atoms, components, collections, layouts, utilities;
 
 @layer atoms {
   .date-badge {
-    background-color: var(--brand-primary);
-    block-size: var(--size-20);
-    color: var(--white);
     display: flex;
     flex-direction: column;
-    font-size: var(--font-size-8);
-    inline-size: var(--size-20);
     justify-content: center;
+    inline-size: var(--size-20);
+    block-size: var(--size-20);
     padding: var(--size-3);
+    background-color: var(--color-accent);
+    color: var(--color-on-accent);
+    font-size: var(--font-size-8);
     text-align: center;
     text-transform: uppercase;
+  }
 
-    &.date-badge--light {
-      background-color: var(--white);
-      color: var(--brand-primary);
-    }
+  .date-badge__month,
+  .date-badge__day {
+    font-weight: var(--font-weight-900);
+    line-height: var(--leading-none);
+  }
 
-    /* The template renders spans; Surface's markup used time elements. */
-    .date-badge__month,
-    .date-badge__day {
-      font-weight: var(--font-weight-900);
-      line-height: var(--leading-none);
-    }
+  .date-badge__month {
+    font-size: var(--font-size-1);
+  }
+
+  .date-badge--light {
+    background-color: var(--color-surface);
+    color: var(--color-accent);
+  }
+
+  .date-badge--small {
+    inline-size: var(--size-14);
+    block-size: var(--size-14);
+    padding: var(--size-2);
+    font-size: var(--font-size-4);
 
     .date-badge__month {
-      font-size: var(--font-size-1);
-    }
-
-    /* Smaller version as seeing in Content card for events. */
-    &.date-badge--small {
-      block-size: var(--size-14);
-      font-size: var(--font-size-4);
-      inline-size: var(--size-14);
-      padding: var(--size-2);
-
-      .date-badge__month {
-        font-size: var(--font-size-sm);
-      }
+      font-size: var(--font-size-sm);
     }
   }
 }

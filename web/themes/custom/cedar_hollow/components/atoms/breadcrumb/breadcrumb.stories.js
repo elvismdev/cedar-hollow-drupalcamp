@@ -15,3 +15,5 @@ export default {
 };
 
 export const Default = { args: {"breadcrumb": [{"url": "/", "text": "Home"}, {"url": "/sessions", "text": "Sessions"}, {"text": "Theming with SDC"}]} };
+// The inverse tone is for dark surfaces, so the story shows it on one.
+export const Inverse = { render: (args) => `<div style="background-color: var(--color-accent); padding: var(--size-4)">${breadcrumb(args)}</div>`, args: {"tone": "inverse", "breadcrumb": [{"url": "/", "text": "Home"}, {"url": "/sessions", "text": "Sessions"}, {"text": "Theming with SDC"}]} };

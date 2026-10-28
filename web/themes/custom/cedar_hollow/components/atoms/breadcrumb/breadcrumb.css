@@ -1,60 +1,53 @@
 /**
  * @file
- * Breadcrumb styles.
+ * Breadcrumb (Atomic Design: atom). Based on uclahs/surface's breadcrumb at
+ * 76e5dc6 (GPL-2.0-or-later). Surface drew it white on a dark band; here it
+ * uses the page's text colours, with an inverse modifier for dark surfaces.
  */
-
-/* Ported from uclahs/surface source/patterns/elements/breadcrumb/breadcrumb.css at 76e5dc6 (GPL-2.0-or-later). */
 
 @layer reset, tokens, base, atoms, components, collections, layouts, utilities;
 
 @layer atoms {
-  :where([data-theme="dgsom"]) {
-    --svg-start: var(--size-1);
-  }
-
-  :where([data-theme="labs-dynamic"]) {
-    --svg-start: var(--size-1);
+  .breadcrumb {
+    color: var(--color-text-muted);
   }
 
   .breadcrumb__list {
-    align-items: center;
-    color: var(--brand-primary);
     display: flex;
     flex-wrap: wrap;
     gap: var(--size-2);
+    align-items: center;
+    margin: 0;
+    padding: 0;
+    list-style: none;
   }
 
   .breadcrumb__item {
-    align-items: center;
-    color: var(--white);
     display: inline-flex;
-
-    svg {
-      block-size: 1em;
-      color: inherit;
-      display: inline-block;
-      inline-size: 1em;
-      margin-block-start: var(--svg-start, 0);
-      margin-inline-start: var(--size-4);
-    }
+    gap: var(--size-2);
+    align-items: center;
   }
 
   .breadcrumb__link {
-    color: var(--white);
+    color: var(--color-accent);
     font-size: var(--font-size-1);
-    font-weight: var(--font-weight-400);
 
     &:hover {
-      text-decoration: underline;
+      color: var(--color-text);
     }
+  }
 
-    svg {
-      block-size: 1em;
-      color: inherit;
-      display: inline-block;
-      inline-size: 1em;
-      margin-inline-start: 0;
-      vertical-align: -0.125em;
+  .breadcrumb__icon,
+  .breadcrumb__separator {
+    inline-size: 1em;
+    block-size: 1em;
+  }
+
+  .breadcrumb--inverse {
+    color: var(--color-on-accent);
+
+    .breadcrumb__link {
+      color: var(--color-on-accent);
     }
   }
 }

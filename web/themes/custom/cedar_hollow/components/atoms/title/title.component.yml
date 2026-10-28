@@ -16,6 +16,11 @@ props:
       title: Level
       enum: ["2", "3", "4", "5", "6"]
       examples: ["2"]
+    size:
+      type: string
+      title: Size
+      enum: ["small", "medium", "large"]
+      examples: ["medium"]
     url:
       type: string
       title: URL

@@ -1,243 +1,102 @@
 /**
  * @file
- * Button styles.
+ * Button (Atomic Design: atom). Based on uclahs/surface's button at 76e5dc6
+ * (GPL-2.0-or-later): its default, primary, secondary, outlined and link
+ * variants. Core's form buttons carry the same classes. Focus uses the
+ * theme-wide :focus-visible ring; a parent places buttons with gap or a mix.
  */
-
-/* Ported from uclahs/surface source/patterns/elements/button/button.css at 76e5dc6 (GPL-2.0-or-later). */
 
 @layer reset, tokens, base, atoms, components, collections, layouts, utilities;
 
 @layer atoms {
-  /* Exclude the initial button styles if the classes `prose` or `button--link` exist in the element. */
-  .button:not(:where([class~='prose'] *, .button--link)) {
-    align-items: center;
-    appearance: none;
-    background-color: var(--gray-300);
-    border-color: var(--gray-300);
-    border-radius: 0;
-    border-width: 1px;
-    color: var(--black);
-    cursor: pointer;
+  .button {
     display: inline-flex;
-    font-family: var(--font-system);
-    font-size: var(--font-size-1);
-    font-weight: var(--font-weight-700);
-    inline-size: fit-content;
+    align-items: center;
     justify-content: center;
-    line-height: var(--leading-none);
+    gap: var(--size-2);
+    inline-size: fit-content;
+    min-block-size: var(--target-size);
     padding-block: var(--size-4);
     padding-inline: var(--size-6);
-    position: relative;
-    transition: var(--transition-soft-linear);
+    border: 1px solid var(--color-neutral);
+    border-radius: 0;
+    background-color: var(--color-neutral);
+    color: var(--color-text-strong);
+    font-family: var(--font-body);
+    font-size: var(--font-size-1);
+    font-weight: var(--font-weight-700);
+    line-height: var(--leading-none);
+    text-decoration: none;
     white-space: nowrap;
-
-    &:visited {
-      color: var(--black);
-    }
+    cursor: pointer;
+    appearance: none;
+    transition-duration: var(--duration-fast);
+    transition-property: background-color, border-color, color;
 
     &:hover {
-      background-color: var(--gray-200);
-      border-color: var(--gray-300);
-    }
-
-    &[aria-expanded='true'] {
-      &:focus::after {
-        border-color: var(--gray-300);
-      }
+      background-color: var(--color-neutral-hover);
+      color: var(--color-text-strong);
     }
 
     &:disabled {
-      background-color: var(--gray-300);
-      color: var(--gray-500);
+      color: var(--color-text-subtle);
       cursor: not-allowed;
-      pointer-events: none;
-    }
-
-    /* If two buttons are added, this should add some separation. */
-    + .button {
-      margin-block: var(--size-4);
-
-      @media (width >= 1024px) {
-        margin-block: 0;
-        margin-inline-start: var(--size-2);
-      }
-    }
-
-    svg {
-      block-size: 1em;
-      display: inline-block;
-      inline-size: 1em;
-      margin-inline-start: var(--size-2);
-
-      path {
-        color: inherit;
-      }
     }
   }
 
-  /* Button primary */
+  .button__icon {
+    inline-size: 1em;
+    block-size: 1em;
+  }
+
   .button--primary {
-    background-color: var(--brand-primary);
-    border-color: var(--brand-primary);
-    color: var(--white);
-    font-family: var(--font-body);
+    border-color: var(--color-accent);
+    background-color: var(--color-accent);
+    color: var(--color-on-accent);
 
-    &:visited {
-      background-color: var(--brand-primary);
-      color: var(--white);
-    }
-
-    &:hover {
-      background-color: var(--brand-primary-dark);
-      color: var(--white);
-    }
-
+    &:hover,
     &:active {
-      background-color: var(--brand-primary-dark);
-      color: var(--white);
+      border-color: var(--color-accent-strong);
+      background-color: var(--color-accent-strong);
+      color: var(--color-on-accent);
     }
   }
 
-  /* Button secondary */
   .button--secondary {
-    background-color: var(--brand-accent);
-    border-color: var(--brand-accent);
-    color: var(--brand-primary-darkest);
-    font-family: var(--font-body);
+    border-color: var(--color-highlight);
+    background-color: var(--color-highlight);
+    color: var(--color-on-highlight);
 
-    &:visited {
-      background-color: var(--brand-accent);
-      color: var(--brand-primary-darkest);
-    }
-
-    &:hover {
-      background-color: var(--brand-accent-dark);
-      border-color: var(--brand-accent-dark);
-      color: var(--brand-primary-darkest);
-    }
-
+    &:hover,
     &:active {
-      background-color: var(--brand-accent-dark);
-      color: var(--brand-primary-darkest);
+      border-color: var(--color-highlight-strong);
+      background-color: var(--color-highlight-strong);
+      color: var(--color-on-highlight);
     }
   }
 
-  /* Give button */
-  .button--give {
-    background-color: transparent;
-    border: 0;
-    color: var(--white);
-    font-family: var(--font-body);
-    font-weight: var(--font-weight-400);
-    margin-block: 0;
-    padding-block: var(--size-2);
-    padding-inline: var(--size-4);
-
-    &:visited {
-      background-color: inherit;
-      color: inherit;
-    }
-
-    &:hover {
-      background-color: inherit;
-      color: var(--gray-200);
-    }
-
-    & svg {
-      inline-size: 1em;
-      margin-inline-end: var(--size-2);
-    }
-  }
-
-  /* Translate button */
-  .button--translate {
-    background-color: transparent;
-    border: 0;
-    color: var(--white);
-    font-family: var(--font-body);
-    font-weight: var(--font-weight-400);
-    margin-block: 0;
-    padding-block: var(--size-2);
-    padding-inline: var(--size-4);
-
-    &:hover {
-      background-color: inherit;
-      color: var(--gray-200);
-    }
-
-    & svg {
-      inline-size: 1em;
-      margin-inline-end: var(--size-2);
-    }
-  }
-
-  /* Search button */
-  .button--search {
-    background-color: transparent;
-    border: 0;
-    color: var(--white);
-    font-family: var(--font-body);
-    font-weight: var(--font-weight-400);
-    margin-block: 0;
-    margin-inline-end: 0;
-    padding-block: var(--size-2);
-    padding-inline: var(--size-4);
-
-    &:hover {
-      background-color: inherit;
-      color: var(--gray-200);
-    }
-
-    & svg {
-      inline-size: 1em;
-      margin-inline-end: var(--size-2);
-    }
-  }
-
-  /* Button square */
-  .button--square {
-    block-size: 3rem;
-    border-radius: var(--radius-4);
-    inline-size: 3rem;
-    padding: 0;
-
-    svg {
-      block-size: 1.5rem;
-      inline-size: 1.5rem;
-      margin-inline-start: 0;
-    }
-  }
-
-  /* Outlined button. */
   .button--outlined {
-    background-color: transparent;
     border-color: currentcolor;
-    font-family: var(--font-body);
+    background-color: transparent;
 
     &:hover {
-      background-color: var(--black);
-      color: var(--white);
+      background-color: var(--color-text-strong);
+      color: var(--color-surface);
     }
   }
 
   .button--link {
+    min-block-size: auto;
+    padding: 0;
+    border-color: transparent;
+    background-color: transparent;
     color: inherit;
+    font-weight: var(--font-weight-400);
+    text-decoration: underline;
 
-    svg {
-      block-size: 1rem;
-      display: inline-block;
-      inline-size: 1rem;
-      margin-inline-start: var(--size-05);
-
-      path {
-        color: inherit;
-      }
-    }
-
-    /* If the link has an icon, ensure it is vertically aligned with text. */
-    &:has(svg) {
-      align-items: center;
-      display: flex;
+    &:hover {
+      background-color: transparent;
+      color: var(--color-accent);
     }
   }
 }

@@ -7,6 +7,11 @@ noUi: true
 props:
   type: object
   properties:
+    tone:
+      type: string
+      title: Tone
+      enum: ["default", "inverse"]
+      examples: ["default"]
     breadcrumb:
       type: array
       title: Links

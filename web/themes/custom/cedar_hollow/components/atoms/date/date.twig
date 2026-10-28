@@ -2,6 +2,6 @@
 {% set attributes = attributes ?: create_attribute() %}
 {% set classes = size == 'small' ? ['date', 'date--small'] : ['date'] %}
 <div{{ attributes.addClass(classes) }}>
-  <svg class="icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24" width="16" height="16"><path fill="currentColor" d="M7 2h2v2h6V2h2v2h3a1 1 0 0 1 1 1v15a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1h3V2zm12 8H5v9h14v-9z"/></svg>
-  <span>{{ text }}</span>
+  <svg class="date__icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24" width="16" height="16"><path fill="currentColor" d="M7 2h2v2h6V2h2v2h3a1 1 0 0 1 1 1v15a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1h3V2zm12 8H5v9h14v-9z"/></svg>
+  <span class="date__text">{{ text }}</span>
 </div>

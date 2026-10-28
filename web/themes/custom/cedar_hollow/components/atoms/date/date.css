@@ -1,42 +1,28 @@
 /**
  * @file
- * Date styles.
+ * Date (Atomic Design: atom). Based on uclahs/surface's date at 76e5dc6
+ * (GPL-2.0-or-later).
  */
-
-/* Ported from uclahs/surface source/patterns/elements/date/date.css at 76e5dc6 (GPL-2.0-or-later). */
 
 @layer reset, tokens, base, atoms, components, collections, layouts, utilities;
 
 @layer atoms {
   .date {
-    align-items: flex-start;
-    color: var(--gray-500);
     display: flex;
+    gap: var(--size-1);
+    align-items: center;
+    color: var(--color-text-subtle);
+    font-size: var(--font-size-1);
+    line-height: var(--leading-tight);
+  }
+
+  .date__icon {
+    flex-shrink: 0;
+    inline-size: 1em;
+    block-size: 1em;
+  }
+
+  .date--small {
     font-size: var(--font-size-0);
-
-    /* Date text color variations. */
-    &.date--light {
-      color: var(--white);
-    }
-
-    &.date--dark {
-      color: var(--black);
-    }
-
-    svg {
-      block-size: 1em;
-      color: inherit;
-      display: inline-block;
-      inline-size: 1em;
-      margin-inline-end: var(--size-1);
-      vertical-align: -0.125em;
-    }
-
-    span {
-      color: inherit;
-      display: inline-block;
-      line-height: var(--leading-tight);
-      margin-inline-start: 0;
-    }
   }
 }

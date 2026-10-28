@@ -16,3 +16,6 @@ export default {
 
 export const Default = { args: {"text": "A vibrant, supportive culture is essential to advancing our mission.", "level": "2"} };
 export const Linked = { args: {"text": "Theming with Single Directory Components", "level": "3", "url": "#"} };
+export const SizeSmall = { args: {"text": "Theming with SDC", "level": "3", "size": "small", "url": "/sessions/theming-with-sdc"} };
+export const SizeMedium = { args: {"text": "Two days, three tracks", "level": "2", "size": "medium"} };
+export const SizeLarge = { args: {"text": "Build your agenda", "level": "3", "size": "large"} };
