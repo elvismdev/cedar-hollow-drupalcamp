@@ -11,7 +11,7 @@ third_party_settings:
     enable: true
     subject: 'Your Cedar Hollow sign-up'
     message:
-      value: 'You are signed up for [registration:host_entity:entity:title]. This is a demo; no mail is sent.'
+      value: 'You are signed up for [registration:entity:title]. This is a demo; no mail is sent.'
       format: plain_text
 id: attendee
 label: Attendee

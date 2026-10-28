@@ -463,7 +463,7 @@ One rule, implemented twice (PHP in item 22, JavaScript in item 29): `unlimited`
 *   Footer notice: "Cedar Hollow DrupalCamp is a fictional event. This site is a demo."
 *   Agenda storage key `cedarHollow.agenda.v1`, value `{"picks":[<node id>, ...]}`. Storage notice: "Your agenda is kept only until you leave this page." Fetch failure notice: "Seat counts could not be updated. Showing counts from {time}." Freshness line: "Updated at {time}", the client time of the last successful fetch. `{time}` is `toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })`.
 *   Conflict text next to each session in a conflict: "Overlaps with {other session title}." Status region: "{n} time conflicts in your agenda." ("1 time conflict in your agenda." for one) or "No time conflicts."
-*   Registration confirmation: subject "Your Cedar Hollow sign-up"; body "You are signed up for [registration:host_entity:entity:title]. This is a demo; no mail is sent."
+*   Registration confirmation: subject "Your Cedar Hollow sign-up"; body "You are signed up for [registration:entity:title]. This is a demo; no mail is sent."
 *   Speaker photo image styles (used only if a photo is added): `speaker_small` 192px and `speaker_large` 384px wide.
 
 ### Phase 0: Repository, environment and spikes
