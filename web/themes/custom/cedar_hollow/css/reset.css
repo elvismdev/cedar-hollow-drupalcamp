@@ -6,22 +6,22 @@
   *,
   *::before,
   *::after {
-    border-color: var(--gray-200);
+    border-color: var(--color-neutral-hover);
     border-style: solid;
     border-width: 0;
     box-sizing: border-box;
   }
 
   html {
-    accent-color: var(--accent-color, var(--brand-primary));
-    background-color: var(--bg-color, var(--white));
-    caret-color: var(--caret-color, var(--brand-primary));
-    color: var(--color, var(--gray-900));
+    accent-color: var(--accent-color, var(--color-accent));
+    background-color: var(--bg-color, var(--color-surface));
+    caret-color: var(--caret-color, var(--color-accent));
+    color: var(--color, var(--color-text));
     font-family: var(--font-body);
     font-size: 100%;
     line-height: var(--leading-normal);
     scroll-padding-top: var(--scroll-padding-top, 150px);
-    scrollbar-color: var(--scrollbar-color, var(--brand-primary)) transparent;
+    scrollbar-color: var(--scrollbar-color, var(--color-accent)) transparent;
     text-size-adjust: 100%;
 
     &:has(dialog[open]) {
@@ -206,13 +206,13 @@
 
   input::placeholder,
   textarea::placeholder {
-    color: var(--placeholder-color, var(--gray-400));
+    color: var(--placeholder-color, var(--color-border));
     opacity: 1;
   }
 
   ::selection {
     background-color: var(--selection-bg-color, var(--blue-900));
-    color: var(--selection-color, var(--white));
+    color: var(--selection-color, var(--color-on-accent));
   }
 
   button,

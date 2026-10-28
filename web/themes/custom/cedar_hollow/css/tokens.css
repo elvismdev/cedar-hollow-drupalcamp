@@ -1,8 +1,17 @@
 /**
  * @file
- * Theme layer: the role tokens Cedar Hollow's own components read, defined on
- * Surface's scales in css/props/, plus the font roles Surface's components
- * expect from its theme file. Colour pairs used for text meet 4.5:1.
+ * Semantic tokens: the second tier of the design tokens.
+ *
+ * The first tier is the primitives in css/props/ (Surface's scales) and the
+ * brand slots in css/props/brand.css. Components read:
+ * - colours only through the roles below, never the palette or brand slots,
+ *   so a palette or brand change happens here;
+ * - spacing, type, weights, line heights, radii and shadows straight from the
+ *   single primitive scale for each (--size-*, --font-size-*, --font-weight-*,
+ *   --leading-*, --radius-*, --shadow-*);
+ * - the few roles with no primitive (focus, target size, widths, motion).
+ * Text colours meet 4.5:1 and borders and focus meet 3:1 against their
+ * surfaces.
  */
 
 @layer reset, tokens, base, atoms, components, collections, layouts, utilities;
@@ -11,51 +20,52 @@
   :where(html) {
     --font-body: var(--font-system);
     --font-heading: var(--font-serif);
-    --text-color: var(--gray-900);
-    --background-color: var(--white);
 
-    /* Colour roles. */
+    /* Text. */
     --color-text: var(--gray-900);
+    --color-text-strong: var(--black);
     --color-text-muted: var(--gray-700);
+    --color-text-subtle: var(--gray-500);
+
+    /* Surfaces. */
     --color-surface: var(--white);
     --color-surface-alt: var(--gray-100);
+    --color-surface-code: var(--gray-800);
+    --color-on-surface-code: var(--gray-100);
+
+    /* Brand accent: links, primary actions, emphasis. */
     --color-accent: var(--brand-primary);
     --color-accent-strong: var(--brand-primary-dark);
+    --color-accent-deep: var(--brand-primary-darkest);
     --color-accent-soft: var(--brand-primary-light);
     --color-on-accent: var(--white);
+
+    /* Highlight: secondary actions and markers. */
+    --color-highlight: var(--brand-accent);
+    --color-highlight-strong: var(--brand-accent-dark);
+    --color-on-highlight: var(--brand-primary-darkest);
+
+    /* Neutral controls. */
+    --color-neutral: var(--gray-300);
+    --color-neutral-hover: var(--gray-200);
+
+    /* Lines. */
+    --color-border: var(--gray-500);
+    --color-border-soft: var(--gray-300);
+
+    /* Status. */
     --color-warning: var(--yellow-800);
     --color-warning-soft: var(--yellow-50);
     --color-danger: var(--red-700);
-    --color-border: var(--gray-500);
-    --color-border-soft: var(--gray-300);
+
+    /* Focus, targets, widths and motion. */
     --color-focus: var(--blue-600);
-
-    /* Spacing. */
-    --space-2xs: var(--size-1);
-    --space-xs: var(--size-2);
-    --space-s: var(--size-3);
-    --space-m: var(--size-4);
-    --space-l: clamp(var(--size-5), 1rem + 1vw, var(--size-8));
-    --space-xl: clamp(var(--size-8), 1.5rem + 2vw, var(--size-14));
-
-    /* Type. */
-    --font-size-s: var(--font-size-0);
-    --font-size-m: var(--font-size-1);
-    --font-size-l: clamp(var(--font-size-2), 1rem + 0.5vw, var(--font-size-4));
-    --font-size-xl: clamp(var(--font-size-5), 1.2rem + 1.2vw, var(--font-size-8));
-    --font-size-2xl: clamp(var(--font-size-7), 1.5rem + 2vw, var(--font-size-10));
-    --line-height-tight: var(--leading-tight);
-    --line-height-body: var(--leading-normal);
-
-    /* Shape, focus, layout and motion. */
-    --radius-s: var(--radius-2);
-    --radius-m: var(--radius-4);
-    --shadow-card: var(--shadow-3);
     --focus-ring-width: var(--border-size-3);
     --focus-ring-offset: var(--border-size-2);
     --target-size: var(--size-11);
     --content-width: 72rem;
     --content-width-narrow: 44rem;
+    --measure: 65ch;
     --duration-fast: 150ms;
   }
 

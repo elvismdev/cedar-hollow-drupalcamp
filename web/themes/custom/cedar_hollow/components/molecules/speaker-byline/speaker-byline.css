@@ -8,19 +8,19 @@
 @layer components {
   .speaker-byline {
     display: flex;
-    gap: var(--space-s);
+    gap: var(--size-3);
     align-items: center;
   }
 
   .speaker-byline__image img {
-    inline-size: 3rem;
-    block-size: 3rem;
+    inline-size: var(--size-12);
+    block-size: var(--size-12);
     border-radius: 50%;
     object-fit: cover;
   }
 
   .speaker-byline__name {
     margin: 0;
-    font-weight: 700;
+    font-weight: var(--font-weight-700);
   }
 }

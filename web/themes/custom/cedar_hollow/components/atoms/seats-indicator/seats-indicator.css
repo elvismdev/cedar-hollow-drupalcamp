@@ -9,12 +9,12 @@
   .seats-indicator {
     display: inline-block;
     margin: 0;
-    padding: var(--space-2xs) var(--space-xs);
-    border-inline-start: 0.25rem solid var(--color-accent);
+    padding: var(--size-1) var(--size-2);
+    border-inline-start: var(--size-1) solid var(--color-accent);
     background-color: var(--color-accent-soft);
     color: var(--color-text);
-    font-size: var(--font-size-s);
-    font-weight: 700;
+    font-size: var(--font-size-0);
+    font-weight: var(--font-weight-700);
   }
 
   .seats-indicator--low,

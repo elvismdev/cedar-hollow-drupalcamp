@@ -13,20 +13,20 @@
   }
 
   .filter-group__legend {
-    margin-block-end: var(--space-xs);
+    margin-block-end: var(--size-2);
     padding: 0;
-    font-weight: 700;
+    font-weight: var(--font-weight-700);
   }
 
   .filter-group__options {
     display: flex;
     flex-wrap: wrap;
-    gap: var(--space-xs) var(--space-m);
+    gap: var(--size-2) var(--size-4);
   }
 
   .filter-group__options label {
     display: inline-flex;
-    gap: var(--space-2xs);
+    gap: var(--size-1);
     align-items: center;
     min-block-size: var(--target-size);
   }

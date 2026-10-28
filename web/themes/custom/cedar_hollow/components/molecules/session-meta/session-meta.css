@@ -9,17 +9,17 @@
   .session-meta {
     display: flex;
     flex-wrap: wrap;
-    gap: var(--space-xs) var(--space-l);
+    gap: var(--size-2) var(--size-6);
     margin: 0;
   }
 
   .session-meta__label {
     color: var(--color-text-muted);
-    font-size: var(--font-size-s);
+    font-size: var(--font-size-0);
   }
 
   .session-meta__value {
     margin: 0;
-    font-weight: 700;
+    font-weight: var(--font-weight-700);
   }
 }

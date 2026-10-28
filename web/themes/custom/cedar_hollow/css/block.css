@@ -9,7 +9,7 @@
 
 @layer layouts {
   .block__title {
-    color: var(--gray-900);
+    color: var(--color-text);
     font-family: var(--font-heading);
     font-size: var(--font-size-2);
     letter-spacing: 0.02em;

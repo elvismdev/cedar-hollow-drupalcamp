@@ -13,16 +13,16 @@
 
   .site-footer__inner {
     display: grid;
-    gap: var(--space-s);
-    inline-size: min(100% - 2 * var(--space-m), var(--content-width));
+    gap: var(--size-3);
+    inline-size: min(100% - 2 * var(--size-4), var(--content-width));
     margin-inline: auto;
-    padding-block: var(--space-l);
+    padding-block: var(--size-6);
   }
 
   .site-footer__links ul {
     display: flex;
     flex-wrap: wrap;
-    gap: var(--space-xs) var(--space-l);
+    gap: var(--size-2) var(--size-6);
     margin: 0;
     padding: 0;
     list-style: none;
@@ -37,6 +37,6 @@
   .site-footer__notice {
     margin: 0;
     color: var(--color-text-muted);
-    font-size: var(--font-size-s);
+    font-size: var(--font-size-0);
   }
 }

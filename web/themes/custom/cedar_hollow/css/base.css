@@ -11,8 +11,8 @@
     background-color: var(--color-surface);
     color: var(--color-text);
     font-family: var(--font-body);
-    font-size: var(--font-size-m);
-    line-height: var(--line-height-body);
+    font-size: var(--font-size-1);
+    line-height: var(--leading-normal);
   }
 
   h1,
@@ -20,11 +20,11 @@
   h3,
   h4 {
     font-family: var(--font-heading);
-    line-height: var(--line-height-tight);
+    line-height: var(--leading-tight);
   }
 
   h1 {
-    font-size: var(--font-size-2xl);
+    font-size: var(--font-size-10);
   }
 
   a {
@@ -44,10 +44,10 @@
   /* Core's skip link while it has focus; .visually-hidden.focusable is core's. */
   .visually-hidden.focusable:focus {
     position: absolute;
-    inset-block-start: var(--space-xs);
-    inset-inline-start: var(--space-xs);
-    z-index: 100;
-    padding: var(--space-xs) var(--space-m);
+    inset-block-start: var(--size-2);
+    inset-inline-start: var(--size-2);
+    z-index: var(--layer-50);
+    padding: var(--size-2) var(--size-4);
     background-color: var(--color-accent);
     color: var(--color-on-accent);
   }

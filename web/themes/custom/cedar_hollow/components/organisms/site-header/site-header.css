@@ -14,19 +14,19 @@
   .site-header__inner {
     display: flex;
     flex-wrap: wrap;
-    gap: var(--space-s) var(--space-l);
+    gap: var(--size-3) var(--size-6);
     align-items: center;
     justify-content: space-between;
-    inline-size: min(100% - 2 * var(--space-m), var(--content-width));
+    inline-size: min(100% - 2 * var(--size-4), var(--content-width));
     margin-inline: auto;
-    padding-block: var(--space-s);
+    padding-block: var(--size-3);
   }
 
   .site-header__branding a {
     color: var(--color-text);
     font-family: var(--font-heading);
-    font-size: var(--font-size-l);
-    font-weight: 700;
+    font-size: var(--font-size-3);
+    font-weight: var(--font-weight-700);
     text-decoration: none;
   }
 }

@@ -9,26 +9,26 @@
 
 @layer base {
   label {
-    font-weight: 700;
+    font-weight: var(--font-weight-700);
   }
 
   input:where([type="text"], [type="email"], [type="password"], [type="search"]),
   select,
   textarea {
     inline-size: 100%;
-    max-inline-size: 32rem;
+    max-inline-size: var(--content-width-narrow);
     min-block-size: var(--target-size);
-    padding: var(--space-xs) var(--space-s);
+    padding: var(--size-2) var(--size-3);
     border: 1px solid var(--color-border);
-    border-radius: var(--radius-s);
+    border-radius: var(--radius-2);
     background-color: var(--color-surface);
     color: var(--color-text);
     font: inherit;
   }
 
   input:where([type="radio"], [type="checkbox"]) {
-    inline-size: 1.25rem;
-    block-size: 1.25rem;
+    inline-size: var(--size-5);
+    block-size: var(--size-5);
     accent-color: var(--color-accent);
   }
 
@@ -40,22 +40,22 @@
 
   legend {
     padding: 0;
-    font-weight: 700;
+    font-weight: var(--font-weight-700);
   }
 
   .form-item {
-    margin-block: 0 var(--space-m);
+    margin-block: 0 var(--size-4);
   }
 
   .form-item > label {
     display: block;
-    margin-block-end: var(--space-2xs);
+    margin-block-end: var(--size-1);
   }
 
   .description {
-    margin-block-start: var(--space-2xs);
+    margin-block-start: var(--size-1);
     color: var(--color-text-muted);
-    font-size: var(--font-size-s);
+    font-size: var(--font-size-0);
   }
 
   /* Radio and checkbox options sit in a row, each a full-size target. */
@@ -63,13 +63,13 @@
   .form-checkboxes {
     display: flex;
     flex-wrap: wrap;
-    gap: var(--space-2xs) var(--space-m);
+    gap: var(--size-1) var(--size-4);
   }
 
   .form-type-radio,
   .form-type-checkbox {
     display: inline-flex;
-    gap: var(--space-xs);
+    gap: var(--size-2);
     align-items: center;
     min-block-size: var(--target-size);
     margin: 0;
@@ -79,13 +79,13 @@
   .form-type-checkbox > label {
     display: inline;
     margin: 0;
-    font-weight: 400;
+    font-weight: var(--font-weight-400);
   }
 
   .form-actions {
     display: flex;
     flex-wrap: wrap;
-    gap: var(--space-s);
+    gap: var(--size-3);
     align-items: center;
   }
 }

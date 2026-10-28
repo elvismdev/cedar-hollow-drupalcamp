@@ -8,11 +8,11 @@
 @layer atoms {
   .tag {
     display: inline-block;
-    padding: var(--space-2xs) var(--space-xs);
-    border-radius: var(--radius-s);
+    padding: var(--size-1) var(--size-2);
+    border-radius: var(--radius-2);
     background-color: var(--color-accent-soft);
     color: var(--color-accent-strong);
-    font-size: var(--font-size-s);
-    font-weight: 700;
+    font-size: var(--font-size-0);
+    font-weight: var(--font-weight-700);
   }
 }

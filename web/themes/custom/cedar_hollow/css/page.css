@@ -15,12 +15,12 @@
 
   .page__main {
     flex: 1;
-    inline-size: min(100% - 2 * var(--space-m), var(--content-width));
+    inline-size: min(100% - 2 * var(--size-4), var(--content-width));
     margin-inline: auto;
-    padding-block: var(--space-l) var(--space-xl);
+    padding-block: var(--size-6) var(--size-10);
   }
 
   .page__main > * + * {
-    margin-block-start: var(--space-m);
+    margin-block-start: var(--size-4);
   }
 }

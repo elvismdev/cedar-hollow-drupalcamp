@@ -12,23 +12,13 @@
     font-size: var(--font-size-2);
     line-height: var(--leading-relaxed);
 
-    /* Adds character count for better readability */
-    .text-readability & {
-      max-inline-size: 85ch;
-    }
-
-    .bg-venice-canal & {
-      --text-color: var(--white, var(--gray-600));
-      --blockquote-color: var(--white);
-    }
-
     :where(p):not(:where([class~='not-prose'] *)) {
       margin-block: var(--size-6);
       text-wrap: pretty;
     }
 
     :where([class~='lead']):not(:where([class~='not-prose'] *)) {
-      color: var(--text-color);
+      color: var(--color-text-muted);
       font-size: var(--font-size-5);
 
       &:first-child {
@@ -37,9 +27,9 @@
     }
 
     :where(blockquote):not(:where([class~='not-prose'] *)) {
-      border-inline-start-color: var(--blockquote-border-color);
+      border-inline-start-color: var(--color-accent);
       border-inline-start-width: 1px;
-      color: var(--blockquote-color);
+      color: var(--color-accent);
       font-style: italic;
       font-weight: var(--font-weight-400);
       inline-size: 85ch;
@@ -57,27 +47,27 @@
     }
 
     :where(h1):not(:where([class~='not-prose'] *)) {
-      color: var(--gray-900);
+      color: var(--color-text);
       font-size: var(--font-size-9);
       font-weight: var(--font-weight-400);
       line-height: var(--leading-none);
       margin-block: 0 var(--size-8);
       text-wrap: balance;
 
-      @media (width >= 768px) {
+      @media (width >= 48rem) {
         font-size: var(--font-size-10);
       }
     }
 
     :where(h2):not(:where([class~='not-prose'] *)) {
-      color: var(--gray-900);
+      color: var(--color-text);
       font-size: var(--font-size-7);
       font-weight: var(--font-weight-400);
       line-height: var(--leading-snug);
       margin-block: var(--size-12) var(--size-6);
       text-wrap: balance;
 
-      @media (width >= 768px) {
+      @media (width >= 48rem) {
         font-size: var(--font-size-8);
       }
 
@@ -87,14 +77,14 @@
     }
 
     :where(h3):not(:where([class~='not-prose'] *)) {
-      color: var(--gray-900);
+      color: var(--color-text);
       font-size: var(--font-size-5);
       font-weight: var(--font-weight-400);
       line-height: var(--leading-relaxed);
       margin-block: var(--size-8) var(--size-4);
       text-wrap: balance;
 
-      @media (width >= 768px) {
+      @media (width >= 48rem) {
         font-size: var(--font-size-6);
       }
 
@@ -104,7 +94,7 @@
     }
 
     :where(h4):not(:where([class~='not-prose'] *)) {
-      color: var(--gray-900);
+      color: var(--color-text);
       font-size: var(--font-size-3);
       font-weight: var(--font-weight-600);
       margin-block: var(--size-6) var(--size-2);
@@ -113,16 +103,16 @@
 
     :where(a):not(:where(.button, .link, [class~='not-prose'] *)) {
       border-block-end: 1px solid transparent;
-      color: var(--brand-primary);
+      color: var(--color-accent);
       font-weight: var(--font-weight-400);
 
       &:hover {
-        border-block-end: 1px solid var(--brand-primary-dark);
-        color: var(--brand-primary-dark);
+        border-block-end: 1px solid var(--color-accent-strong);
+        color: var(--color-accent-strong);
       }
 
       &:focus {
-        box-shadow: 0 0 var(--white), 0 0 0 2px var(--brand-primary), 0 0 var(--white);
+        box-shadow: 0 0 var(--color-surface), 0 0 0 2px var(--color-accent), 0 0 var(--color-surface);
         outline: 2px solid transparent;
         outline-offset: 2px;
       }
@@ -150,14 +140,14 @@
       }
 
       &.align-left {
-        @media (width >= 768px) {
+        @media (width >= 48rem) {
           margin-inline-end: var(--size-8);
           max-inline-size: fit-content;
         }
       }
 
       &.align-right {
-        @media (width >= 768px) {
+        @media (width >= 48rem) {
           margin-inline-start: var(--size-8);
           max-inline-size: fit-content;
         }
@@ -166,13 +156,13 @@
 
     :where(figcaption):not(:where([class~='not-prose'] *)) {
       caption-side: bottom;
-      color: var(--gray-500);
+      color: var(--color-text-subtle);
       display: table-caption;
       margin-block-start: var(--size-4);
     }
 
     :where(code):not(:where([class~='not-prose'] *)) {
-      color: var(--gray-900);
+      color: var(--color-text);
       font-weight: var(--font-weight-600);
 
       &::after {
@@ -193,9 +183,9 @@
     }
 
     :where(pre):not(:where([class~='not-prose'] *)) {
-      background-color: var(--gray-800);
+      background-color: var(--color-surface-code);
       border-radius: var(--radius-4);
-      color: var(--gray-100);
+      color: var(--color-surface-alt);
       font-weight: var(--font-weight-400);
       line-height: var(--leading-loose);
       margin-block: var(--size-9);
@@ -237,7 +227,7 @@
       padding-inline-start: var(--size-2);
 
       &::marker {
-        color: var(--gray-400);
+        color: var(--color-border);
         font-weight: var(--font-weight-400);
       }
     }
@@ -246,7 +236,7 @@
       padding-inline-start: var(--size-2);
 
       &::marker {
-        color: var(--gray-400);
+        color: var(--color-border);
         font-weight: var(--font-weight-400);
       }
     }
@@ -280,7 +270,7 @@
     }
 
     :where(hr):not(:where([class~='not-prose'] *)) {
-      border-block-start-color: var(--gray-300);
+      border-block-start-color: var(--color-border-soft);
       border-block-start-width: 1px;
       margin-block: var(--size-14);
     }
@@ -312,11 +302,11 @@
     :where(.button):not(:where([class~='not-prose'] *)) {
       align-items: center;
       appearance: none;
-      background-color: var(--brand-primary);
-      border-color: var(--brand-primary);
+      background-color: var(--color-accent);
+      border-color: var(--color-accent);
       border-radius: 0;
       border-width: 1px;
-      color: var(--white);
+      color: var(--color-on-accent);
       cursor: pointer;
       display: inline-flex;
       font-family: var(--font-system);
@@ -337,51 +327,51 @@
       white-space: nowrap;
 
       &:visited {
-        background-color: var(--brand-primary);
-        color: var(--white);
+        background-color: var(--color-accent);
+        color: var(--color-on-accent);
       }
 
       &:hover {
-        background-color: var(--brand-primary-dark);
-        border-color: var(--brand-primary-dark);
-        color: var(--white);
+        background-color: var(--color-accent-strong);
+        border-color: var(--color-accent-strong);
+        color: var(--color-on-accent);
       }
 
       &:focus {
-        box-shadow: 0 0 var(--white), 0 0 0 2px var(--brand-primary), 0 0 var(--white);
+        box-shadow: 0 0 var(--color-surface), 0 0 0 2px var(--color-accent), 0 0 var(--color-surface);
         outline: 2px solid transparent;
         outline-offset: 2px;
       }
 
       &:active {
-        background-color: var(--brand-primary-dark);
-        color: var(--white);
+        background-color: var(--color-accent-strong);
+        color: var(--color-on-accent);
       }
     }
 
     :where(.button--secondary):not(:where([class~='not-prose'] *)) {
-      background-color: var(--brand-accent);
-      border-color: var(--brand-accent);
-      color: var(--gray-900);
+      background-color: var(--color-highlight);
+      border-color: var(--color-highlight);
+      color: var(--color-text);
 
       &:visited {
-        background-color: var(--brand-accent);
-        color: var(--gray-900);
+        background-color: var(--color-highlight);
+        color: var(--color-text);
       }
 
       &:hover {
-        background-color: var(--brand-accent-dark);
-        border-color: var(--brand-accent-dark);
-        color: var(--gray-900);
+        background-color: var(--color-highlight-strong);
+        border-color: var(--color-highlight-strong);
+        color: var(--color-text);
       }
 
       &:focus {
-        box-shadow: 0 0 var(--white), 0 0 0 2px var(--brand-accent), 0 0 var(--white);
+        box-shadow: 0 0 var(--color-surface), 0 0 0 2px var(--color-highlight), 0 0 var(--color-surface);
       }
 
       &:active {
-        background-color: var(--brand-accent-dark);
-        color: var(--gray-900);
+        background-color: var(--color-highlight-strong);
+        color: var(--color-text);
       }
     }
 
@@ -427,12 +417,12 @@
     }
 
     :where(ul[class~='list--highlight']):not(:where([class~='not-prose'] *)) {
-      border-inline-start-color: var(--brand-primary);
+      border-inline-start-color: var(--color-accent);
       border-inline-start-width: var(--size-1);
 
       > li {
         &::marker {
-          color: var(--brand-primary);
+          color: var(--color-accent);
         }
       }
     }
@@ -448,7 +438,7 @@
 
       /* Every link in this list sits in one of its items. */
       a {
-        border-block-end-color: var(--brand-primary);
+        border-block-end-color: var(--color-accent);
         border-block-end-width: 1px;
         display: flex;
         padding-block: var(--size-2);
@@ -456,9 +446,9 @@
         transition: all 0.15s linear;
 
         &:hover {
-          background-color: var(--brand-primary-dark);
-          border-block-end-color: var(--brand-primary-dark);
-          color: var(--white);
+          background-color: var(--color-accent-strong);
+          border-block-end-color: var(--color-accent-strong);
+          color: var(--color-on-accent);
         }
       }
     }
@@ -497,7 +487,7 @@
 
     :where(a[class~='link']):not(:where([class~='not-prose'] *)) {
       align-items: center;
-      color: var(--brand-primary);
+      color: var(--color-accent);
       display: flex;
       flex-direction: row;
       font-weight: var(--font-weight-600);
@@ -507,7 +497,7 @@
       transition: all 0.15s linear;
 
       &::after {
-        background-color: var(--brand-primary);
+        background-color: var(--color-accent);
         background-size: cover;
         block-size: 18px;
         content: '';
@@ -519,11 +509,11 @@
       }
 
       &:hover {
-        background-color: var(--brand-primary-dark);
-        color: var(--white);
+        background-color: var(--color-accent-strong);
+        color: var(--color-on-accent);
 
         &::after {
-          background-color: var(--white);
+          background-color: var(--color-surface);
         }
       }
     }
