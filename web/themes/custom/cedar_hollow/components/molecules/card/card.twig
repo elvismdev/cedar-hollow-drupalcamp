@@ -1,7 +1,7 @@
 {# Markup from uclahs/surface source/patterns/components/card (GPL-2.0-or-later). #}
 {% set attributes = attributes ?: create_attribute() %}
 <article{{ attributes.addClass('card') }}>
-  {% if image %}
+  {% if image|render|trim %}
     <div class="card__image">
       {{ image }}
       {# Short date badge only displays if the content is an event. #}
@@ -26,7 +26,7 @@
     {% if summary %}
       <p class="card__subtitle">{{ summary }}</p>
     {% endif %}
-    {% if organization %}
+    {% if organization|render|trim %}
       <div class="card__organization"><svg class="icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24" width="16" height="16"><path fill="currentColor" d="M12 2a7 7 0 0 1 7 7c0 5-7 13-7 13S5 14 5 9a7 7 0 0 1 7-7zm0 4.5a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5z"/></svg>{{ organization }}</div>
     {% endif %}
     {% if date_text or readtime %}
@@ -42,7 +42,7 @@
     {% if more_dates_url %}
       {% include 'cedar_hollow:button' with {text: '+ more dates'|t, url: more_dates_url, variant: 'link', attributes: create_attribute({class: ['card__more-dates']})} only %}
     {% endif %}
-    {% if footer %}
+    {% if footer|render|trim %}
       <div class="card__footer">{{ footer }}</div>
     {% endif %}
   </div>

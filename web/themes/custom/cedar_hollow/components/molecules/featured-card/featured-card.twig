@@ -12,7 +12,7 @@
     {% if subtitle %}
       {% include 'cedar_hollow:title' with {text: subtitle, level: '4', attributes: create_attribute({class: ['featured-card__subtitle']})} only %}
     {% endif %}
-    {% if organization %}
+    {% if organization|render|trim %}
       <div class="featured-card__organization-name"><svg class="icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24" width="16" height="16"><path fill="currentColor" d="M12 2a7 7 0 0 1 7 7c0 5-7 13-7 13S5 14 5 9a7 7 0 0 1 7-7zm0 4.5a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5z"/></svg>{{ organization }}</div>
     {% endif %}
     {% if date_text %}

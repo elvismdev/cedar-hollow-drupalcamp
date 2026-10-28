@@ -1,6 +1,6 @@
 {% set attributes = attributes ?: create_attribute() %}
 <div{{ attributes.addClass('speaker-byline') }}>
-  {% if image %}
+  {% if image|render|trim %}
     <div class="speaker-byline__image">{{ image }}</div>
   {% endif %}
   <p class="speaker-byline__name">{{ name }}</p>
