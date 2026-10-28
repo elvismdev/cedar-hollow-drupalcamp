@@ -113,3 +113,5 @@
 /design_draft.md
 /*_report.md
 /web/sites/default/settings.ddev.php
+# drupal/ai_best_practices: per-developer settings, see its README
+/ai_best_practices.yaml

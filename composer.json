@@ -29,7 +29,8 @@
         "drupal/forward": "~4.0.4"
     },
     "require-dev": {
-        "drupal/core-dev": "^11"
+        "drupal/core-dev": "^11",
+        "drupal/ai_best_practices": "1.0.x-dev@dev"
     },
     "conflict": {
         "drupal/drupal": "*"
@@ -99,7 +100,8 @@
         ],
         "post-update-cmd": [
             "DrupalComposerManaged\\ComposerScripts::postUpdate"
-        ]
+        ],
+        "drupal-ai": "Drupal\\AiBestPractices\\Console\\AiBestPracticesApplication::runFromComposer"
     },
     "config": {
         "preferred-install": "dist",
@@ -115,7 +117,8 @@
             "phpstan/extension-installer": true,
             "php-http/discovery": true,
             "tbachert/spi": true,
-            "symfony/runtime": true
+            "symfony/runtime": true,
+            "drupal/ai_best_practices": true
         }
     }
 }
