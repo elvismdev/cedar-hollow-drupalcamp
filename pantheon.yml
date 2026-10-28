@@ -1,3 +1,16 @@
-# Put overrides to your pantheon.upstream.yml file here.
-# For more information, see: https://pantheon.io/docs/pantheon-yml/
+# Overrides pantheon.upstream.yml. The upstream already sets PHP 8.3 and
+# MariaDB 10.6; repeating them pins the values if the upstream default changes.
 api_version: 1
+php_version: 8.3
+database:
+  version: 10.6
+
+# Builds the theme's static Storybook on every push. The theme folder holds
+# package.json and package-lock.json; build output is ignored in the root
+# .gitignore.
+frontend_build:
+  enabled: true
+  paths:
+    - path: web/themes/custom/cedar_hollow
+      node_version: 22
+      build_command: build
