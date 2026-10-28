@@ -8,19 +8,13 @@
 @layer reset, tokens, base, atoms, components, collections, layouts, utilities;
 
 @layer components {
-  :where([data-theme='surface'], [data-theme='labs']) {
-    --background-color: var(--brand-primary);
-    --text-color: var(--white);
-  }
-
-  :where([data-theme='dgsom'], [data-theme='labs-dynamic']) {
-    --background-color: var(--brand-primary-darkest);
-    --text-color: var(--white);
-  }
-
+  /* Set on the block, not on html, so the colours do not reach the rest of the page. */
   .quote {
-    background-color: var(--background-color);
-    color: var(--text-color);
+    --quote-background: var(--brand-primary);
+    --quote-text: var(--white);
+
+    background-color: var(--quote-background);
+    color: var(--quote-text);
 
       /* Activates container query for the .quote wrapper. */
     container: quote / inline-size;
