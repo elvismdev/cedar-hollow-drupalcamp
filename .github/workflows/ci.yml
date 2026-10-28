@@ -1,0 +1,151 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  php-quality:
+    name: PHP standards, static analysis and security audit
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: gd, pdo_mysql
+          tools: composer:v2
+      - run: composer validate --no-check-publish
+      - run: composer install --no-interaction --no-progress
+      - name: Known vulnerabilities in PHP dependencies, Drupal advisories included
+        run: composer audit
+      - name: Drupal coding standards
+        run: vendor/bin/phpcs --standard=Drupal,DrupalPractice --extensions=php,module,inc,install,theme web/modules/custom web/themes/custom/cedar_hollow/src scripts/sync-agenda-builder.php scripts/seed-demo-content.php
+      - name: PHPStan
+        run: vendor/bin/phpstan analyse --no-progress --memory-limit=1G
+
+  theme:
+    name: Theme CSS, component hierarchy, Storybook build and npm audit
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: |
+            web/themes/custom/cedar_hollow/package-lock.json
+            tests/package-lock.json
+      - run: npm ci
+        working-directory: web/themes/custom/cedar_hollow
+      - name: Stylelint, check_css.py and check_hierarchy.py
+        run: npm run lint:css
+        working-directory: web/themes/custom/cedar_hollow
+      - run: npm ci
+        working-directory: tests
+      - name: Known vulnerabilities in npm packages, less reviewed exceptions
+        run: node scripts/npm-audit-check.mjs web/themes/custom/cedar_hollow tests
+      - run: npm run build
+        working-directory: web/themes/custom/cedar_hollow
+      - uses: actions/upload-artifact@v4
+        with:
+          name: storybook
+          path: web/themes/custom/cedar_hollow/storybook
+          retention-days: 7
+
+  phpunit:
+    name: PHPUnit (kernel and functional)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    services:
+      mariadb:
+        image: mariadb:10.6
+        env:
+          MARIADB_ROOT_PASSWORD: root
+          MARIADB_DATABASE: drupal
+        ports: ['3306:3306']
+        options: --health-cmd="healthcheck.sh --connect" --health-interval=5s --health-retries=20
+    env:
+      SIMPLETEST_DB: mysql://root:root@127.0.0.1:3306/drupal
+      SIMPLETEST_BASE_URL: http://127.0.0.1:8080
+      BROWSERTEST_OUTPUT_DIRECTORY: ${{ github.workspace }}/web/sites/simpletest/browser_output
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: gd, pdo_mysql
+          tools: composer:v2
+      - run: composer install --no-interaction --no-progress
+      - name: Serve Drupal for functional tests
+        run: |
+          mkdir -p web/sites/simpletest/browser_output
+          php -S 127.0.0.1:8080 -t web web/.ht.router.php > /tmp/php-server.log 2>&1 &
+      - run: vendor/bin/phpunit -c web/core/phpunit.xml.dist web/modules/custom/cedar_hollow_core
+
+  e2e:
+    name: Playwright end-to-end, accessibility and smoke on a site rebuilt from code
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    env:
+      BASE_URL: https://cedar-hollow.ddev.site
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ddev/github-action-setup-ddev@v1
+      - name: Rebuild the site from configuration and the content recipe
+        run: scripts/rebuild.sh
+      - name: Build the theme's Storybook (served by Drupal for the BEM parity test)
+        run: ddev exec -d /var/www/html/web/themes/custom/cedar_hollow "npm ci && npm run build"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm ci && npx playwright install --with-deps chromium
+        working-directory: tests
+      - run: npx playwright test --project=e2e --project=a11y --project=smoke
+        working-directory: tests
+      - if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-e2e
+          path: |
+            tests/test-results
+            tests/a11y-results
+          retention-days: 7
+
+  visual:
+    name: Visual regression on Storybook templates
+    needs: theme
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    # The same image the baselines were made in, so fonts and rendering match.
+    container:
+      image: mcr.microsoft.com/playwright:v1.64.1-noble
+      options: --ipc=host
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: storybook
+          path: web/themes/custom/cedar_hollow/storybook
+      - run: npm ci
+        working-directory: tests
+      - run: npx playwright test --project=visual
+        working-directory: tests
+        env:
+          HOME: /root
+      - if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: visual-diffs
+          path: tests/test-results
+          retention-days: 7

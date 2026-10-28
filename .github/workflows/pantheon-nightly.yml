@@ -1,0 +1,41 @@
+name: Pantheon nightly smoke
+
+# Read-only checks against the shared Pantheon environment: pages, the agenda
+# endpoint's caching headers, and the axe and reflow accessibility scans.
+on:
+  schedule:
+    - cron: '30 6 * * *'
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Pantheon environment to check
+        default: dev
+        type: choice
+        options: [dev, test, live]
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      BASE_URL: https://${{ inputs.environment || 'dev' }}-cedar-hollow-demo.pantheonsite.io
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm ci && npx playwright install --with-deps chromium
+        working-directory: tests
+      - run: npx playwright test --project=smoke --project=a11y
+        working-directory: tests
+      - if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pantheon-smoke
+          path: |
+            tests/test-results
+            tests/a11y-results
+          retention-days: 14
