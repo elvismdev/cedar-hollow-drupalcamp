@@ -6,15 +6,11 @@
 @layer reset, tokens, base, atoms, components, collections, layouts, utilities;
 
 @layer layouts {
-  .two-column {
-    container: two-column / inline-size;
-  }
-
   .two-column > * + * {
     margin-block-start: var(--space-l);
   }
 
-  @container two-column (inline-size >= 48rem) {
+  @media (width >= 48em) {
     .two-column {
       display: grid;
       gap: var(--space-l);
