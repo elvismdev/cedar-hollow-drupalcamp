@@ -8,10 +8,10 @@ Run on 2026-10-28 in DDEV (Drupal 11.4.11, Canvas 1.12.0, Registration 3.4.9) on
 | (b) | A code component fetches a same-origin JSON route and renders on a published Canvas page. | Pass | Page `/spike-probe` rendered "Token: 2fc6c81b2ade0f65", the random value served by `/spike/probe.json`; no console errors. |
 | (c) | A recipe containing a Canvas page with that code component installs on a fresh site and the page renders (Drupal.org issue #3580989). | Pass | After `drush site:install minimal --existing-config` and `drush recipe`, the page rendered a second random token, "4eda218e3b452be0". |
 | (d) | After a clean install from configuration, the code component's compiled script exists (Drupal.org issue #3591075). | Pass | `sites/default/files/astro-island/<hash>.js` was deleted before the install and was recreated with the same name. |
-| (e) | Registration settings exported as default content attach to their sessions after a clean install. | Run in Phase 1 | Needs the session content type. |
-| (f) | A wait-listed registration sends no confirmation mail. | Run in Phase 1 | Needs the session content type. |
-| (g) | Views offers `views-exposed-form--sessions.html.twig`. | Run in Phase 1 | Needs the `sessions` View. |
-| (h) | The registration form ID is `registration_attendee_register_form`. | Run in Phase 1 | Needs the `attendee` registration type. |
+| (e) | Registration settings exported as default content attach to their sessions after a clean install. | Run in Phase 5 | Needs the demo content recipe. |
+| (f) | A wait-listed registration sends no confirmation mail. | Pass | With capacity 1, the first registration was `complete` and received "Your Cedar Hollow sign-up"; the second was `waitlist` and received nothing (test mail collector held 1 message). |
+| (g) | Views offers `views-exposed-form--sessions.html.twig`. | Fail | Twig debug on `/sessions` shows theme hook `views_exposed_form` with no file name suggestions. The theme adds the suggestion in a `theme_suggestions_views_exposed_form_alter` hook. |
+| (h) | The registration form ID is `registration_attendee_register_form`. | Pass | The form's `form_id` value is `registration_attendee_register_form`; Twig debug shows theme hook `form` with no form-ID suggestion, so the theme adds one. |
 | (i) | A Storybook story resolves `include('cedar_hollow:card')` from `components/molecules/card/`. | Run in Phase 3 | Needs the theme and Storybook. |
 | (j) | Canvas and contrib permission names exist. | Pass | `create canvas_page`, `edit canvas_page`, `publish auto-saves`, `administer code components`, `administer page template`, `administer content templates`, `access sitemap` and `access forward` are all defined. |
 

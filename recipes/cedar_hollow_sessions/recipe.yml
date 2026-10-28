@@ -1,0 +1,38 @@
+name: 'Cedar Hollow sessions'
+description: 'Session and speaker content types with Smart Date times, track and day filters, Entity Registration with a wait list and confirmation, and the sessions listing.'
+type: 'Site feature'
+install:
+  - node
+  - text
+  - options
+  - file
+  - image
+  - link
+  - taxonomy
+  - views
+  - path
+  - breakpoint
+  - responsive_image
+  - registration
+  - registration_waitlist
+  - registration_confirmation
+  - smart_date
+  - better_exposed_filters
+  - forward
+config:
+  # Registration's workflow already exists on any site that has the module,
+  # and a recipe-installed module's config entities are not created from its
+  # config/install, so the recipe ships the exported workflow (with the
+  # waitlist state) and must not fail on existing config.
+  strict: false
+  actions:
+    user.role.anonymous:
+      grantPermissions:
+        - 'access content'
+        - 'create attendee registration self'
+        - 'access forward'
+    user.role.authenticated:
+      grantPermissions:
+        - 'access content'
+        - 'create attendee registration self'
+        - 'access forward'

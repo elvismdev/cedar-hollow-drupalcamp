@@ -1,0 +1,13 @@
+{
+    "name": "cedar-hollow/cedar_hollow_sessions",
+    "type": "drupal-recipe",
+    "description": "Session feature for the Cedar Hollow DrupalCamp demo.",
+    "license": "GPL-2.0-or-later",
+    "require": {
+        "drupal/core": "^11.3",
+        "drupal/registration": "~3.4.9",
+        "drupal/smart_date": "^4.3",
+        "drupal/better_exposed_filters": "~7.2.0",
+        "drupal/forward": "~4.0.4"
+    }
+}

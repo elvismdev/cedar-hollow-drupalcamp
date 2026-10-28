@@ -1,0 +1,18 @@
+langcode: en
+status: true
+dependencies:
+  module:
+    - forward
+    - node
+id: node.field_forward
+field_name: field_forward
+entity_type: node
+type: forward
+settings: {  }
+module: forward
+locked: false
+cardinality: 1
+translatable: true
+indexes: {  }
+persist_with_no_fields: false
+custom_storage: false

@@ -1,0 +1,31 @@
+langcode: en
+status: true
+dependencies:
+  config:
+    - core.entity_view_mode.node.teaser
+    - field.field.node.speaker.body
+    - field.field.node.speaker.field_photo
+    - node.type.speaker
+    - responsive_image.styles.speaker_photo
+  module:
+    - responsive_image
+    - user
+id: node.speaker.teaser
+targetEntityType: node
+bundle: speaker
+mode: teaser
+content:
+  field_photo:
+    type: responsive_image
+    label: hidden
+    settings:
+      responsive_image_style: speaker_photo
+      image_link: ''
+      image_loading:
+        attribute: lazy
+    third_party_settings: {  }
+    weight: 0
+    region: content
+hidden:
+  body: true
+  links: true

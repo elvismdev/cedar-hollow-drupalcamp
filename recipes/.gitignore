@@ -1,2 +1,8 @@
 *
 !/.gitignore
+# Project recipes are committed; contributed recipes installed by Composer
+# stay ignored.
+!/cedar_hollow_sessions/
+!/cedar_hollow_sessions/**
+!/cedar_hollow_demo_content/
+!/cedar_hollow_demo_content/**

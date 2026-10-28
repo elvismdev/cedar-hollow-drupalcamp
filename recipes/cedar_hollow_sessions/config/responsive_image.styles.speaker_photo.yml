@@ -1,0 +1,20 @@
+langcode: en
+status: true
+dependencies:
+  config:
+    - image.style.speaker_large
+    - image.style.speaker_small
+id: speaker_photo
+label: 'Speaker photo'
+image_style_mappings:
+  -
+    image_mapping_type: sizes
+    image_mapping:
+      sizes: '(min-width: 48em) 12rem, 6rem'
+      sizes_image_styles:
+        - speaker_small
+        - speaker_large
+    breakpoint_id: responsive_image.viewport_sizing
+    multiplier: 1x
+breakpoint_group: responsive_image
+fallback_image_style: speaker_small

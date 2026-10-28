@@ -1,0 +1,14 @@
+langcode: en
+status: true
+dependencies: {  }
+name: speaker_large
+label: 'Speaker 384'
+effects:
+  c7ed5767-87ba-4ebe-a76e-a39b08516b6f:
+    uuid: c7ed5767-87ba-4ebe-a76e-a39b08516b6f
+    id: image_scale
+    weight: 0
+    data:
+      width: 384
+      height: null
+      upscale: false
