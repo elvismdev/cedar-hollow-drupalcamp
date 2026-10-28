@@ -9,16 +9,11 @@
   .session-list {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(min(100%, 18rem), 1fr));
-    gap: var(--space-l);
+    gap: var(--size-6);
   }
 
   .session-list__empty {
     margin: 0;
     color: var(--color-text-muted);
-  }
-
-  /* Surface's card caps its width for flex rows; in this grid it fills its cell. */
-  .session-list .card {
-    max-inline-size: none;
   }
 }

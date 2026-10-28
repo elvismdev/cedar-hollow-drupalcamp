@@ -1,33 +1,32 @@
 /**
  * @file
- * Card grid (Atomic Design: organism).
+ * Card grid (Atomic Design: organism). An intrinsic grid: at most N columns,
+ * each at least --card-grid-min wide, so it drops to fewer columns by itself
+ * wherever it is placed, with no media or container query.
  */
 
 @layer reset, tokens, base, atoms, components, collections, layouts, utilities;
 
 @layer collections {
   .card-grid {
+    --card-grid-columns: 3;
+    --card-grid-min: 16rem;
+    --card-grid-gap: var(--size-6);
+
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(min(100%, 16rem), 1fr));
-    gap: var(--space-l);
+    grid-template-columns: repeat(
+      auto-fill,
+      minmax(min(100%, max(var(--card-grid-min), (100% - (var(--card-grid-columns) - 1) * var(--card-grid-gap)) / var(--card-grid-columns))), 1fr)
+    );
+    gap: var(--card-grid-gap);
   }
 
-  @media (width >= 64rem) {
-    .card-grid--cols-2 {
-      grid-template-columns: repeat(2, 1fr);
-    }
-
-    .card-grid--cols-3 {
-      grid-template-columns: repeat(3, 1fr);
-    }
-
-    .card-grid--cols-4 {
-      grid-template-columns: repeat(4, 1fr);
-    }
+  .card-grid--cols-2 {
+    --card-grid-columns: 2;
   }
 
-  /* Surface's card caps its width for flex rows; in this grid it fills its cell. */
-  .card-grid .card {
-    max-inline-size: none;
+  .card-grid--cols-4 {
+    --card-grid-columns: 4;
+    --card-grid-min: 13rem;
   }
 }

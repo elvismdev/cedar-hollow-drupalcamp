@@ -1,34 +1,36 @@
 /**
  * @file
- * Two columns (Atomic Design: template).
+ * Two columns (Atomic Design: template). The columns sit side by side when the
+ * component itself is wide enough, so it works inside any region or slot.
  */
 
 @layer reset, tokens, base, atoms, components, collections, layouts, utilities;
 
 @layer layouts {
-  .two-column > * + * {
-    margin-block-start: var(--space-l);
+  .two-column {
+    container: two-column / inline-size;
   }
 
-  @media (width >= 48em) {
-    .two-column {
-      display: grid;
-      gap: var(--space-l);
-    }
+  .two-column__layout {
+    display: grid;
+    gap: var(--size-6);
+  }
 
-    .two-column > * + * {
-      margin-block-start: 0;
-    }
+  .two-column__primary > * + *,
+  .two-column__secondary > * + * {
+    margin-block-start: var(--size-4);
+  }
 
-    .two-column--50-50 {
+  @container two-column (inline-size >= 48rem) {
+    .two-column--50-50 .two-column__layout {
       grid-template-columns: 1fr 1fr;
     }
 
-    .two-column--60-40 {
+    .two-column--60-40 .two-column__layout {
       grid-template-columns: 3fr 2fr;
     }
 
-    .two-column--40-60 {
+    .two-column--40-60 .two-column__layout {
       grid-template-columns: 2fr 3fr;
     }
   }
