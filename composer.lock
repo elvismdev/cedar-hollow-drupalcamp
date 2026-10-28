@@ -4,7 +4,7 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "11a2fff5fd9d63e27486e9b0fbff1bdc",
+    "content-hash": "64dfc35f78460d2bb3147a7653e5542d",
     "packages": [
         {
             "name": "asm89/stack-cors",
@@ -936,6 +936,140 @@
             "time": "2024-07-08T12:26:09+00:00"
         },
         {
+            "name": "doctrine/collections",
+            "version": "2.6.0",
+            "source": {
+                "type": "git",
+                "url": "https://github.com/doctrine/collections.git",
+                "reference": "7713da39d8e237f28411d6a616a3dce5e20d5de2"
+            },
+            "dist": {
+                "type": "zip",
+                "url": "https://api.github.com/repos/doctrine/collections/zipball/7713da39d8e237f28411d6a616a3dce5e20d5de2",
+                "reference": "7713da39d8e237f28411d6a616a3dce5e20d5de2",
+                "shasum": ""
+            },
+            "require": {
+                "doctrine/deprecations": "^1",
+                "php": "^8.1",
+                "symfony/polyfill-php84": "^1.30"
+            },
+            "require-dev": {
+                "doctrine/coding-standard": "^14",
+                "ext-json": "*",
+                "phpstan/phpstan": "^2.1.30",
+                "phpstan/phpstan-phpunit": "^2.0.7",
+                "phpunit/phpunit": "^10.5.58 || ^11.5.42 || ^12.4"
+            },
+            "type": "library",
+            "autoload": {
+                "psr-4": {
+                    "Doctrine\\Common\\Collections\\": "src"
+                }
+            },
+            "notification-url": "https://packagist.org/downloads/",
+            "license": [
+                "MIT"
+            ],
+            "authors": [
+                {
+                    "name": "Guilherme Blanco",
+                    "email": "guilhermeblanco@gmail.com"
+                },
+                {
+                    "name": "Roman Borschel",
+                    "email": "roman@code-factory.org"
+                },
+                {
+                    "name": "Benjamin Eberlei",
+                    "email": "kontakt@beberlei.de"
+                },
+                {
+                    "name": "Jonathan Wage",
+                    "email": "jonwage@gmail.com"
+                },
+                {
+                    "name": "Johannes Schmitt",
+                    "email": "schmittjoh@gmail.com"
+                }
+            ],
+            "description": "PHP Doctrine Collections library that adds additional functionality on top of PHP arrays.",
+            "homepage": "https://www.doctrine-project.org/projects/collections.html",
+            "keywords": [
+                "array",
+                "collections",
+                "iterators",
+                "php"
+            ],
+            "support": {
+                "issues": "https://github.com/doctrine/collections/issues",
+                "source": "https://github.com/doctrine/collections/tree/2.6.0"
+            },
+            "funding": [
+                {
+                    "url": "https://www.doctrine-project.org/sponsorship.html",
+                    "type": "custom"
+                },
+                {
+                    "url": "https://www.patreon.com/phpdoctrine",
+                    "type": "patreon"
+                },
+                {
+                    "url": "https://tidelift.com/funding/github/packagist/doctrine%2Fcollections",
+                    "type": "tidelift"
+                }
+            ],
+            "time": "2026-01-15T10:01:58+00:00"
+        },
+        {
+            "name": "doctrine/deprecations",
+            "version": "1.1.6",
+            "source": {
+                "type": "git",
+                "url": "https://github.com/doctrine/deprecations.git",
+                "reference": "d4fe3e6fd9bb9e72557a19674f44d8ac7db4c6ca"
+            },
+            "dist": {
+                "type": "zip",
+                "url": "https://api.github.com/repos/doctrine/deprecations/zipball/d4fe3e6fd9bb9e72557a19674f44d8ac7db4c6ca",
+                "reference": "d4fe3e6fd9bb9e72557a19674f44d8ac7db4c6ca",
+                "shasum": ""
+            },
+            "require": {
+                "php": "^7.1 || ^8.0"
+            },
+            "conflict": {
+                "phpunit/phpunit": "<=7.5 || >=14"
+            },
+            "require-dev": {
+                "doctrine/coding-standard": "^9 || ^12 || ^14",
+                "phpstan/phpstan": "1.4.10 || 2.1.30",
+                "phpstan/phpstan-phpunit": "^1.0 || ^2",
+                "phpunit/phpunit": "^7.5 || ^8.5 || ^9.6 || ^10.5 || ^11.5 || ^12.4 || ^13.0",
+                "psr/log": "^1 || ^2 || ^3"
+            },
+            "suggest": {
+                "psr/log": "Allows logging deprecations via PSR-3 logger implementation"
+            },
+            "type": "library",
+            "autoload": {
+                "psr-4": {
+                    "Doctrine\\Deprecations\\": "src"
+                }
+            },
+            "notification-url": "https://packagist.org/downloads/",
+            "license": [
+                "MIT"
+            ],
+            "description": "A small layer on top of trigger_error(E_USER_DEPRECATED) or PSR-3 logging with options to disable all deprecations or selectively for packages.",
+            "homepage": "https://www.doctrine-project.org/",
+            "support": {
+                "issues": "https://github.com/doctrine/deprecations/issues",
+                "source": "https://github.com/doctrine/deprecations/tree/1.1.6"
+            },
+            "time": "2026-02-07T07:09:04+00:00"
+        },
+        {
             "name": "doctrine/lexer",
             "version": "3.0.3",
             "source": {
@@ -1009,6 +1143,304 @@
                 }
             ],
             "time": "2026-10-01T06:59:29+00:00"
+        },
+        {
+            "name": "drupal/better_exposed_filters",
+            "version": "7.2.0",
+            "source": {
+                "type": "git",
+                "url": "https://git.drupalcode.org/project/better_exposed_filters.git",
+                "reference": "7.2.0"
+            },
+            "dist": {
+                "type": "zip",
+                "url": "https://ftp.drupal.org/files/projects/better_exposed_filters-7.2.0.zip",
+                "reference": "7.2.0",
+                "shasum": "dcb7b5e560fe578ef041cf7e1f6a691dc4d56575"
+            },
+            "require": {
+                "drupal/core": "^10.3 || ^11 || ^12",
+                "drupal/nouislider_js": "^15.8.1"
+            },
+            "type": "drupal-module",
+            "extra": {
+                "drupal": {
+                    "version": "7.2.0",
+                    "datestamp": "1791536367",
+                    "security-coverage": {
+                        "status": "covered",
+                        "message": "Covered by Drupal's security advisory policy"
+                    }
+                }
+            },
+            "notification-url": "https://packages.drupal.org/8/downloads",
+            "license": [
+                "GPL-2.0-or-later"
+            ],
+            "authors": [
+                {
+                    "name": "Mike Keran",
+                    "homepage": "https://www.drupal.org/u/mikeker"
+                },
+                {
+                    "name": "Martin Keereman",
+                    "homepage": "https://www.drupal.org/u/etroid"
+                },
+                {
+                    "name": "Neslee Canil Pinto",
+                    "homepage": "https://www.drupal.org/u/neslee-canil-pinto"
+                },
+                {
+                    "name": "mikeker",
+                    "homepage": "https://www.drupal.org/user/192273"
+                },
+                {
+                    "name": "neslee canil pinto",
+                    "homepage": "https://www.drupal.org/user/3580850"
+                },
+                {
+                    "name": "podarok",
+                    "homepage": "https://www.drupal.org/user/116002"
+                },
+                {
+                    "name": "rlhawk",
+                    "homepage": "https://www.drupal.org/user/352283"
+                },
+                {
+                    "name": "smustgrave",
+                    "homepage": "https://www.drupal.org/user/3252890"
+                }
+            ],
+            "description": "Replaces the Views default single- or multi-select boxes with more advanced options.",
+            "homepage": "https://www.drupal.org/project/better_exposed_filters",
+            "support": {
+                "source": "https://git.drupalcode.org/project/better_exposed_filters",
+                "issues": "https://www.drupal.org/project/issues/better_exposed_filters"
+            }
+        },
+        {
+            "name": "drupal/canvas",
+            "version": "1.12.0",
+            "source": {
+                "type": "git",
+                "url": "https://git.drupalcode.org/project/canvas.git",
+                "reference": "1.12.0"
+            },
+            "dist": {
+                "type": "zip",
+                "url": "https://ftp.drupal.org/files/projects/canvas-1.12.0.zip",
+                "reference": "1.12.0",
+                "shasum": "7b42c6c17329c90612aa15e5187941ff1371bc9e"
+            },
+            "require": {
+                "drupal/core": "^11.3",
+                "justinrainbow/json-schema": "^6.8.0"
+            },
+            "require-dev": {
+                "devizzent/cebe-php-openapi": "^1.1.4",
+                "drupal/ai": "^1.4.0",
+                "drupal/ai_agents": "^1.3.3",
+                "drupal/ai_agents_test": "^1.0@alpha",
+                "drupal/canvas_ai": "*",
+                "drupal/coder": "^8",
+                "drupal/consumers": "*",
+                "drupal/custom_elements": "^3.4",
+                "drupal/jsonapi_menu_items": "^1.2.8",
+                "drupal/metatag": "^2.1",
+                "drupal/pathauto": "^1.13",
+                "drupal/search_api": "^1",
+                "drupal/simple_oauth": "^6.1.0",
+                "drupal/tmgmt": "^1.18",
+                "drush/drush": "^13",
+                "jangregor/phpstan-prophecy": "2.3.0",
+                "league/openapi-psr7-validator": "^0.22.0",
+                "mglaman/phpstan-drupal": "2.0.15",
+                "phpat/phpat": "0.12.4",
+                "phpstan/phpstan": "2.2.3",
+                "phpstan/phpstan-strict-rules": "2.0.11",
+                "shipmonk/dead-code-detector": "1.2.0"
+            },
+            "type": "drupal-module",
+            "extra": {
+                "drupal": {
+                    "version": "1.12.0",
+                    "datestamp": "1790579327",
+                    "security-coverage": {
+                        "status": "covered",
+                        "message": "Covered by Drupal's security advisory policy"
+                    }
+                }
+            },
+            "notification-url": "https://packages.drupal.org/8/downloads",
+            "scripts": {
+                "composer-root": [
+                    "d=.; i=0; while [ $i -lt 10 ]; do if [ -f \"$d/composer.json\" ] && cat \"$d/composer.json\" | grep -q '\"type\"' && cat \"$d/composer.json\" | grep -q '\"project\"'; then readlink -f \"$d\"; break; fi; d=\"../$d\"; i=$((i+1)); done"
+                ],
+                "install-dev-deps": [
+                    "PACKAGES=$(cat composer.json | jq -r '.[\"require-dev\"] // {} | to_entries[] | \"\\(.key):\\(.value)\"' | tr '\\n' ' ') && ROOT=$(composer run composer-root) && CORE_VERSION=$(grep \"const VERSION\" \"${ROOT}/core/lib/Drupal.php\" 2>/dev/null | sed \"s/.*'\\(.*\\)'.*/\\1/\" || echo \"0.0.0\") && COMPOSER_ROOT_VERSION=${CORE_VERSION:-0.0.0} composer --working-dir=${ROOT} require ${PACKAGES} --dev -W"
+                ],
+                "phpcs": [
+                    "mkdir -p test-results && mkdir -p .cache/phpcs && composer --working-dir=$(composer run composer-root) exec phpcs -- --standard=$(pwd)/phpcs.xml --report-width=auto --colors -s --report-junit=$(pwd)/test-results/phpcs.xml --report-full --report-summary $(pwd)"
+                ],
+                "phpcbf": [
+                    " mkdir -p .cache/phpc && composer --working-dir=$(composer run composer-root) exec phpcbf -- --standard=$(pwd)/phpcs.xml --colors $(pwd)"
+                ],
+                "phpstan": [
+                    "composer --working-dir=$(composer run composer-root) exec phpstan -- --configuration=$(pwd)/phpstan.neon --autoload-file=$(pwd)/phpstan_rules/autoload.php analyze $(pwd)"
+                ],
+                "phpstan-regenerate-ignores-for-non-min-core-version-features": [
+                    "rm $(pwd)/phpstan-ignores-non-min-core-version.neon && touch $(pwd)/phpstan-ignores-non-min-core-version.neon && composer --working-dir=$(composer run composer-root) exec phpstan -- --configuration=$(pwd)/phpstan.neon --autoload-file=$(pwd)/phpstan_rules/autoload.php --generate-baseline=$(pwd)/phpstan-ignores-non-min-core-version.neon --allow-empty-baseline analyze $(pwd)"
+                ],
+                "phpunit": [
+                    "./tests/scripts/phpunit.sh"
+                ],
+                "lint:phpcs": [
+                    "@phpcs"
+                ],
+                "lint:phpstan": [
+                    "@phpstan"
+                ],
+                "lint": [
+                    "@lint:phpstan",
+                    "@lint:phpcs"
+                ],
+                "fix:phpcbf": [
+                    "@phpcbf"
+                ],
+                "fix": [
+                    "@fix:phpcbf"
+                ]
+            },
+            "license": [
+                "GPL-2.0-or-later"
+            ],
+            "authors": [
+                {
+                    "name": "akhil babu",
+                    "homepage": "https://www.drupal.org/user/3632866"
+                },
+                {
+                    "name": "amangrover90",
+                    "homepage": "https://www.drupal.org/user/3602433"
+                },
+                {
+                    "name": "attilatilman",
+                    "homepage": "https://www.drupal.org/user/3528404"
+                },
+                {
+                    "name": "balintbrews",
+                    "homepage": "https://www.drupal.org/user/613760"
+                },
+                {
+                    "name": "bnjmnm",
+                    "homepage": "https://www.drupal.org/user/2369194"
+                },
+                {
+                    "name": "chandu7929",
+                    "homepage": "https://www.drupal.org/user/2907229"
+                },
+                {
+                    "name": "effulgentsia",
+                    "homepage": "https://www.drupal.org/user/78040"
+                },
+                {
+                    "name": "f.mazeikis",
+                    "homepage": "https://www.drupal.org/user/3513671"
+                },
+                {
+                    "name": "harjot.singh@acquia.com",
+                    "homepage": "https://www.drupal.org/user/3871293"
+                },
+                {
+                    "name": "hooroomoo",
+                    "homepage": "https://www.drupal.org/user/3688872"
+                },
+                {
+                    "name": "isholgueras",
+                    "homepage": "https://www.drupal.org/user/733162"
+                },
+                {
+                    "name": "jessebaker",
+                    "homepage": "https://www.drupal.org/user/3546546"
+                },
+                {
+                    "name": "jptaranto",
+                    "homepage": "https://www.drupal.org/user/135234"
+                },
+                {
+                    "name": "justafish",
+                    "homepage": "https://www.drupal.org/user/161058"
+                },
+                {
+                    "name": "kunal.sachdev",
+                    "homepage": "https://www.drupal.org/user/3685163"
+                },
+                {
+                    "name": "larowlan",
+                    "homepage": "https://www.drupal.org/user/395439"
+                },
+                {
+                    "name": "lauriii",
+                    "homepage": "https://www.drupal.org/user/1078742"
+                },
+                {
+                    "name": "longwave",
+                    "homepage": "https://www.drupal.org/user/246492"
+                },
+                {
+                    "name": "marcus_johansson",
+                    "homepage": "https://www.drupal.org/user/385947"
+                },
+                {
+                    "name": "mglaman",
+                    "homepage": "https://www.drupal.org/user/2416470"
+                },
+                {
+                    "name": "narendrar",
+                    "homepage": "https://www.drupal.org/user/1730192"
+                },
+                {
+                    "name": "penyaskito",
+                    "homepage": "https://www.drupal.org/user/959536"
+                },
+                {
+                    "name": "phenaproxima",
+                    "homepage": "https://www.drupal.org/user/205645"
+                },
+                {
+                    "name": "ravi.maniyar.123",
+                    "homepage": "https://www.drupal.org/user/3867193"
+                },
+                {
+                    "name": "tedbow",
+                    "homepage": "https://www.drupal.org/user/240860"
+                },
+                {
+                    "name": "thoward216",
+                    "homepage": "https://www.drupal.org/user/3576535"
+                },
+                {
+                    "name": "tim.plunkett",
+                    "homepage": "https://www.drupal.org/user/241634"
+                },
+                {
+                    "name": "utkarsh_33",
+                    "homepage": "https://www.drupal.org/user/3727088"
+                },
+                {
+                    "name": "wim leers",
+                    "homepage": "https://www.drupal.org/user/99777"
+                },
+                {
+                    "name": "wotnak",
+                    "homepage": "https://www.drupal.org/user/3558113"
+                }
+            ],
+            "description": "Canvas",
+            "homepage": "https://www.drupal.org/project/canvas",
+            "support": {
+                "source": "https://git.drupalcode.org/project/canvas"
+            }
         },
         {
             "name": "drupal/core",
@@ -1333,6 +1765,302 @@
                 "source": "https://github.com/drupal/core-recommended/tree/11.4.11"
             },
             "time": "2026-10-21T10:18:50+00:00"
+        },
+        {
+            "name": "drupal/forward",
+            "version": "4.0.4",
+            "source": {
+                "type": "git",
+                "url": "https://git.drupalcode.org/project/forward.git",
+                "reference": "4.0.4"
+            },
+            "dist": {
+                "type": "zip",
+                "url": "https://ftp.drupal.org/files/projects/forward-4.0.4.zip",
+                "reference": "4.0.4",
+                "shasum": "af168a7784c6ddc5f6b195376a540f3182b1036f"
+            },
+            "require": {
+                "drupal/core": "^10.2 || ^11"
+            },
+            "type": "drupal-module",
+            "extra": {
+                "drupal": {
+                    "version": "4.0.4",
+                    "datestamp": "1779399395",
+                    "security-coverage": {
+                        "status": "covered",
+                        "message": "Covered by Drupal's security advisory policy"
+                    }
+                }
+            },
+            "notification-url": "https://packages.drupal.org/8/downloads",
+            "license": [
+                "GPL-2.0+"
+            ],
+            "authors": [
+                {
+                    "name": "John Oltman",
+                    "homepage": "https://www.drupal.org/u/john.oltman",
+                    "email": "developer@sitebasin.com",
+                    "role": "Maintainer"
+                },
+                {
+                    "name": "chx",
+                    "homepage": "https://www.drupal.org/user/9446"
+                },
+                {
+                    "name": "dww",
+                    "homepage": "https://www.drupal.org/user/46549"
+                },
+                {
+                    "name": "john.oltman",
+                    "homepage": "https://www.drupal.org/user/699926"
+                },
+                {
+                    "name": "seanr",
+                    "homepage": "https://www.drupal.org/user/7074"
+                }
+            ],
+            "description": "Forward pages and other site elements to a friend.",
+            "homepage": "http://drupal.org/project/forward",
+            "support": {
+                "source": "https://git.drupalcode.org/project/forward"
+            }
+        },
+        {
+            "name": "drupal/nouislider_js",
+            "version": "15.8.1",
+            "source": {
+                "type": "git",
+                "url": "https://git.drupalcode.org/project/nouislider_js.git",
+                "reference": "b5610d5842784581e4c766cd1c3852ca0b355ed5"
+            },
+            "dist": {
+                "type": "zip",
+                "url": "https://git.drupalcode.org/api/v4/projects/project%2Fnouislider_js/repository/archive.zip?sha=b5610d5842784581e4c766cd1c3852ca0b355ed5",
+                "reference": "b5610d5842784581e4c766cd1c3852ca0b355ed5",
+                "shasum": ""
+            },
+            "type": "drupal-library",
+            "extra": {
+                "installer-name": "nouislider"
+            },
+            "notification-url": "https://packagist.org/downloads/",
+            "license": [
+                "MIT License"
+            ],
+            "description": "Mirror of the noUiSlider javascript library tagged as a Drupal library.",
+            "homepage": "https://github.com/leongersen/noUiSlider",
+            "support": {
+                "source": "https://git.drupalcode.org/project/nouislider_js/-/tree/15.8.0"
+            },
+            "time": "2025-01-03T10:53:20+00:00"
+        },
+        {
+            "name": "drupal/registration",
+            "version": "3.4.9",
+            "source": {
+                "type": "git",
+                "url": "https://git.drupalcode.org/project/registration.git",
+                "reference": "3.4.9"
+            },
+            "dist": {
+                "type": "zip",
+                "url": "https://ftp.drupal.org/files/projects/registration-3.4.9.zip",
+                "reference": "3.4.9",
+                "shasum": "7ff7b4973c9768cc8a18ea3b9d69c31caca2b2cf"
+            },
+            "require": {
+                "drupal/core": "^10.3 || ^11"
+            },
+            "require-dev": {
+                "drupal/inline_entity_form": "^3.0",
+                "drupal/registration_workflow": "*",
+                "drupal/token": "^1.15"
+            },
+            "type": "drupal-module",
+            "extra": {
+                "drupal": {
+                    "version": "3.4.9",
+                    "datestamp": "1772051406",
+                    "security-coverage": {
+                        "status": "covered",
+                        "message": "Covered by Drupal's security advisory policy"
+                    }
+                }
+            },
+            "notification-url": "https://packages.drupal.org/8/downloads",
+            "license": [
+                "GPL-2.0-or-later"
+            ],
+            "authors": [
+                {
+                    "name": "John Oltman",
+                    "homepage": "https://www.drupal.org/u/john.oltman",
+                    "role": "Maintainer"
+                },
+                {
+                    "name": "levelos",
+                    "homepage": "https://www.drupal.org/user/54135"
+                },
+                {
+                    "name": "mandclu",
+                    "homepage": "https://www.drupal.org/user/52136"
+                },
+                {
+                    "name": "richgerdes",
+                    "homepage": "https://www.drupal.org/user/3437973"
+                }
+            ],
+            "description": "Registration is a flexible module that provides user registration for events.",
+            "homepage": "https://drupal.org/project/registration",
+            "support": {
+                "source": "https://git.drupalcode.org/project/registration",
+                "issues": "https://www.drupal.org/project/issues/registration"
+            }
+        },
+        {
+            "name": "drupal/sitemap",
+            "version": "2.6.0",
+            "source": {
+                "type": "git",
+                "url": "https://git.drupalcode.org/project/sitemap.git",
+                "reference": "8.x-2.6"
+            },
+            "dist": {
+                "type": "zip",
+                "url": "https://ftp.drupal.org/files/projects/sitemap-8.x-2.6.zip",
+                "reference": "8.x-2.6",
+                "shasum": "068e2a0d81efe18d566eb42fc4f8d60005ebc522"
+            },
+            "require": {
+                "drupal/core": "^10.2 || ^11",
+                "php": ">=8.1"
+            },
+            "require-dev": {
+                "drupal/book": "^1 || ^2",
+                "drupal/metatag": "^2",
+                "drush/drush": "*"
+            },
+            "type": "drupal-module",
+            "extra": {
+                "drupal": {
+                    "version": "8.x-2.6",
+                    "datestamp": "1780154375",
+                    "security-coverage": {
+                        "status": "covered",
+                        "message": "Covered by Drupal's security advisory policy"
+                    }
+                }
+            },
+            "notification-url": "https://packages.drupal.org/8/downloads",
+            "license": [
+                "GPL-2.0-or-later"
+            ],
+            "authors": [
+                {
+                    "name": "akalata",
+                    "homepage": "https://www.drupal.org/user/498926"
+                },
+                {
+                    "name": "colan",
+                    "homepage": "https://www.drupal.org/user/58704"
+                },
+                {
+                    "name": "killes@www.drop.org",
+                    "homepage": "https://www.drupal.org/user/227"
+                },
+                {
+                    "name": "mparker17",
+                    "homepage": "https://www.drupal.org/user/536298"
+                },
+                {
+                    "name": "Nafes",
+                    "homepage": "https://www.drupal.org/user/2489926"
+                },
+                {
+                    "name": "ridefree",
+                    "homepage": "https://www.drupal.org/user/49148"
+                }
+            ],
+            "description": "A way for visitors to navigate your website using an overview of notable pages on the site, by displaying one or more human-readable lists of links on a page. Useful for sites with lots of lightly-organized content.",
+            "homepage": "https://www.drupal.org/project/sitemap",
+            "support": {
+                "source": "https://git.drupalcode.org/project/sitemap",
+                "issues": "http://drupal.org/project/issues/sitemap"
+            }
+        },
+        {
+            "name": "drupal/smart_date",
+            "version": "4.3.0",
+            "source": {
+                "type": "git",
+                "url": "https://git.drupalcode.org/project/smart_date.git",
+                "reference": "4.3.0"
+            },
+            "dist": {
+                "type": "zip",
+                "url": "https://ftp.drupal.org/files/projects/smart_date-4.3.0.zip",
+                "reference": "4.3.0",
+                "shasum": "820497eb5aa608aadf3b82a630490b5ed6182a31"
+            },
+            "require": {
+                "drupal/core": "^10 || ^11 || ^12",
+                "php": ">=8.1",
+                "simshaun/recurr": "^5"
+            },
+            "require-dev": {
+                "drupal/token": "*",
+                "drush/drush": "*"
+            },
+            "suggest": {
+                "drupal/multiple_fields_remove_button": "Provides a button for editors to remove unwanted rows."
+            },
+            "type": "drupal-module",
+            "extra": {
+                "drupal": {
+                    "version": "4.3.0",
+                    "datestamp": "1783894694",
+                    "security-coverage": {
+                        "status": "covered",
+                        "message": "Covered by Drupal's security advisory policy"
+                    }
+                },
+                "drush": {
+                    "services": {
+                        "drush.services.yml": "^9"
+                    }
+                }
+            },
+            "notification-url": "https://packages.drupal.org/8/downloads",
+            "license": [
+                "GPL-2.0-or-later"
+            ],
+            "authors": [
+                {
+                    "name": "mandclu",
+                    "homepage": "https://www.drupal.org/user/52136"
+                },
+                {
+                    "name": "stefan.korn",
+                    "homepage": "https://www.drupal.org/user/1942204"
+                },
+                {
+                    "name": "tyapchyc",
+                    "homepage": "https://www.drupal.org/user/3351412"
+                }
+            ],
+            "description": "Adds app-like date and recurring date functionality.",
+            "homepage": "https://www.drupal.org/project/smart_date",
+            "keywords": [
+                "Drupal"
+            ],
+            "support": {
+                "source": "https://git.drupalcode.org/project/smart_date",
+                "issues": "https://www.drupal.org/project/issues/smart_date",
+                "documentation": "https://www.drupal.org/docs/contributed-modules/smart-date"
+            }
         },
         {
             "name": "drush/drush",
@@ -3546,6 +4274,65 @@
                 }
             ],
             "time": "2024-07-03T04:53:05+00:00"
+        },
+        {
+            "name": "simshaun/recurr",
+            "version": "v5.0.3",
+            "source": {
+                "type": "git",
+                "url": "https://github.com/simshaun/recurr.git",
+                "reference": "7b136768d64f257065e38a804ee6d2f9af6ba6d1"
+            },
+            "dist": {
+                "type": "zip",
+                "url": "https://api.github.com/repos/simshaun/recurr/zipball/7b136768d64f257065e38a804ee6d2f9af6ba6d1",
+                "reference": "7b136768d64f257065e38a804ee6d2f9af6ba6d1",
+                "shasum": ""
+            },
+            "require": {
+                "doctrine/collections": "~1.6||^2.0",
+                "php": "^7.2||^8.0"
+            },
+            "require-dev": {
+                "phpunit/phpunit": "^8.5.16",
+                "symfony/yaml": "^5.3"
+            },
+            "type": "library",
+            "extra": {
+                "branch-alias": {
+                    "dev-master": "0.x-dev"
+                }
+            },
+            "autoload": {
+                "psr-4": {
+                    "Recurr\\": "src/Recurr/"
+                }
+            },
+            "notification-url": "https://packagist.org/downloads/",
+            "license": [
+                "MIT"
+            ],
+            "authors": [
+                {
+                    "name": "Shaun Simmons",
+                    "email": "shaun@shaun.pub",
+                    "homepage": "https://shaun.pub"
+                }
+            ],
+            "description": "PHP library for working with recurrence rules",
+            "homepage": "https://github.com/simshaun/recurr",
+            "keywords": [
+                "dates",
+                "events",
+                "recurrence",
+                "recurring",
+                "rrule"
+            ],
+            "support": {
+                "issues": "https://github.com/simshaun/recurr/issues",
+                "source": "https://github.com/simshaun/recurr/tree/v5.0.3"
+            },
+            "time": "2024-12-12T15:39:24+00:00"
         },
         {
             "name": "symfony/console",
@@ -7642,54 +8429,6 @@
                 }
             ],
             "time": "2026-05-06T08:26:05+00:00"
-        },
-        {
-            "name": "doctrine/deprecations",
-            "version": "1.1.6",
-            "source": {
-                "type": "git",
-                "url": "https://github.com/doctrine/deprecations.git",
-                "reference": "d4fe3e6fd9bb9e72557a19674f44d8ac7db4c6ca"
-            },
-            "dist": {
-                "type": "zip",
-                "url": "https://api.github.com/repos/doctrine/deprecations/zipball/d4fe3e6fd9bb9e72557a19674f44d8ac7db4c6ca",
-                "reference": "d4fe3e6fd9bb9e72557a19674f44d8ac7db4c6ca",
-                "shasum": ""
-            },
-            "require": {
-                "php": "^7.1 || ^8.0"
-            },
-            "conflict": {
-                "phpunit/phpunit": "<=7.5 || >=14"
-            },
-            "require-dev": {
-                "doctrine/coding-standard": "^9 || ^12 || ^14",
-                "phpstan/phpstan": "1.4.10 || 2.1.30",
-                "phpstan/phpstan-phpunit": "^1.0 || ^2",
-                "phpunit/phpunit": "^7.5 || ^8.5 || ^9.6 || ^10.5 || ^11.5 || ^12.4 || ^13.0",
-                "psr/log": "^1 || ^2 || ^3"
-            },
-            "suggest": {
-                "psr/log": "Allows logging deprecations via PSR-3 logger implementation"
-            },
-            "type": "library",
-            "autoload": {
-                "psr-4": {
-                    "Doctrine\\Deprecations\\": "src"
-                }
-            },
-            "notification-url": "https://packagist.org/downloads/",
-            "license": [
-                "MIT"
-            ],
-            "description": "A small layer on top of trigger_error(E_USER_DEPRECATED) or PSR-3 logging with options to disable all deprecations or selectively for packages.",
-            "homepage": "https://www.doctrine-project.org/",
-            "support": {
-                "issues": "https://github.com/doctrine/deprecations/issues",
-                "source": "https://github.com/doctrine/deprecations/tree/1.1.6"
-            },
-            "time": "2026-02-07T07:09:04+00:00"
         },
         {
             "name": "doctrine/instantiator",
@@ -12417,5 +13156,5 @@
     "platform-overrides": {
         "php": "8.3.11"
     },
-    "plugin-api-version": "2.9.0"
+    "plugin-api-version": "2.6.0"
 }
