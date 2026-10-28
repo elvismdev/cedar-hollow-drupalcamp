@@ -1,0 +1,25 @@
+uuid: 0e4657ca-8e00-4711-82a5-553407dae060
+langcode: en
+status: true
+dependencies:
+  config:
+    - field.storage.node.field_registration
+    - node.type.session
+  module:
+    - registration
+id: node.session.field_registration
+field_name: field_registration
+entity_type: node
+bundle: session
+label: Registration
+description: ''
+required: false
+translatable: true
+default_value:
+  -
+    registration_type: attendee
+    registration_settings: 'a:12:{s:6:"status";a:1:{i:0;a:1:{s:5:"value";b:1;}}s:8:"capacity";a:1:{i:0;a:1:{s:5:"value";i:40;}}s:14:"maximum_spaces";a:1:{i:0;a:1:{s:5:"value";i:1;}}s:22:"multiple_registrations";a:1:{i:0;a:1:{s:5:"value";b:0;}}s:13:"send_reminder";a:1:{i:0;a:1:{s:5:"value";b:0;}}s:12:"from_address";a:1:{i:0;a:1:{s:5:"value";s:17:"admin@example.com";}}s:12:"confirmation";a:1:{i:0;a:1:{s:5:"value";s:28:"Registration has been saved.";}}s:28:"registration_waitlist_enable";a:1:{i:0;a:1:{s:5:"value";b:1;}}s:30:"registration_waitlist_capacity";a:1:{i:0;a:1:{s:5:"value";i:0;}}s:30:"registration_waitlist_autofill";a:1:{i:0;a:1:{s:5:"value";b:0;}}s:36:"registration_waitlist_message_enable";a:1:{i:0;a:1:{s:5:"value";b:1;}}s:29:"registration_waitlist_message";a:1:{i:0;a:1:{s:5:"value";s:59:"This session is full. Signing up adds you to the wait list.";}}}'
+default_value_callback: ''
+settings:
+  allowed_types: {  }
+field_type: registration

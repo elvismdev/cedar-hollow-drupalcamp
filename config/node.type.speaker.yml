@@ -1,0 +1,11 @@
+uuid: 648cff4e-5cef-4f10-8595-0738de921f12
+langcode: en
+status: true
+dependencies: {  }
+name: Speaker
+type: speaker
+description: null
+help: null
+new_revision: true
+preview_mode: 1
+display_submitted: false

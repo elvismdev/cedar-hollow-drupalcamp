@@ -1,0 +1,14 @@
+uuid: d29d831c-b2b8-4392-b23d-3f6d29c06c89
+langcode: en
+status: true
+dependencies:
+  config:
+    - user.role.demo_editor
+  module:
+    - user
+id: user_add_role_action.demo_editor
+label: 'Add the Demo editor role to the selected user(s)'
+type: user
+plugin: user_add_role_action
+configuration:
+  rid: demo_editor

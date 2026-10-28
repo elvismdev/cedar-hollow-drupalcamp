@@ -1,0 +1,11 @@
+uuid: dcf5952b-9798-4c41-b587-c2f537303843
+langcode: en
+status: true
+dependencies:
+  config:
+    - canvas.component.marker.page_content
+name: Other
+configEntityTypeId: component
+weight: 0
+items:
+  - marker.page_content

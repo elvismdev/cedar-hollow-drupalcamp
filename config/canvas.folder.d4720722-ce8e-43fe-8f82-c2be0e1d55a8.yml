@@ -1,0 +1,11 @@
+uuid: d4720722-ce8e-43fe-8f82-c2be0e1d55a8
+langcode: en
+status: true
+dependencies:
+  config:
+    - canvas.component.block.user_login_block
+name: Forms
+configEntityTypeId: component
+weight: 0
+items:
+  - block.user_login_block

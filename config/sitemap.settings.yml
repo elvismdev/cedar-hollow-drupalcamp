@@ -1,0 +1,46 @@
+_core:
+  default_config_hash: GUKBlXIBQ2d0H8Q7M_Rqn1Q93tRxLPfs9cG-VeQC9NI
+page_title: 'Site map'
+path: sitemap
+message:
+  value: ''
+  format: plain_text
+plugins:
+  frontpage:
+    base_plugin: frontpage
+    enabled: true
+    weight: 0
+    settings:
+      title: Home
+      rss: ''
+      front_text_override: Home
+    id: frontpage
+    provider: sitemap
+  'menu:main':
+    base_plugin: menu
+    enabled: true
+    weight: 1
+    settings:
+      title: 'Main menu'
+      show_disabled: false
+      menu_depth: 2
+    id: 'menu:main'
+    provider: sitemap
+  'vocabulary:track':
+    base_plugin: vocabulary
+    enabled: true
+    weight: 2
+    settings:
+      title: Tracks
+      show_description: false
+      show_count: false
+      display_unpublished: false
+      term_depth: 1
+      term_count_threshold: 0
+      customize_link: false
+      term_link: entity.taxonomy_term.canonical|taxonomy_term
+      always_link: false
+      enable_rss: false
+    id: 'vocabulary:track'
+    provider: sitemap
+include_css: true

@@ -1,0 +1,26 @@
+uuid: 1fbceba5-9529-41b6-8b71-e650c1faad79
+langcode: en
+status: true
+dependencies:
+  config:
+    - views.view.user_registrations
+  module:
+    - views
+active_version: 8ce4486a460020a9
+versioned_properties:
+  active:
+    settings:
+      default_settings:
+        id: 'views_block:user_registrations-block_1'
+        label: 'User registrations'
+        label_display: '0'
+        provider: views
+        views_label: ''
+        items_per_page: null
+    fallback_metadata:
+      slot_definitions: null
+label: 'User registrations'
+id: block.views_block.user_registrations-block_1
+provider: views
+source: block
+source_local_id: 'views_block:user_registrations-block_1'

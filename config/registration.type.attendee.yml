@@ -1,0 +1,21 @@
+uuid: a6d96202-f9df-4c0d-8799-81c0a06845c4
+langcode: en
+status: true
+dependencies:
+  config:
+    - workflows.workflow.registration
+  module:
+    - registration_confirmation
+third_party_settings:
+  registration_confirmation:
+    enable: true
+    subject: 'Your Cedar Hollow sign-up'
+    message:
+      value: 'You are signed up for [registration:host_entity:entity:title]. This is a demo; no mail is sent.'
+      format: plain_text
+id: attendee
+label: Attendee
+workflow: registration
+defaultState: complete
+heldExpireTime: 1
+heldExpireState: canceled

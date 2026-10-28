@@ -1,0 +1,18 @@
+uuid: 0f1e77a4-b66e-4a34-9e16-d1138e6006cb
+langcode: en
+status: true
+dependencies:
+  module:
+    - canvas
+    - system
+    - toolbar
+id: demo_editor
+label: 'Demo editor'
+weight: 2
+is_admin: false
+permissions:
+  - 'access toolbar'
+  - 'create canvas_page'
+  - 'edit canvas_page'
+  - 'publish auto-saves'
+  - 'view the administration theme'

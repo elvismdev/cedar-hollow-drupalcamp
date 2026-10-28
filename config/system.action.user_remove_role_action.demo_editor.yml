@@ -1,0 +1,14 @@
+uuid: 762a2224-e909-4b5b-b5a9-5502db8e7188
+langcode: en
+status: true
+dependencies:
+  config:
+    - user.role.demo_editor
+  module:
+    - user
+id: user_remove_role_action.demo_editor
+label: 'Remove the Demo editor role from the selected user(s)'
+type: user
+plugin: user_remove_role_action
+configuration:
+  rid: demo_editor

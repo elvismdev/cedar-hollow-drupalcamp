@@ -1,0 +1,17 @@
+uuid: 36ef569c-1eac-4147-872c-75b163654286
+langcode: en
+status: true
+dependencies:
+  config:
+    - canvas.component.block.views_block.content_recent-block_1
+    - canvas.component.block.views_block.manage_registrations-block_1
+    - canvas.component.block.views_block.user_registrations-block_1
+    - canvas.component.block.views_block.who_s_online-who_s_online_block
+name: 'Lists (Views)'
+configEntityTypeId: component
+weight: 0
+items:
+  - block.views_block.content_recent-block_1
+  - block.views_block.manage_registrations-block_1
+  - block.views_block.user_registrations-block_1
+  - block.views_block.who_s_online-who_s_online_block

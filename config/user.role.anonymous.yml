@@ -1,0 +1,24 @@
+uuid: 4d3f4f71-0ce8-4da2-9809-e80a60f2d231
+langcode: en
+status: true
+dependencies:
+  config:
+    - registration.type.attendee
+  module:
+    - forward
+    - media
+    - registration
+    - sitemap
+    - system
+_core:
+  default_config_hash: j5zLMOdJBqC0bMvSdth5UebkprJB8g_2FXHqhfpJzow
+id: anonymous
+label: 'Anonymous user'
+weight: 0
+is_admin: false
+permissions:
+  - 'access content'
+  - 'access forward'
+  - 'access sitemap'
+  - 'create attendee registration self'
+  - 'view media'

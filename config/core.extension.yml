@@ -1,0 +1,48 @@
+_core:
+  default_config_hash: 4GIX5Esnc_umpXUBj4IIocRX7Mt5fPhm4AgXfE3E56E
+module:
+  better_exposed_filters: 0
+  block: 0
+  breakpoint: 0
+  canvas: 0
+  ckeditor5: 0
+  datetime: 0
+  dblog: 0
+  dynamic_page_cache: 0
+  editor: 0
+  field: 0
+  file: 0
+  filter: 0
+  forward: 0
+  image: 0
+  link: 0
+  media: 0
+  media_library: 0
+  menu_link_content: 0
+  menu_ui: 0
+  mysql: 0
+  node: 0
+  options: 0
+  page_cache: 0
+  path: 0
+  path_alias: 0
+  registration: 0
+  registration_confirmation: 0
+  registration_waitlist: 0
+  responsive_image: 0
+  sitemap: 0
+  smart_date: 0
+  system: 0
+  taxonomy: 0
+  text: 0
+  toolbar: 0
+  update: 0
+  user: 0
+  workflows: 0
+  views: 10
+  minimal: 1000
+theme:
+  stark: 0
+  canvas_stark: 0
+  claro: 0
+profile: minimal
