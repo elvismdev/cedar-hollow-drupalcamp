@@ -11,6 +11,12 @@ props:
       type: string
       title: Heading
       examples: ["Two days, three tracks"]
+    teaser:
+      type: string
+      title: Teaser
+      contentMediaType: text/html
+      x-formatting-context: block
+      examples: ["<p>Sessions on front end, back end and site building.</p>"]
     cta_text:
       type: string
       title: Button text
@@ -38,5 +44,3 @@ props:
 slots:
   image:
     title: Image
-  teaser:
-    title: Teaser

@@ -11,14 +11,14 @@
   {% set classes = classes|merge(['is-quote']) %}
 {% endif %}
 <article{{ attributes.addClass(classes) }}>
-  {% if image %}
+  {% if image|render|trim %}
     <div class="callout__image">
       {{ image }}
     </div>
   {% endif %}
   <div class="callout__text">
     <div class="callout__wrapper">
-      {% include 'cedar_hollow:title' with {text: heading, level: '3', attributes: create_attribute({class: ['callout__title']})} only %}
+      {% include 'cedar_hollow:title' with {text: heading, level: '2', attributes: create_attribute({class: ['callout__title']})} only %}
       {% if teaser %}
         <div class="callout__teaser prose">
           {{ teaser }}

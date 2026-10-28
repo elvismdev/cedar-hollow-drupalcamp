@@ -7,12 +7,16 @@ props:
   type: object
   required: [author]
   properties:
+    quote:
+      type: string
+      title: Quote
+      contentMediaType: text/html
+      x-formatting-context: block
+      examples: ["<p>Build the component once and every page builder can use it.</p>"]
     author:
       type: string
       title: Author
       examples: ["A camp organiser"]
 slots:
-  quote:
-    title: Quote
   image:
     title: Image

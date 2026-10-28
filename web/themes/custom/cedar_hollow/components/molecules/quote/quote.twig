@@ -8,7 +8,7 @@
         <span class="quote__author">{{ author }}</span>
       </blockquote>
     </div>
-    {% if image %}
+    {% if image|render|trim %}
       <div class="quote__image">
         {{ image }}
       </div>
