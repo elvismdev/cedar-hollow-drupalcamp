@@ -1,0 +1,30 @@
+uuid: 9ec2111d-2f4c-49e7-b106-7a4c17f2b7ae
+langcode: en
+status: true
+dependencies:
+  config:
+    - canvas.js_component.agenda_builder
+active_version: 4669118a988e4b80
+versioned_properties:
+  active:
+    settings:
+      prop_field_definitions:
+        heading:
+          required: true
+          field_type: string
+          field_storage_settings: {  }
+          field_instance_settings: {  }
+          field_widget: string_textfield
+          default_value:
+            -
+              value: 'Build your agenda'
+          expression: ℹ︎string␟value
+          derived_schema_metadata:
+            string_shape: {  }
+    fallback_metadata:
+      slot_definitions: {  }
+label: 'Agenda builder'
+id: js.agenda_builder
+provider: null
+source: js
+source_local_id: agenda_builder

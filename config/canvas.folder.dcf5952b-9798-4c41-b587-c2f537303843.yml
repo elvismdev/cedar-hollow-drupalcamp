@@ -3,9 +3,11 @@ langcode: en
 status: true
 dependencies:
   config:
+    - canvas.component.js.agenda_builder
     - canvas.component.marker.page_content
 name: Other
 configEntityTypeId: component
 weight: 0
 items:
+  - js.agenda_builder
   - marker.page_content
