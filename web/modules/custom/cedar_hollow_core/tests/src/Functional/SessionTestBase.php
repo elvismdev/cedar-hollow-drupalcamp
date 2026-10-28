@@ -6,6 +6,7 @@ namespace Drupal\Tests\cedar_hollow_core\Functional;
 
 use Drupal\FunctionalTests\Core\Recipe\RecipeTestTrait;
 use Drupal\node\NodeInterface;
+use Drupal\registration\RegistrationSettingsStorage;
 use Drupal\Tests\BrowserTestBase;
 
 /**
@@ -56,7 +57,9 @@ abstract class SessionTestBase extends BrowserTestBase {
     ]);
     $etm = $this->container->get('entity_type.manager');
     $host = $etm->getHandler('node', 'registration_host_entity')->createHostEntity($node);
-    $settings = $etm->getStorage('registration_settings')->loadSettingsForHostEntity($host);
+    $storage = $etm->getStorage('registration_settings');
+    $this->assertInstanceOf(RegistrationSettingsStorage::class, $storage);
+    $settings = $storage->loadSettingsForHostEntity($host);
     $settings->set('status', TRUE);
     $settings->set('capacity', $capacity);
     $settings->set('registration_waitlist_enable', $waitlist);
@@ -66,9 +69,12 @@ abstract class SessionTestBase extends BrowserTestBase {
 
   /**
    * Returns the cache contexts header as a list.
+   *
+   * @return list<string>
+   *   The cache contexts.
    */
   protected function cacheContexts(): array {
-    return array_filter(explode(' ', (string) $this->getSession()->getResponseHeader('X-Drupal-Cache-Contexts')));
+    return array_values(array_filter(explode(' ', (string) $this->getSession()->getResponseHeader('X-Drupal-Cache-Contexts'))));
   }
 
 }

@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Drupal\cedar_hollow_core\Hook;
 
+use Drupal\canvas\Entity\CanvasAssetInterface;
+use Drupal\canvas\EntityHandlers\CanvasAssetStorage;
 use Drupal\Core\Entity\EntityTypeManagerInterface;
 use Drupal\Core\Extension\ModuleHandlerInterface;
 use Drupal\Core\Hook\Attribute\Hook;
@@ -40,8 +42,13 @@ final class CanvasAssetHooks {
     }
     foreach (self::ASSET_ENTITY_TYPES as $entity_type_id) {
       $storage = $this->entityTypeManager->getStorage($entity_type_id);
+      if (!$storage instanceof CanvasAssetStorage) {
+        continue;
+      }
       foreach ($storage->loadMultiple() as $entity) {
-        $storage->generateFiles($entity);
+        if ($entity instanceof CanvasAssetInterface) {
+          $storage->generateFiles($entity);
+        }
       }
     }
   }

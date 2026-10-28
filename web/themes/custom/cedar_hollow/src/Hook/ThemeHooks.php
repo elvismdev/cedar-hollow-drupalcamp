@@ -47,6 +47,9 @@ final class ThemeHooks {
    *
    * Prepares scalar props for the date-badge, session-meta and
    * seats-indicator components, in every view mode.
+   *
+   * @param array<mixed> $variables
+   *   The template variables.
    */
   #[Hook('preprocess_node__session')]
   public function preprocessNodeSession(array &$variables): void {
@@ -56,14 +59,16 @@ final class ThemeHooks {
 
     $time = $node->get('field_session_time')->first();
     if ($time) {
+      $start = (int) $time->getValue()['value'];
+      $end = (int) $time->getValue()['end_value'];
       $variables['date_badge'] = [
-        'month' => $this->formatTime((int) $time->value, 'M'),
-        'day' => $this->formatTime((int) $time->value, 'j'),
+        'month' => $this->formatTime($start, 'M'),
+        'day' => $this->formatTime($start, 'j'),
       ];
       $variables['time_range'] = (string) $this->t('@day, @start to @end', [
-        '@day' => $this->formatTime((int) $time->value, 'D j M'),
-        '@start' => $this->formatTime((int) $time->value, 'g:ia'),
-        '@end' => $this->formatTime((int) $time->end_value, 'g:ia'),
+        '@day' => $this->formatTime($start, 'D j M'),
+        '@start' => $this->formatTime($start, 'g:ia'),
+        '@end' => $this->formatTime($end, 'g:ia'),
       ]);
     }
 
@@ -82,6 +87,9 @@ final class ThemeHooks {
    * Implements hook_preprocess_HOOK() for html.
    *
    * Surface selects its theme variables with a data-theme attribute on html.
+   *
+   * @param array<mixed> $variables
+   *   The template variables.
    */
   #[Hook('preprocess_html')]
   public function preprocessHtml(array &$variables): void {
@@ -90,6 +98,9 @@ final class ThemeHooks {
 
   /**
    * Implements hook_preprocess_HOOK() for page.
+   *
+   * @param array<mixed> $variables
+   *   The template variables.
    */
   #[Hook('preprocess_page')]
   public function preprocessPage(array &$variables): void {
@@ -103,6 +114,11 @@ final class ThemeHooks {
 
   /**
    * Implements hook_theme_suggestions_HOOK_alter() for form.
+   *
+   * @param string[] $suggestions
+   *   The template suggestions.
+   * @param array<mixed> $variables
+   *   The template variables.
    */
   #[Hook('theme_suggestions_form_alter')]
   public function themeSuggestionsFormAlter(array &$suggestions, array $variables): void {
@@ -115,6 +131,9 @@ final class ThemeHooks {
    * Implements hook_preprocess_HOOK() for form.
    *
    * Gives the sign-up form a heading naming the session from the route.
+   *
+   * @param array<mixed> $variables
+   *   The template variables.
    */
   #[Hook('preprocess_form')]
   public function preprocessForm(array &$variables): void {
@@ -134,6 +153,9 @@ final class ThemeHooks {
    * Implements hook_form_FORM_ID_alter() for views_exposed_form.
    *
    * Makes the exposed filters' submit the primary button.
+   *
+   * @param array<mixed> $form
+   *   The exposed form.
    */
   #[Hook('form_views_exposed_form_alter')]
   public function formViewsExposedFormAlter(array &$form): void {
@@ -146,6 +168,11 @@ final class ThemeHooks {
    * Implements hook_theme_suggestions_HOOK_alter() for views_exposed_form.
    *
    * Views offers no per-view suggestion for its exposed form.
+   *
+   * @param string[] $suggestions
+   *   The template suggestions.
+   * @param array<mixed> $variables
+   *   The template variables.
    */
   #[Hook('theme_suggestions_views_exposed_form_alter')]
   public function themeSuggestionsViewsExposedFormAlter(array &$suggestions, array $variables): void {

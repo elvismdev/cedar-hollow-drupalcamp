@@ -1,0 +1,8 @@
+# Static analysis of this repository's own PHP. phpstan-drupal (installed with
+# phpstan/extension-installer) teaches PHPStan about Drupal's services and
+# entities; the deprecation rules flag APIs removed in the next major.
+parameters:
+  level: 6
+  paths:
+    - web/modules/custom
+    - web/themes/custom/cedar_hollow/src

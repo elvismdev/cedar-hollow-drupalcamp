@@ -57,6 +57,9 @@ final class AgendaEndpointTest extends SessionTestBase {
 
   /**
    * Returns the sessions from the current JSON response.
+   *
+   * @return list<array<string, mixed>>
+   *   The sessions.
    */
   private function agenda(): array {
     return json_decode($this->getSession()->getPage()->getContent(), TRUE)['sessions'];

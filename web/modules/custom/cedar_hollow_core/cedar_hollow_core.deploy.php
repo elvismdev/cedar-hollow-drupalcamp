@@ -7,6 +7,8 @@
 
 declare(strict_types=1);
 
+use Drupal\registration\RegistrationSettingsStorage;
+
 /**
  * Sets the demo's one full session to a single seat with the wait list on.
  *
@@ -24,7 +26,11 @@ function cedar_hollow_core_deploy_full_session_capacity(): string {
     return "No session with UUID $uuid; nothing changed.";
   }
   $host = $etm->getHandler('node', 'registration_host_entity')->createHostEntity($node);
-  $settings = $etm->getStorage('registration_settings')->loadSettingsForHostEntity($host);
+  $storage = $etm->getStorage('registration_settings');
+  if (!$storage instanceof RegistrationSettingsStorage) {
+    return 'Registration settings storage is not available; nothing changed.';
+  }
+  $settings = $storage->loadSettingsForHostEntity($host);
   $settings->set('status', TRUE);
   $settings->set('capacity', 1);
   $settings->set('registration_waitlist_enable', TRUE);

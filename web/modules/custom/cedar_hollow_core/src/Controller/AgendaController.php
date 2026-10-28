@@ -9,7 +9,6 @@ use Drupal\Core\Cache\CacheableMetadata;
 use Drupal\Core\DependencyInjection\ContainerInjectionInterface;
 use Drupal\Core\Entity\EntityTypeManagerInterface;
 use Drupal\Core\Url;
-use Drupal\node\NodeInterface;
 use Drupal\registration_waitlist\HostEntityInterface as WaitListHostEntityInterface;
 use Symfony\Component\DependencyInjection\ContainerInterface;
 
@@ -65,7 +64,6 @@ final class AgendaController implements ContainerInjectionInterface {
     $time_zone = new \DateTimeZone(self::TIME_ZONE);
     $sessions = [];
     foreach ($storage->loadMultiple($nids) as $node) {
-      assert($node instanceof NodeInterface);
       $host = $handler->createHostEntity($node);
       $cacheability->addCacheableDependency($host);
       if (!$host->isConfiguredForRegistration()) {
@@ -105,8 +103,8 @@ final class AgendaController implements ContainerInjectionInterface {
         'id' => (int) $node->id(),
         'title' => $node->label(),
         'url' => $url->getGeneratedUrl(),
-        'start' => $time ? (new \DateTimeImmutable('@' . $time->value))->setTimezone($time_zone)->format(DATE_ATOM) : NULL,
-        'end' => $time ? (new \DateTimeImmutable('@' . $time->end_value))->setTimezone($time_zone)->format(DATE_ATOM) : NULL,
+        'start' => $time ? $this->formatTime($time->getValue()['value'], $time_zone) : NULL,
+        'end' => $time ? $this->formatTime($time->getValue()['end_value'], $time_zone) : NULL,
         'day' => $node->get('field_day')->value,
         'room' => $node->get('field_room')->value,
         'track' => $track?->label(),
@@ -125,6 +123,13 @@ final class AgendaController implements ContainerInjectionInterface {
     ]);
     $response->addCacheableDependency($cacheability);
     return $response;
+  }
+
+  /**
+   * Formats a Unix timestamp as ISO 8601 in the camp's time zone.
+   */
+  private function formatTime(int|string $timestamp, \DateTimeZone $time_zone): string {
+    return (new \DateTimeImmutable('@' . $timestamp))->setTimezone($time_zone)->format(DATE_ATOM);
   }
 
 }
