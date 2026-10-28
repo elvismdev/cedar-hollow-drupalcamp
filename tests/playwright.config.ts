@@ -12,6 +12,10 @@ export default defineConfig({
   reporter: [['list']],
   use: {
     ...devices['Desktop Chrome'],
+    // The full Chromium build in its new headless mode. The default headless
+    // shell's requests are refused on Pantheon sandboxes: CSS and JS come back
+    // as 403 pages.
+    channel: 'chromium',
     baseURL: BASE_URL,
     ignoreHTTPSErrors: true,
   },

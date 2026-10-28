@@ -18,7 +18,8 @@ for (const path of PAGES) {
   });
 }
 
-test('axe finds no WCAG 2.2 AA violations on the sign-up page', async ({ page }) => {
+test('axe finds no WCAG 2.2 AA violations on the sign-up page', async ({ page, baseURL }) => {
+  test.skip(baseURL?.includes('pantheonsite.io') ?? false, 'Pantheon sandboxes may answer a browser on the sign-up route with a bot challenge; this scan runs against DDEV.');
   await page.goto('/sessions/caching-render-arrays');
   await page.getByRole('link', { name: 'Sign up for this session' }).click();
   await expect(page.getByRole('heading', { name: 'Sign up: Caching render arrays' })).toBeVisible();

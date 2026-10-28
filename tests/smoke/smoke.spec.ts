@@ -7,10 +7,16 @@ for (const path of ['/', '/sessions', '/sessions/caching-render-arrays', '/agend
   });
 }
 
-test('the sign-up page loads', async ({ page }) => {
-  await page.goto('/sessions/caching-render-arrays');
-  await page.getByRole('link', { name: 'Sign up for this session' }).click();
-  await expect(page.getByRole('heading', { name: 'Sign up: Caching render arrays' })).toBeVisible();
+test('the sign-up page is served with its form', async ({ request, baseURL }) => {
+  test.skip(baseURL?.includes('pantheonsite.io') ?? false, 'Pantheon sandboxes may answer automated requests on the sign-up path with a bot challenge, which a test must not get past; the e2e suite submits this form against DDEV.');
+  const session = await (await request.get('/sessions/caching-render-arrays')).text();
+  const register = session.match(/href="([^"]*\/register)"/)?.[1];
+  expect(register, 'sign-up link on the session page').toBeTruthy();
+  const response = await request.get(register!);
+  expect(response.status()).toBe(200);
+  const html = await response.text();
+  expect(html).toContain('Sign up: Caching render arrays');
+  expect(html).toContain('Save Registration');
 });
 
 test('the agenda data is uncached at the edge and tagged per session', async ({ request }) => {
