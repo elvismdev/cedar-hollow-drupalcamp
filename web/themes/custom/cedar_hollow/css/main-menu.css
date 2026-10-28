@@ -1,7 +1,9 @@
 /**
  * @file
- * Main menu in the site header. Below the tablet breakpoint the list is
- * hidden until the toggle button opens it.
+ * Main menu in the site header. Every link shows by default; once the
+ * menu-toggle behavior marks the menu collapsible, small screens collapse the
+ * list behind the toggle button. The breakpoint is the page's, since the menu
+ * spans the header.
  */
 
 @layer reset, tokens, base, atoms, components, collections, layouts, utilities;
@@ -10,39 +12,38 @@
   .main-menu {
     display: flex;
     flex-direction: column;
+    gap: var(--size-2);
     align-items: flex-end;
   }
 
   .main-menu__toggle {
     min-block-size: var(--target-size);
-    padding-inline: var(--space-m);
+    padding-inline: var(--size-4);
     border: 2px solid var(--color-accent);
-    border-radius: var(--radius-s);
+    border-radius: var(--radius-2);
     background-color: var(--color-surface);
     color: var(--color-accent);
     font: inherit;
-    font-weight: 700;
+    font-weight: var(--font-weight-700);
     cursor: pointer;
   }
 
   .main-menu__list {
-    display: none;
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--size-3);
     margin: 0;
     padding: 0;
     list-style: none;
-
-    &.is-open {
-      display: block;
-    }
   }
 
   .main-menu__link {
     display: inline-flex;
     align-items: center;
     min-block-size: var(--target-size);
-    padding-inline: var(--space-xs);
+    padding-inline: var(--size-2);
     color: var(--color-text);
-    font-weight: 700;
+    font-weight: var(--font-weight-700);
     text-decoration: none;
 
     &:hover,
@@ -52,14 +53,20 @@
     }
   }
 
-  @media (width >= 48em) {
-    .main-menu__toggle {
+  @media (width < 48rem) {
+    .main-menu--collapsible .main-menu__list:not(.is-open) {
       display: none;
     }
 
-    .main-menu__list {
-      display: flex;
-      gap: var(--space-s);
+    .main-menu--collapsible .main-menu__list {
+      flex-direction: column;
+      gap: 0;
+    }
+  }
+
+  @media (width >= 48rem) {
+    .main-menu__toggle {
+      display: none;
     }
   }
 }
