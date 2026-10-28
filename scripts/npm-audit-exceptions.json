@@ -1,0 +1,22 @@
+{
+  "GHSA-fp25-p6mj-qqg6": {
+    "package": "locutus",
+    "reason": "Reached only through twig.js in the theme's Storybook, which renders the theme's own templates with fixed story data; no visitor input reaches locutus, and the Drupal site does not load it. locutus 3.x moves the modules twig.js imports, so no patched version is installable.",
+    "review_by": "2027-01-31"
+  },
+  "GHSA-vh9h-29pq-r5m8": {
+    "package": "locutus",
+    "reason": "Same dependency path and reasoning as GHSA-fp25-p6mj-qqg6.",
+    "review_by": "2027-01-31"
+  },
+  "GHSA-vc8f-x9pp-wf5p": {
+    "package": "locutus",
+    "reason": "Same dependency path and reasoning as GHSA-fp25-p6mj-qqg6.",
+    "review_by": "2027-01-31"
+  },
+  "GHSA-4mph-v827-f877": {
+    "package": "locutus",
+    "reason": "Same dependency path and reasoning as GHSA-fp25-p6mj-qqg6.",
+    "review_by": "2027-01-31"
+  }
+}
