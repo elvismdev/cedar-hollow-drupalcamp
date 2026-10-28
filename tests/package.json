@@ -5,7 +5,8 @@
   "scripts": {
     "test": "playwright test --project=e2e --project=a11y",
     "test:smoke": "playwright test --project=smoke --project=a11y",
-    "pa11y": "pa11y-ci --config a11y/pa11yci.cjs"
+    "pa11y": "pa11y-ci --config a11y/pa11yci.cjs",
+    "test:visual": "docker run --rm --ipc=host --user \"$(id -u):$(id -g)\" -e HOME=/tmp -v \"$(cd .. && pwd)\":/work -w /work/tests mcr.microsoft.com/playwright:v1.64.1-noble npx playwright test --project=visual"
   },
   "devDependencies": {
     "@axe-core/playwright": "4.14.0",

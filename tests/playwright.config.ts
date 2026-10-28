@@ -23,6 +23,8 @@ export default defineConfig({
     // Changes data (registrations), so DDEV only.
     { name: 'e2e', testDir: './e2e' },
     { name: 'a11y', testDir: './a11y', use: { extraHTTPHeaders: bypass } },
+    // Storybook screenshots; run in the Playwright Docker image (npm run test:visual).
+    { name: 'visual', testDir: './visual', use: { channel: undefined } },
     // Read-only, safe against Pantheon.
     { name: 'smoke', testDir: './smoke', use: { extraHTTPHeaders: bypass } },
   ],
