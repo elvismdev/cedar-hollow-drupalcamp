@@ -8,6 +8,10 @@
  * with scripts/export-demo-content.sh. It deletes existing tracks, speakers,
  * sessions, registrations, menu links and Canvas pages first, so it only runs
  * on a local site. Every Canvas page is validated before it is saved.
+ *
+ * Each run creates new UUIDs. After exporting, update the session UUID in
+ * cedar_hollow_core_deploy_full_session_capacity(), which finds the full
+ * session by UUID.
  */
 
 use Drupal\canvas\Entity\Component;
@@ -16,7 +20,7 @@ use Drupal\menu_link_content\Entity\MenuLinkContent;
 use Drupal\node\Entity\Node;
 use Drupal\taxonomy\Entity\Term;
 
-const TIME_ZONE = 'America/New_York';
+$time_zone = new DateTimeZone('America/New_York');
 
 $etm = \Drupal::entityTypeManager();
 $uuid = \Drupal::service('uuid');
@@ -60,27 +64,157 @@ foreach ([
   $speakers[$name] = $speaker;
 }
 
-// [title, day, start, end, room, track, speakers, capacity, summary].
 $sessions = [
-  ['Theming with SDC', 'fri', '10:00', '10:45', 'Hall A', 'Front end', ['Ana Calder'], 1, 'Build components once and use them in Storybook, Twig templates and Canvas.'],
-  ['Caching render arrays', 'fri', '10:15', '11:00', 'Hall B', 'Back end', ['Ben Okafor'], 40, 'Cache tags, contexts and max-age, and how to see them in response headers.'],
-  ['Storybook for Drupal themes', 'fri', '11:15', '12:00', 'Hall A', 'Front end', ['Chloe Marsh'], 40, 'Render Twig components in Storybook with the same CSS Drupal loads.'],
-  ['Recipes in practice', 'fri', '11:30', '12:15', 'Hall B', 'Site building', ['Dev Raman'], 40, 'Package a feature as a recipe and apply it to a fresh site.'],
-  ['Entity Registration for events', 'fri', '13:30', '14:15', 'Hall A', 'Back end', ['Femi Adeyemi'], 40, 'Capacity, wait lists and confirmation messages with Entity Registration.'],
-  ['Accessible forms in Drupal', 'fri', '14:30', '15:15', 'Hall B', 'Front end', ['Elena Ruiz'], 40, 'Labels, errors and focus in Form API, checked with a screen reader.'],
-  ['Canvas for site builders', 'sat', '09:00', '09:45', 'Hall A', 'Site building', ['Grace Lindqvist'], 40, 'Assemble landing pages from theme components in Drupal Canvas.'],
-  ['Preprocess hooks without the mess', 'sat', '09:30', '10:15', 'Hall B', 'Back end', ['Ben Okafor', 'Hugo Tanaka'], 40, 'Keep templates thin by preparing values in object-oriented hooks.'],
-  ['Cascade layers and BEM', 'sat', '10:30', '11:15', 'Hall A', 'Front end', ['Hugo Tanaka'], 40, 'Order theme CSS with cascade layers instead of specificity.'],
-  ['Configuration and deploys on Pantheon', 'sat', '10:30', '11:15', 'Hall B', 'Back end', ['Dev Raman'], 40, 'Move configuration from local to Dev, Test and Live with drush deploy.'],
-  ['Views and exposed filters', 'sat', '13:00', '13:45', 'Hall A', 'Site building', ['Grace Lindqvist'], 40, 'Build filtered listings with Views and Better Exposed Filters.'],
-  ['Closing panel', 'sat', '14:00', '14:45', 'Atrium', 'Site building', ['Ana Calder', 'Femi Adeyemi', 'Elena Ruiz'], 40, 'What the camp learned, and what to build next.'],
+  [
+    'title' => 'Theming with SDC',
+    'day' => 'fri',
+    'start' => '10:00',
+    'end' => '10:45',
+    'room' => 'Hall A',
+    'track' => 'Front end',
+    'speakers' => ['Ana Calder'],
+    'capacity' => 1,
+    'summary' => 'Build components once and use them in Storybook, Twig templates and Canvas.',
+  ],
+  [
+    'title' => 'Caching render arrays',
+    'day' => 'fri',
+    'start' => '10:15',
+    'end' => '11:00',
+    'room' => 'Hall B',
+    'track' => 'Back end',
+    'speakers' => ['Ben Okafor'],
+    'capacity' => 40,
+    'summary' => 'Cache tags, contexts and max-age, and how to see them in response headers.',
+  ],
+  [
+    'title' => 'Storybook for Drupal themes',
+    'day' => 'fri',
+    'start' => '11:15',
+    'end' => '12:00',
+    'room' => 'Hall A',
+    'track' => 'Front end',
+    'speakers' => ['Chloe Marsh'],
+    'capacity' => 40,
+    'summary' => 'Render Twig components in Storybook with the same CSS Drupal loads.',
+  ],
+  [
+    'title' => 'Recipes in practice',
+    'day' => 'fri',
+    'start' => '11:30',
+    'end' => '12:15',
+    'room' => 'Hall B',
+    'track' => 'Site building',
+    'speakers' => ['Dev Raman'],
+    'capacity' => 40,
+    'summary' => 'Package a feature as a recipe and apply it to a fresh site.',
+  ],
+  [
+    'title' => 'Entity Registration for events',
+    'day' => 'fri',
+    'start' => '13:30',
+    'end' => '14:15',
+    'room' => 'Hall A',
+    'track' => 'Back end',
+    'speakers' => ['Femi Adeyemi'],
+    'capacity' => 40,
+    'summary' => 'Capacity, wait lists and confirmation messages with Entity Registration.',
+  ],
+  [
+    'title' => 'Accessible forms in Drupal',
+    'day' => 'fri',
+    'start' => '14:30',
+    'end' => '15:15',
+    'room' => 'Hall B',
+    'track' => 'Front end',
+    'speakers' => ['Elena Ruiz'],
+    'capacity' => 40,
+    'summary' => 'Labels, errors and focus in Form API, checked with a screen reader.',
+  ],
+  [
+    'title' => 'Canvas for site builders',
+    'day' => 'sat',
+    'start' => '09:00',
+    'end' => '09:45',
+    'room' => 'Hall A',
+    'track' => 'Site building',
+    'speakers' => ['Grace Lindqvist'],
+    'capacity' => 40,
+    'summary' => 'Assemble landing pages from theme components in Drupal Canvas.',
+  ],
+  [
+    'title' => 'Preprocess hooks without the mess',
+    'day' => 'sat',
+    'start' => '09:30',
+    'end' => '10:15',
+    'room' => 'Hall B',
+    'track' => 'Back end',
+    'speakers' => ['Ben Okafor', 'Hugo Tanaka'],
+    'capacity' => 40,
+    'summary' => 'Keep templates thin by preparing values in object-oriented hooks.',
+  ],
+  [
+    'title' => 'Cascade layers and BEM',
+    'day' => 'sat',
+    'start' => '10:30',
+    'end' => '11:15',
+    'room' => 'Hall A',
+    'track' => 'Front end',
+    'speakers' => ['Hugo Tanaka'],
+    'capacity' => 40,
+    'summary' => 'Order theme CSS with cascade layers instead of specificity.',
+  ],
+  [
+    'title' => 'Configuration and deploys on Pantheon',
+    'day' => 'sat',
+    'start' => '10:30',
+    'end' => '11:15',
+    'room' => 'Hall B',
+    'track' => 'Back end',
+    'speakers' => ['Dev Raman'],
+    'capacity' => 40,
+    'summary' => 'Move configuration from local to Dev, Test and Live with drush deploy.',
+  ],
+  [
+    'title' => 'Views and exposed filters',
+    'day' => 'sat',
+    'start' => '13:00',
+    'end' => '13:45',
+    'room' => 'Hall A',
+    'track' => 'Site building',
+    'speakers' => ['Grace Lindqvist'],
+    'capacity' => 40,
+    'summary' => 'Build filtered listings with Views and Better Exposed Filters.',
+  ],
+  [
+    'title' => 'Closing panel',
+    'day' => 'sat',
+    'start' => '14:00',
+    'end' => '14:45',
+    'room' => 'Atrium',
+    'track' => 'Site building',
+    'speakers' => ['Ana Calder', 'Femi Adeyemi', 'Elena Ruiz'],
+    'capacity' => 40,
+    'summary' => 'What the camp learned, and what to build next.',
+  ],
 ];
 $dates = ['fri' => '2027-03-12', 'sat' => '2027-03-13'];
 $host_handler = $etm->getHandler('node', 'registration_host_entity');
 $settings_storage = $etm->getStorage('registration_settings');
-foreach ($sessions as [$title, $day, $start, $end, $room, $track, $names, $capacity, $summary]) {
-  $from = new DateTimeImmutable("{$dates[$day]} $start", new DateTimeZone(TIME_ZONE));
-  $to = new DateTimeImmutable("{$dates[$day]} $end", new DateTimeZone(TIME_ZONE));
+foreach ($sessions as $session) {
+  [
+    'title' => $title,
+    'day' => $day,
+    'start' => $start,
+    'end' => $end,
+    'room' => $room,
+    'track' => $track,
+    'speakers' => $names,
+    'capacity' => $capacity,
+    'summary' => $summary,
+  ] = $session;
+  $from = new DateTimeImmutable("{$dates[$day]} $start", $time_zone);
+  $to = new DateTimeImmutable("{$dates[$day]} $end", $time_zone);
   $node = Node::create([
     'type' => 'session',
     'title' => $title,
@@ -93,7 +227,7 @@ foreach ($sessions as [$title, $day, $start, $end, $room, $track, $names, $capac
       'value' => $from->getTimestamp(),
       'end_value' => $to->getTimestamp(),
       'duration' => ($to->getTimestamp() - $from->getTimestamp()) / 60,
-      'timezone' => TIME_ZONE,
+      'timezone' => $time_zone->getName(),
     ],
     'field_registration' => ['registration_type' => 'attendee'],
     'status' => 1,
@@ -167,31 +301,50 @@ $track_cards = array_map(
   array_values($tracks),
 );
 
-$skills = ['Twig', 'Template suggestions', 'Preprocess hooks', 'Single Directory Components', 'Storybook', 'Drupal Canvas', 'Recipes', 'Views', 'Accessibility', 'Pantheon'];
+$skills = [
+  'Twig',
+  'Template suggestions',
+  'Preprocess hooks',
+  'Single Directory Components',
+  'Storybook',
+  'Drupal Canvas',
+  'Recipes',
+  'Views',
+  'Accessibility',
+  'Pantheon',
+];
 
 $pages = [
   ['Welcome to Cedar Hollow DrupalCamp', '/home', [
-    $item('sdc.cedar_hollow.page-section', ['width' => 'wide'], ['content' => [
-      $item('sdc.cedar_hollow.callout', [
-        'heading' => '12 and 13 March 2027',
-        'teaser' => '<p>Two days of sessions on front end, back end and site building, with seats you can claim and an agenda you can plan.</p>',
-        'cta_text' => 'Browse sessions',
-        'cta_url' => '/sessions',
-        'cta_variant' => 'primary',
-        'layout' => 'stacked',
-        'style' => 'default',
-      ]),
-      $item('sdc.cedar_hollow.button', ['text' => 'Build your agenda', 'url' => '/agenda', 'variant' => 'secondary']),
-    ]]),
-    $item('sdc.cedar_hollow.page-section', ['heading' => 'Three tracks', 'width' => 'wide'], ['content' => [
-      $item('sdc.cedar_hollow.card-grid', ['columns' => '3'], ['items' => $track_cards]),
-    ]]),
-  ]],
+    $item('sdc.cedar_hollow.page-section', ['width' => 'wide'], [
+      'content' => [
+        $item('sdc.cedar_hollow.callout', [
+          'heading' => '12 and 13 March 2027',
+          'teaser' => '<p>Two days of sessions on front end, back end and site building, with seats you can claim and an agenda you can plan.</p>',
+          'cta_text' => 'Browse sessions',
+          'cta_url' => '/sessions',
+          'cta_variant' => 'primary',
+          'layout' => 'stacked',
+          'style' => 'default',
+        ]),
+        $item('sdc.cedar_hollow.button', ['text' => 'Build your agenda', 'url' => '/agenda', 'variant' => 'secondary']),
+      ],
+    ]),
+    $item('sdc.cedar_hollow.page-section', ['heading' => 'Three tracks', 'width' => 'wide'], [
+      'content' => [
+        $item('sdc.cedar_hollow.card-grid', ['columns' => '3'], ['items' => $track_cards]),
+      ],
+    ]),
+  ],
+  ],
   ['Agenda', '/agenda', [
-    $item('sdc.cedar_hollow.page-section', ['width' => 'wide'], ['content' => [
-      $item('js.agenda_builder', ['heading' => 'Build your agenda']),
-    ]]),
-  ]],
+    $item('sdc.cedar_hollow.page-section', ['width' => 'wide'], [
+      'content' => [
+        $item('js.agenda_builder', ['heading' => 'Build your agenda']),
+      ],
+    ]),
+  ],
+  ],
   ['About this demo', '/about', [
     $item('sdc.cedar_hollow.two-column', ['ratio' => '60-40'], [
       'primary' => [
@@ -213,18 +366,22 @@ $pages = [
         array_map(fn($skill) => $item('sdc.cedar_hollow.tag', ['label' => $skill]), $skills),
       ),
     ]),
-  ]],
+  ],
+  ],
   ['Try Canvas here', '/try-canvas', [
-    $item('sdc.cedar_hollow.page-section', ['width' => 'narrow'], ['content' => [
-      $item('sdc.cedar_hollow.title', ['text' => 'Edit this page', 'level' => '2']),
-      $item('sdc.cedar_hollow.callout', [
-        'heading' => 'Reviewers may change this page',
-        'teaser' => '<p>Log in with the demo editor account, open this page in Canvas, and add or rearrange components from the theme.</p>',
-        'layout' => 'stacked',
-        'style' => 'default',
-      ]),
-    ]]),
-  ]],
+    $item('sdc.cedar_hollow.page-section', ['width' => 'narrow'], [
+      'content' => [
+        $item('sdc.cedar_hollow.title', ['text' => 'Edit this page', 'level' => '2']),
+        $item('sdc.cedar_hollow.callout', [
+          'heading' => 'Reviewers may change this page',
+          'teaser' => '<p>Log in with the demo editor account, open this page in Canvas, and add or rearrange components from the theme.</p>',
+          'layout' => 'stacked',
+          'style' => 'default',
+        ]),
+      ],
+    ]),
+  ],
+  ],
 ];
 
 foreach ($pages as [$title, $alias, $tree]) {
