@@ -40,12 +40,6 @@
       border-color: var(--gray-300);
     }
 
-    &:focus {
-      box-shadow: 0 0 var(--white), 0 0 0 2px var(--gray-400), 0 0 var(--white);
-      outline: 2px solid transparent;
-      outline-offset: 2px;
-    }
-
     &[aria-expanded='true'] {
       &:focus::after {
         border-color: var(--gray-300);
@@ -98,10 +92,6 @@
       color: var(--white);
     }
 
-    &:focus {
-      box-shadow: 0 0 var(--white), 0 0 0 2px var(--brand-primary), 0 0 var(--white);
-    }
-
     &:active {
       background-color: var(--brand-primary-dark);
       color: var(--white);
@@ -124,10 +114,6 @@
       background-color: var(--brand-accent-dark);
       border-color: var(--brand-accent-dark);
       color: var(--brand-primary-darkest);
-    }
-
-    &:focus {
-      box-shadow: 0 0 var(--white), 0 0 0 2px var(--brand-accent), 0 0 var(--white);
     }
 
     &:active {
@@ -157,10 +143,6 @@
       color: var(--gray-200);
     }
 
-    &:focus {
-      box-shadow: 0 0 var(--white), 0 0 0 2px var(--white), 0 0 var(--white);
-    }
-
     & svg {
       inline-size: 1em;
       margin-inline-end: var(--size-2);
@@ -181,10 +163,6 @@
     &:hover {
       background-color: inherit;
       color: var(--gray-200);
-    }
-
-    &:focus {
-      box-shadow: 0 0 var(--white), 0 0 0 2px var(--white), 0 0 var(--white);
     }
 
     & svg {
@@ -208,10 +186,6 @@
     &:hover {
       background-color: inherit;
       color: var(--gray-200);
-    }
-
-    &:focus {
-      box-shadow: 0 0 var(--white), 0 0 0 2px var(--white), 0 0 var(--white);
     }
 
     & svg {
