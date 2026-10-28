@@ -4,6 +4,7 @@
 /** @type { import('@storybook/html-vite').Preview } */
 import { useEffect } from 'storybook/preview-api';
 
+import coreHiddenCss from '../../../../core/modules/system/css/components/hidden.module.css?inline';
 import './drupal/drupal';
 import './drupal/once';
 
@@ -35,6 +36,12 @@ import '../js/menu-toggle.js';
 
 // Every story's "Source on GitHub" link starts with this.
 globalThis.REPO_URL = 'https://github.com/elvismdev/cedar-hollow-drupalcamp';
+
+// Core's .visually-hidden, which Drupal pages load from the system module.
+// Vite treats *.module.css as a CSS Module, so the file is added as text.
+const coreHidden = document.createElement('style');
+coreHidden.textContent = coreHiddenCss;
+document.head.prepend(coreHidden);
 
 // Surface's theme variant, as Drupal sets it in preprocess_html.
 document.documentElement.dataset.theme = 'surface';
