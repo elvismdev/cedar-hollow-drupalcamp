@@ -37,7 +37,7 @@ final class LoggerMailTest extends KernelTestBase {
    */
   public function testMailIsLogged(): void {
     $subject = 'Probe ' . bin2hex(random_bytes(4));
-    $plugin = new LoggerMail();
+    $plugin = new LoggerMail($this->container->get('logger.factory')->get(LoggerMail::CHANNEL));
     $message = $plugin->format([
       'to' => 'someone@example.com',
       'subject' => $subject,
