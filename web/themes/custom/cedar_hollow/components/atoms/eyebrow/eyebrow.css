@@ -1,0 +1,34 @@
+/**
+ * @file
+ * Eyebrow styles.
+ */
+
+/* Ported from uclahs/surface source/patterns/elements/eyebrow/eyebrow.css at 76e5dc6 (GPL-2.0-or-later). */
+
+@layer reset, tokens, base, atoms, components, collections, layouts, utilities;
+
+@layer atoms {
+  .eyebrow {
+    color: var(--gray-500);
+    display: inline-block;
+    font-size: var(--font-size-0);
+
+    span,
+    .eyebrow__link {
+      display: inline-block;
+      font-size: inherit;
+      line-height: var(--leading-tight);
+      text-transform: uppercase;
+    }
+
+    &:hover {
+      .eyebrow__link {
+        color: var(--brand-primary);
+      }
+    }
+
+    &.eyebrow--light {
+      color: var(--white);
+    }
+  }
+}

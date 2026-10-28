@@ -1,0 +1,269 @@
+/**
+ * @file
+ * Button styles.
+ */
+
+/* Ported from uclahs/surface source/patterns/elements/button/button.css at 76e5dc6 (GPL-2.0-or-later). */
+
+@layer reset, tokens, base, atoms, components, collections, layouts, utilities;
+
+@layer atoms {
+  /* Exclude the initial button styles if the classes `prose` or `button--link` exist in the element. */
+  .button:not(:where([class~='prose'] *, .button--link)) {
+    align-items: center;
+    appearance: none;
+    background-color: var(--gray-300);
+    border-color: var(--gray-300);
+    border-radius: 0;
+    border-width: 1px;
+    color: var(--black);
+    cursor: pointer;
+    display: inline-flex;
+    font-family: var(--font-system);
+    font-size: var(--font-size-1);
+    font-weight: var(--font-weight-700);
+    inline-size: fit-content;
+    justify-content: center;
+    line-height: var(--leading-none);
+    padding-block: var(--size-4);
+    padding-inline: var(--size-6);
+    position: relative;
+    transition: var(--transition-soft-linear);
+    white-space: nowrap;
+
+    &:visited {
+      color: var(--black);
+    }
+
+    &:hover {
+      background-color: var(--gray-200);
+      border-color: var(--gray-300);
+    }
+
+    &:focus {
+      box-shadow: 0 0 var(--white), 0 0 0 2px var(--gray-400), 0 0 var(--white);
+      outline: 2px solid transparent;
+      outline-offset: 2px;
+    }
+
+    &[aria-expanded='true'] {
+      &:focus::after {
+        border-color: var(--gray-300);
+      }
+    }
+
+    &:disabled {
+      background-color: var(--gray-300);
+      color: var(--gray-500);
+      cursor: not-allowed;
+      pointer-events: none;
+    }
+
+    /* If two buttons are added, this should add some separation. */
+    + .button {
+      margin-block: var(--size-4);
+
+      @media (width >= 1024px) {
+        margin-block: 0;
+        margin-inline-start: var(--size-2);
+      }
+    }
+
+    svg {
+      block-size: 1em;
+      display: inline-block;
+      inline-size: 1em;
+      margin-inline-start: var(--size-2);
+
+      path {
+        color: inherit;
+      }
+    }
+  }
+
+  /* Button primary */
+  .button--primary {
+    background-color: var(--brand-primary);
+    border-color: var(--brand-primary);
+    color: var(--white);
+    font-family: var(--font-body);
+
+    &:visited {
+      background-color: var(--brand-primary);
+      color: var(--white);
+    }
+
+    &:hover {
+      background-color: var(--brand-primary-dark);
+      color: var(--white);
+    }
+
+    &:focus {
+      box-shadow: 0 0 var(--white), 0 0 0 2px var(--brand-primary), 0 0 var(--white);
+    }
+
+    &:active {
+      background-color: var(--brand-primary-dark);
+      color: var(--white);
+    }
+  }
+
+  /* Button secondary */
+  .button--secondary {
+    background-color: var(--brand-accent);
+    border-color: var(--brand-accent);
+    color: var(--brand-primary-darkest);
+    font-family: var(--font-body);
+
+    &:visited {
+      background-color: var(--brand-accent);
+      color: var(--brand-primary-darkest);
+    }
+
+    &:hover {
+      background-color: var(--brand-accent-dark);
+      border-color: var(--brand-accent-dark);
+      color: var(--brand-primary-darkest);
+    }
+
+    &:focus {
+      box-shadow: 0 0 var(--white), 0 0 0 2px var(--brand-accent), 0 0 var(--white);
+    }
+
+    &:active {
+      background-color: var(--brand-accent-dark);
+      color: var(--brand-primary-darkest);
+    }
+  }
+
+  /* Give button */
+  .button--give {
+    background-color: transparent;
+    border: 0;
+    color: var(--white);
+    font-family: var(--font-body);
+    font-weight: var(--font-weight-400);
+    margin-block: 0;
+    padding-block: var(--size-2);
+    padding-inline: var(--size-4);
+
+    &:visited {
+      background-color: inherit;
+      color: inherit;
+    }
+
+    &:hover {
+      background-color: inherit;
+      color: var(--gray-200);
+    }
+
+    &:focus {
+      box-shadow: 0 0 var(--white), 0 0 0 2px var(--white), 0 0 var(--white);
+    }
+
+    & svg {
+      inline-size: 1em;
+      margin-inline-end: var(--size-2);
+    }
+  }
+
+  /* Translate button */
+  .button--translate {
+    background-color: transparent;
+    border: 0;
+    color: var(--white);
+    font-family: var(--font-body);
+    font-weight: var(--font-weight-400);
+    margin-block: 0;
+    padding-block: var(--size-2);
+    padding-inline: var(--size-4);
+
+    &:hover {
+      background-color: inherit;
+      color: var(--gray-200);
+    }
+
+    &:focus {
+      box-shadow: 0 0 var(--white), 0 0 0 2px var(--white), 0 0 var(--white);
+    }
+
+    & svg {
+      inline-size: 1em;
+      margin-inline-end: var(--size-2);
+    }
+  }
+
+  /* Search button */
+  .button--search {
+    background-color: transparent;
+    border: 0;
+    color: var(--white);
+    font-family: var(--font-body);
+    font-weight: var(--font-weight-400);
+    margin-block: 0;
+    margin-inline-end: 0;
+    padding-block: var(--size-2);
+    padding-inline: var(--size-4);
+
+    &:hover {
+      background-color: inherit;
+      color: var(--gray-200);
+    }
+
+    &:focus {
+      box-shadow: 0 0 var(--white), 0 0 0 2px var(--white), 0 0 var(--white);
+    }
+
+    & svg {
+      inline-size: 1em;
+      margin-inline-end: var(--size-2);
+    }
+  }
+
+  /* Button square */
+  .button--square {
+    block-size: 3rem;
+    border-radius: var(--radius-4);
+    inline-size: 3rem;
+    padding: 0;
+
+    svg {
+      block-size: 1.5rem;
+      inline-size: 1.5rem;
+      margin-inline-start: 0;
+    }
+  }
+
+  /* Outlined button. */
+  .button--outlined {
+    background-color: transparent;
+    border-color: currentColor;
+    font-family: var(--font-body);
+
+    &:hover {
+      background-color: var(--black);
+      color: var(--white);
+    }
+  }
+
+  .button--link {
+    color: inherit;
+
+    svg {
+      block-size: 1rem;
+      display: inline-block;
+      inline-size: 1rem;
+      margin-inline-start: var(--size-05);
+
+      path {
+        color: inherit;
+      }
+    }
+
+    /* If the link has an icon, ensure it is vertically aligned with text. */
+    &:has(svg) {
+      align-items: center;
+      display: flex;
+    }
+  }
+}
