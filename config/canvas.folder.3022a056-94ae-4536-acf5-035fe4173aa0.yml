@@ -7,7 +7,6 @@ dependencies:
     - canvas.component.sdc.cedar_hollow.date
     - canvas.component.sdc.cedar_hollow.date-badge
     - canvas.component.sdc.cedar_hollow.eyebrow
-    - canvas.component.sdc.cedar_hollow.heading
     - canvas.component.sdc.cedar_hollow.readtime
     - canvas.component.sdc.cedar_hollow.seats-indicator
     - canvas.component.sdc.cedar_hollow.tag
@@ -20,7 +19,6 @@ items:
   - sdc.cedar_hollow.date
   - sdc.cedar_hollow.date-badge
   - sdc.cedar_hollow.eyebrow
-  - sdc.cedar_hollow.heading
   - sdc.cedar_hollow.readtime
   - sdc.cedar_hollow.seats-indicator
   - sdc.cedar_hollow.tag
