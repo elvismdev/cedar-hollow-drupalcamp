@@ -1,0 +1,4 @@
+{% set attributes = attributes ?: create_attribute() %}
+<div{{ attributes.addClass('card-grid', 'card-grid--cols-' ~ (columns ?: '3')) }}>
+  {{ items }}
+</div>

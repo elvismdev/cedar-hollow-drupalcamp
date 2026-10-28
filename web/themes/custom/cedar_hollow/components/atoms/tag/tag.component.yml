@@ -1,0 +1,13 @@
+$schema: https://git.drupalcode.org/project/drupal/-/raw/HEAD/core/assets/schemas/v1/metadata.schema.json
+name: Tag
+status: stable
+group: Atoms
+description: "A short label, such as a skill or a track."
+props:
+  type: object
+  required: [label]
+  properties:
+    label:
+      type: string
+      title: Label
+      examples: ["Twig"]

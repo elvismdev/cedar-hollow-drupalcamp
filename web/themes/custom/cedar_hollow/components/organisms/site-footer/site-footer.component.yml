@@ -1,0 +1,13 @@
+$schema: https://git.drupalcode.org/project/drupal/-/raw/HEAD/core/assets/schemas/v1/metadata.schema.json
+name: Site footer
+status: stable
+group: Collections
+description: "Footer links and the demo notice."
+props:
+  type: object
+  properties: {}
+slots:
+  links:
+    title: Links
+  notice:
+    title: Notice

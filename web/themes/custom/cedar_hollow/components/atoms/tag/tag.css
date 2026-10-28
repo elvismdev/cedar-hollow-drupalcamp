@@ -1,0 +1,18 @@
+/**
+ * @file
+ * Tag (Atomic Design: atom).
+ */
+
+@layer reset, tokens, base, atoms, components, collections, layouts, utilities;
+
+@layer atoms {
+  .tag {
+    display: inline-block;
+    padding: var(--space-2xs) var(--space-xs);
+    border-radius: var(--radius-s);
+    background-color: var(--color-accent-soft);
+    color: var(--color-accent-strong);
+    font-size: var(--font-size-s);
+    font-weight: 700;
+  }
+}

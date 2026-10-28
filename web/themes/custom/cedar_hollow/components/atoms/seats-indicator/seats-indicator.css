@@ -1,0 +1,31 @@
+/**
+ * @file
+ * Seats indicator (Atomic Design: atom).
+ */
+
+@layer reset, tokens, base, atoms, components, collections, layouts, utilities;
+
+@layer atoms {
+  .seats-indicator {
+    display: inline-block;
+    margin: 0;
+    padding: var(--space-2xs) var(--space-xs);
+    border-inline-start: 0.25rem solid var(--color-accent);
+    background-color: var(--color-accent-soft);
+    color: var(--color-text);
+    font-size: var(--font-size-s);
+    font-weight: 700;
+  }
+
+  .seats-indicator--low,
+  .seats-indicator--waitlist {
+    border-color: var(--color-warning);
+    background-color: var(--color-warning-soft);
+  }
+
+  .seats-indicator--full,
+  .seats-indicator--closed {
+    border-color: var(--color-danger);
+    background-color: var(--color-surface-alt);
+  }
+}

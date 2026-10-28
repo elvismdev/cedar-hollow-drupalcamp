@@ -1,0 +1,42 @@
+/**
+ * @file
+ * Site footer (Atomic Design: organism).
+ */
+
+@layer reset, tokens, base, atoms, components, collections, layouts, utilities;
+
+@layer collections {
+  .site-footer {
+    border-block-start: 1px solid var(--color-border-soft);
+    background-color: var(--color-surface-alt);
+  }
+
+  .site-footer__inner {
+    display: grid;
+    gap: var(--space-s);
+    inline-size: min(100% - 2 * var(--space-m), var(--content-width));
+    margin-inline: auto;
+    padding-block: var(--space-l);
+  }
+
+  .site-footer__links ul {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-xs) var(--space-l);
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .site-footer__links a {
+    display: inline-flex;
+    align-items: center;
+    min-block-size: var(--target-size);
+  }
+
+  .site-footer__notice {
+    margin: 0;
+    color: var(--color-text-muted);
+    font-size: var(--font-size-s);
+  }
+}

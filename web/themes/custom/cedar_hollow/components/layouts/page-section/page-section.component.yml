@@ -1,0 +1,20 @@
+$schema: https://git.drupalcode.org/project/drupal/-/raw/HEAD/core/assets/schemas/v1/metadata.schema.json
+name: Page section
+status: stable
+group: Layouts
+description: "A width-constrained band of content with an optional heading."
+props:
+  type: object
+  properties:
+    heading:
+      type: string
+      title: Heading
+      examples: ["Featured sessions"]
+    width:
+      type: string
+      title: Width
+      enum: ["narrow", "wide", "full"]
+      examples: ["wide"]
+slots:
+  content:
+    title: Content

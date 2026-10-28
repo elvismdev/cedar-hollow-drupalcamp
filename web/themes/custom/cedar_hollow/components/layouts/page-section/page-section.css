@@ -1,0 +1,29 @@
+/**
+ * @file
+ * Page section (Atomic Design: template).
+ */
+
+@layer reset, tokens, base, atoms, components, collections, layouts, utilities;
+
+@layer layouts {
+  .page-section {
+    padding-block: var(--space-l);
+  }
+
+  .page-section--narrow {
+    max-inline-size: var(--content-width-narrow);
+  }
+
+  .page-section--wide {
+    max-inline-size: var(--content-width);
+  }
+
+  .page-section__heading {
+    margin-block: 0 var(--space-m);
+    font-size: var(--font-size-xl);
+  }
+
+  .page-section__content > * + * {
+    margin-block-start: var(--space-m);
+  }
+}

@@ -1,0 +1,8 @@
+{% set attributes = attributes ?: create_attribute() %}
+<div{{ attributes.addClass('session-list') }}>
+  {% if items|render|striptags|trim %}
+    {{ items }}
+  {% else %}
+    <p class="session-list__empty">{{ empty_text ?: 'No sessions match these filters.' }}</p>
+  {% endif %}
+</div>

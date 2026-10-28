@@ -1,0 +1,16 @@
+$schema: https://git.drupalcode.org/project/drupal/-/raw/HEAD/core/assets/schemas/v1/metadata.schema.json
+name: Filter group
+status: stable
+group: Components
+description: "A labelled group of filter options."
+props:
+  type: object
+  required: [legend]
+  properties:
+    legend:
+      type: string
+      title: Legend
+      examples: ["Track"]
+slots:
+  options:
+    title: Options

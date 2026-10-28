@@ -1,0 +1,5 @@
+{% set attributes = attributes ?: create_attribute() %}
+<div{{ attributes.addClass('two-column', 'two-column--' ~ (ratio ?: '60-40')) }}>
+  <div class="two-column__primary">{{ primary }}</div>
+  <div class="two-column__secondary">{{ secondary }}</div>
+</div>

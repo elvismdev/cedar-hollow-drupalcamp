@@ -1,0 +1,26 @@
+/**
+ * @file
+ * Speaker byline (Atomic Design: molecule).
+ */
+
+@layer reset, tokens, base, atoms, components, collections, layouts, utilities;
+
+@layer components {
+  .speaker-byline {
+    display: flex;
+    gap: var(--space-s);
+    align-items: center;
+  }
+
+  .speaker-byline__image img {
+    inline-size: 3rem;
+    block-size: 3rem;
+    border-radius: 50%;
+    object-fit: cover;
+  }
+
+  .speaker-byline__name {
+    margin: 0;
+    font-weight: 700;
+  }
+}

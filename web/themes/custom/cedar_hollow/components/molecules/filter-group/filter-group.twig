@@ -1,0 +1,5 @@
+{% set attributes = attributes ?: create_attribute() %}
+<fieldset{{ attributes.addClass('filter-group') }}>
+  <legend class="filter-group__legend">{{ legend }}</legend>
+  <div class="filter-group__options">{{ options }}</div>
+</fieldset>

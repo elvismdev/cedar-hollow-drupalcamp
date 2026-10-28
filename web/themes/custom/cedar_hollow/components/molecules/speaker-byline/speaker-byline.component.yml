@@ -1,0 +1,16 @@
+$schema: https://git.drupalcode.org/project/drupal/-/raw/HEAD/core/assets/schemas/v1/metadata.schema.json
+name: Speaker byline
+status: stable
+group: Components
+description: "A speaker's name with an optional photo."
+props:
+  type: object
+  required: [name]
+  properties:
+    name:
+      type: string
+      title: Name
+      examples: ["Alex Rivera"]
+slots:
+  image:
+    title: Image

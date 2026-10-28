@@ -1,0 +1,33 @@
+/**
+ * @file
+ * Filter group (Atomic Design: molecule).
+ */
+
+@layer reset, tokens, base, atoms, components, collections, layouts, utilities;
+
+@layer components {
+  .filter-group {
+    margin: 0;
+    padding: 0;
+    border: 0;
+  }
+
+  .filter-group__legend {
+    margin-block-end: var(--space-xs);
+    padding: 0;
+    font-weight: 700;
+  }
+
+  .filter-group__options {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-xs) var(--space-m);
+  }
+
+  .filter-group__options label {
+    display: inline-flex;
+    gap: var(--space-2xs);
+    align-items: center;
+    min-block-size: var(--target-size);
+  }
+}

@@ -1,0 +1,21 @@
+$schema: https://git.drupalcode.org/project/drupal/-/raw/HEAD/core/assets/schemas/v1/metadata.schema.json
+name: Session meta
+status: stable
+group: Components
+description: "When, where and in which track a session runs."
+props:
+  type: object
+  required: [time_range, room, track]
+  properties:
+    time_range:
+      type: string
+      title: Time
+      examples: ["Fri 12 Mar, 9:00am to 9:45am"]
+    room:
+      type: string
+      title: Room
+      examples: ["Hall A"]
+    track:
+      type: string
+      title: Track
+      examples: ["Front end"]

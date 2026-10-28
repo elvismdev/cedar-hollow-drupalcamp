@@ -1,0 +1,7 @@
+{% set attributes = attributes ?: create_attribute() %}
+<header{{ attributes.addClass('site-header') }}>
+  <div class="site-header__inner">
+    <div class="site-header__branding">{{ branding }}</div>
+    <div class="site-header__navigation">{{ navigation }}</div>
+  </div>
+</header>

@@ -1,0 +1,13 @@
+$schema: https://git.drupalcode.org/project/drupal/-/raw/HEAD/core/assets/schemas/v1/metadata.schema.json
+name: Site header
+status: stable
+group: Collections
+description: "The site name and main navigation."
+props:
+  type: object
+  properties: {}
+slots:
+  branding:
+    title: Branding
+  navigation:
+    title: Navigation

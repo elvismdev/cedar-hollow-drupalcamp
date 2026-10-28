@@ -1,0 +1,33 @@
+/**
+ * @file
+ * Card grid (Atomic Design: organism).
+ */
+
+@layer reset, tokens, base, atoms, components, collections, layouts, utilities;
+
+@layer collections {
+  .card-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(min(100%, 16rem), 1fr));
+    gap: var(--space-l);
+  }
+
+  @media (width >= 64rem) {
+    .card-grid--cols-2 {
+      grid-template-columns: repeat(2, 1fr);
+    }
+
+    .card-grid--cols-3 {
+      grid-template-columns: repeat(3, 1fr);
+    }
+
+    .card-grid--cols-4 {
+      grid-template-columns: repeat(4, 1fr);
+    }
+  }
+
+  /* Surface's card caps its width for flex rows; in this grid it fills its cell. */
+  .card-grid .card {
+    max-inline-size: none;
+  }
+}

@@ -1,0 +1,11 @@
+{% set attributes = attributes ?: create_attribute() %}
+<footer{{ attributes.addClass('site-footer') }}>
+  <div class="site-footer__inner">
+    {% if links %}
+      <div class="site-footer__links">{{ links }}</div>
+    {% endif %}
+    {% if notice %}
+      <p class="site-footer__notice">{{ notice }}</p>
+    {% endif %}
+  </div>
+</footer>

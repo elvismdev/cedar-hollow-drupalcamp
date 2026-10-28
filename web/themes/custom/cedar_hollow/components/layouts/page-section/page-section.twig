@@ -1,0 +1,7 @@
+{% set attributes = attributes ?: create_attribute() %}
+<section{{ attributes.addClass('page-section', 'page-section--' ~ (width ?: 'wide')) }}>
+  {% if heading %}
+    <h2 class="page-section__heading">{{ heading }}</h2>
+  {% endif %}
+  <div class="page-section__content">{{ content }}</div>
+</section>

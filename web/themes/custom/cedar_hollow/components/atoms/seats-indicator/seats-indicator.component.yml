@@ -1,0 +1,26 @@
+$schema: https://git.drupalcode.org/project/drupal/-/raw/HEAD/core/assets/schemas/v1/metadata.schema.json
+name: Seats indicator
+status: stable
+group: Atoms
+description: "How many seats are left in a session, always as text."
+props:
+  type: object
+  required: [capacity, state, text]
+  properties:
+    remaining:
+      type: integer
+      title: Seats remaining
+      examples: [12]
+    capacity:
+      type: integer
+      title: Capacity
+      examples: [40]
+    state:
+      type: string
+      title: State
+      enum: ["open", "low", "full", "waitlist", "unlimited", "closed"]
+      examples: ["open"]
+    text:
+      type: string
+      title: Text
+      examples: ["12 of 40 seats left"]

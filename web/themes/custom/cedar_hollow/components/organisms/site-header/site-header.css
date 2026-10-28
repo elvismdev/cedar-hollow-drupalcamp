@@ -1,0 +1,32 @@
+/**
+ * @file
+ * Site header (Atomic Design: organism).
+ */
+
+@layer reset, tokens, base, atoms, components, collections, layouts, utilities;
+
+@layer collections {
+  .site-header {
+    border-block-end: 1px solid var(--color-border-soft);
+    background-color: var(--color-surface);
+  }
+
+  .site-header__inner {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-s) var(--space-l);
+    align-items: center;
+    justify-content: space-between;
+    inline-size: min(100% - 2 * var(--space-m), var(--content-width));
+    margin-inline: auto;
+    padding-block: var(--space-s);
+  }
+
+  .site-header__branding a {
+    color: var(--color-text);
+    font-family: var(--font-heading);
+    font-size: var(--font-size-l);
+    font-weight: 700;
+    text-decoration: none;
+  }
+}
