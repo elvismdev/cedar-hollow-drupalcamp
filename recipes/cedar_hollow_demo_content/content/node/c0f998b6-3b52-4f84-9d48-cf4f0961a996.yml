@@ -1,0 +1,63 @@
+_meta:
+  version: '1.0'
+  entity_type: node
+  uuid: c0f998b6-3b52-4f84-9d48-cf4f0961a996
+  bundle: session
+  default_langcode: en
+  depends:
+    8e86b71e-4a33-4dd4-b77c-9307bc3a6501: node
+    7b487e17-a160-4958-b807-bc4b632fc757: taxonomy_term
+default:
+  revision_uid:
+    -
+      target_id: 0
+  status:
+    -
+      value: true
+  uid:
+    -
+      target_id: 0
+  title:
+    -
+      value: 'Entity Registration for events'
+  promote:
+    -
+      value: false
+  sticky:
+    -
+      value: false
+  revision_translation_affected:
+    -
+      value: true
+  path:
+    -
+      alias: /sessions/entity-registration-for-events
+      langcode: en
+  body:
+    -
+      value: 'Capacity, wait lists and confirmation messages with Entity Registration.'
+      format: plain_text
+      summary: 'Capacity, wait lists and confirmation messages with Entity Registration.'
+  field_day:
+    -
+      value: fri
+  field_registration:
+    -
+      registration_type: attendee
+  field_room:
+    -
+      value: 'Hall A'
+  field_session_time:
+    -
+      value: 1804876200
+      end_value: 1804878900
+      duration: 45
+      rrule: 0
+      rrule_index: 0
+      timezone: America/New_York
+  field_speakers:
+    -
+      entity: 8e86b71e-4a33-4dd4-b77c-9307bc3a6501
+  field_track:
+    -
+      entity: 7b487e17-a160-4958-b807-bc4b632fc757

@@ -1,0 +1,63 @@
+_meta:
+  version: '1.0'
+  entity_type: node
+  uuid: ce5cac5a-91bc-42cd-b1ab-47f31822f5fc
+  bundle: session
+  default_langcode: en
+  depends:
+    d30903ec-5187-449d-b4d1-a9695f5dc5e1: node
+    7ad1830a-2129-4b48-8873-19389357d480: taxonomy_term
+default:
+  revision_uid:
+    -
+      target_id: 0
+  status:
+    -
+      value: true
+  uid:
+    -
+      target_id: 0
+  title:
+    -
+      value: 'Recipes in practice'
+  promote:
+    -
+      value: false
+  sticky:
+    -
+      value: false
+  revision_translation_affected:
+    -
+      value: true
+  path:
+    -
+      alias: /sessions/recipes-in-practice
+      langcode: en
+  body:
+    -
+      value: 'Package a feature as a recipe and apply it to a fresh site.'
+      format: plain_text
+      summary: 'Package a feature as a recipe and apply it to a fresh site.'
+  field_day:
+    -
+      value: fri
+  field_registration:
+    -
+      registration_type: attendee
+  field_room:
+    -
+      value: 'Hall B'
+  field_session_time:
+    -
+      value: 1804869000
+      end_value: 1804871700
+      duration: 45
+      rrule: 0
+      rrule_index: 0
+      timezone: America/New_York
+  field_speakers:
+    -
+      entity: d30903ec-5187-449d-b4d1-a9695f5dc5e1
+  field_track:
+    -
+      entity: 7ad1830a-2129-4b48-8873-19389357d480

@@ -1,0 +1,46 @@
+_meta:
+  version: '1.0'
+  entity_type: canvas_page
+  uuid: 07f434ee-ce9f-435b-8335-e0d13b6eb211
+  default_langcode: en
+default:
+  status:
+    -
+      value: true
+  owner:
+    -
+      target_id: 0
+  title:
+    -
+      value: 'Try Canvas here'
+  components:
+    -
+      uuid: e24edb68-cc90-41eb-927c-4dc4f129b291
+      component_id: sdc.cedar_hollow.page-section
+      inputs:
+        width: narrow
+    -
+      parent_uuid: e24edb68-cc90-41eb-927c-4dc4f129b291
+      slot: content
+      uuid: 3beec616-5e7e-4699-a928-6f4f83047793
+      component_id: sdc.cedar_hollow.title
+      inputs:
+        text: 'Edit this page'
+        level: '2'
+    -
+      parent_uuid: e24edb68-cc90-41eb-927c-4dc4f129b291
+      slot: content
+      uuid: bc1cb584-f2af-45ad-9c15-d1cddca31d06
+      component_id: sdc.cedar_hollow.callout
+      inputs:
+        heading: 'Reviewers may change this page'
+        teaser: '<p>Log in with the demo editor account, open this page in Canvas, and add or rearrange components from the theme.</p>'
+        layout: stacked
+        style: default
+  path:
+    -
+      alias: /try-canvas
+      langcode: en
+  revision_translation_affected:
+    -
+      value: true

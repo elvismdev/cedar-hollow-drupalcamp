@@ -1,0 +1,37 @@
+_meta:
+  version: '1.0'
+  entity_type: node
+  uuid: 4f5d129a-c4cb-4bd1-a043-afd2dddb50f2
+  bundle: speaker
+  default_langcode: en
+default:
+  revision_uid:
+    -
+      target_id: 0
+  status:
+    -
+      value: true
+  uid:
+    -
+      target_id: 0
+  title:
+    -
+      value: 'Ana Calder'
+  promote:
+    -
+      value: false
+  sticky:
+    -
+      value: false
+  revision_translation_affected:
+    -
+      value: true
+  path:
+    -
+      alias: /speakers/ana-calder
+      langcode: en
+  body:
+    -
+      value: 'Builds component libraries for university sites. This speaker is fictional.'
+      format: plain_text
+      summary: ''

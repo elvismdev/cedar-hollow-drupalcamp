@@ -1,0 +1,37 @@
+_meta:
+  version: '1.0'
+  entity_type: node
+  uuid: 8e86b71e-4a33-4dd4-b77c-9307bc3a6501
+  bundle: speaker
+  default_langcode: en
+default:
+  revision_uid:
+    -
+      target_id: 0
+  status:
+    -
+      value: true
+  uid:
+    -
+      target_id: 0
+  title:
+    -
+      value: 'Femi Adeyemi'
+  promote:
+    -
+      value: false
+  sticky:
+    -
+      value: false
+  revision_translation_affected:
+    -
+      value: true
+  path:
+    -
+      alias: /speakers/femi-adeyemi
+      langcode: en
+  body:
+    -
+      value: 'Builds event and membership features on Drupal. This speaker is fictional.'
+      format: plain_text
+      summary: ''

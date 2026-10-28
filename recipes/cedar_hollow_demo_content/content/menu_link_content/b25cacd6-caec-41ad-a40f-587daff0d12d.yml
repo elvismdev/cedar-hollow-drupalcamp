@@ -1,0 +1,36 @@
+_meta:
+  version: '1.0'
+  entity_type: menu_link_content
+  uuid: b25cacd6-caec-41ad-a40f-587daff0d12d
+  bundle: menu_link_content
+  default_langcode: en
+default:
+  enabled:
+    -
+      value: true
+  title:
+    -
+      value: 'Log in'
+  menu_name:
+    -
+      value: footer
+  link:
+    -
+      uri: 'internal:/user/login'
+      title: null
+      options: {  }
+  external:
+    -
+      value: false
+  rediscover:
+    -
+      value: true
+  weight:
+    -
+      value: 6
+  expanded:
+    -
+      value: false
+  revision_translation_affected:
+    -
+      value: true

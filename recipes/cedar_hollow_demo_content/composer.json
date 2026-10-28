@@ -1,0 +1,6 @@
+{
+    "name": "cedar-hollow/cedar_hollow_demo_content",
+    "description": "Demo content for the Cedar Hollow DrupalCamp site.",
+    "type": "drupal-recipe",
+    "license": "GPL-2.0-or-later"
+}

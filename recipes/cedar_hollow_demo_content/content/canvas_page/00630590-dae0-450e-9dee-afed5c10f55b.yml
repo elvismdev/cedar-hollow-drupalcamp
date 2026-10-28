@@ -1,0 +1,126 @@
+_meta:
+  version: '1.0'
+  entity_type: canvas_page
+  uuid: 00630590-dae0-450e-9dee-afed5c10f55b
+  default_langcode: en
+default:
+  status:
+    -
+      value: true
+  owner:
+    -
+      target_id: 0
+  title:
+    -
+      value: 'About this demo'
+  components:
+    -
+      uuid: ea3c2892-1b7d-4fc5-a704-6bf4351f6185
+      component_id: sdc.cedar_hollow.two-column
+      inputs:
+        ratio: 60-40
+    -
+      parent_uuid: ea3c2892-1b7d-4fc5-a704-6bf4351f6185
+      slot: primary
+      uuid: e4167d4d-e6d5-430f-ac3d-1657bf0400bf
+      component_id: sdc.cedar_hollow.callout
+      inputs:
+        heading: 'How this site is built'
+        teaser: '<p>The theme is the Surface theme carried to Drupal 11 Single Directory Components, so the same components render in Storybook, in Twig templates and in this page builder. Sessions, the listing and the sign-up form are themed with template suggestions and preprocess hooks. Seats come from Entity Registration.</p>'
+        layout: stacked
+        style: default
+    -
+      parent_uuid: ea3c2892-1b7d-4fc5-a704-6bf4351f6185
+      slot: primary
+      uuid: edcf1714-6c85-4431-8289-db082f7841f3
+      component_id: sdc.cedar_hollow.callout
+      inputs:
+        heading: 'This is a demo'
+        teaser: '<p>Cedar Hollow DrupalCamp is a fictional event. Mail is logged, never sent.</p>'
+        layout: stacked
+        style: default
+    -
+      parent_uuid: ea3c2892-1b7d-4fc5-a704-6bf4351f6185
+      slot: secondary
+      uuid: b423c9d9-fa96-4c1b-9490-944f98c38431
+      component_id: sdc.cedar_hollow.title
+      inputs:
+        text: 'Skills shown'
+        level: '2'
+    -
+      parent_uuid: ea3c2892-1b7d-4fc5-a704-6bf4351f6185
+      slot: secondary
+      uuid: 3f92018f-9d12-461d-ae63-161bd0a14fc1
+      component_id: sdc.cedar_hollow.tag
+      inputs:
+        label: Twig
+    -
+      parent_uuid: ea3c2892-1b7d-4fc5-a704-6bf4351f6185
+      slot: secondary
+      uuid: 6017a3bd-101c-46c0-82e4-e9aeb2e7bbf3
+      component_id: sdc.cedar_hollow.tag
+      inputs:
+        label: 'Template suggestions'
+    -
+      parent_uuid: ea3c2892-1b7d-4fc5-a704-6bf4351f6185
+      slot: secondary
+      uuid: 978f3154-661c-4ea1-8778-6a1d566a2095
+      component_id: sdc.cedar_hollow.tag
+      inputs:
+        label: 'Preprocess hooks'
+    -
+      parent_uuid: ea3c2892-1b7d-4fc5-a704-6bf4351f6185
+      slot: secondary
+      uuid: 6ec81a72-8e5b-4d1b-9f20-4687a6d27a46
+      component_id: sdc.cedar_hollow.tag
+      inputs:
+        label: 'Single Directory Components'
+    -
+      parent_uuid: ea3c2892-1b7d-4fc5-a704-6bf4351f6185
+      slot: secondary
+      uuid: 1ec5e9f0-9038-4b38-94d0-924e182e1339
+      component_id: sdc.cedar_hollow.tag
+      inputs:
+        label: Storybook
+    -
+      parent_uuid: ea3c2892-1b7d-4fc5-a704-6bf4351f6185
+      slot: secondary
+      uuid: 3fa58065-1435-48a7-b343-666ca923efe1
+      component_id: sdc.cedar_hollow.tag
+      inputs:
+        label: 'Drupal Canvas'
+    -
+      parent_uuid: ea3c2892-1b7d-4fc5-a704-6bf4351f6185
+      slot: secondary
+      uuid: ac6bb8e1-2462-4526-9e78-8279e2c4a921
+      component_id: sdc.cedar_hollow.tag
+      inputs:
+        label: Recipes
+    -
+      parent_uuid: ea3c2892-1b7d-4fc5-a704-6bf4351f6185
+      slot: secondary
+      uuid: 269fdc42-1c83-4211-82fc-959b96c10a85
+      component_id: sdc.cedar_hollow.tag
+      inputs:
+        label: Views
+    -
+      parent_uuid: ea3c2892-1b7d-4fc5-a704-6bf4351f6185
+      slot: secondary
+      uuid: a4fa67bf-b462-482e-a8e9-0c0ff846b80b
+      component_id: sdc.cedar_hollow.tag
+      inputs:
+        label: Accessibility
+    -
+      parent_uuid: ea3c2892-1b7d-4fc5-a704-6bf4351f6185
+      slot: secondary
+      uuid: ee1eee08-584f-4bea-9f83-435e8668aff3
+      component_id: sdc.cedar_hollow.tag
+      inputs:
+        label: Pantheon
+  path:
+    -
+      alias: /about
+      langcode: en
+  revision_translation_affected:
+    -
+      value: true

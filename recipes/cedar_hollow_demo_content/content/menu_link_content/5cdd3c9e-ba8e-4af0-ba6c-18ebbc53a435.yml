@@ -1,0 +1,38 @@
+_meta:
+  version: '1.0'
+  entity_type: menu_link_content
+  uuid: 5cdd3c9e-ba8e-4af0-ba6c-18ebbc53a435
+  bundle: menu_link_content
+  default_langcode: en
+  depends:
+    f5f6b3ed-153f-4ba4-b41a-eecf48edbf3b: canvas_page
+default:
+  enabled:
+    -
+      value: true
+  title:
+    -
+      value: Agenda
+  menu_name:
+    -
+      value: main
+  link:
+    -
+      title: null
+      options: {  }
+      target_uuid: f5f6b3ed-153f-4ba4-b41a-eecf48edbf3b
+  external:
+    -
+      value: false
+  rediscover:
+    -
+      value: true
+  weight:
+    -
+      value: 2
+  expanded:
+    -
+      value: false
+  revision_translation_affected:
+    -
+      value: true

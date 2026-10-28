@@ -1,0 +1,37 @@
+_meta:
+  version: '1.0'
+  entity_type: node
+  uuid: 70fcd247-6d98-4567-ae35-5bf973756a72
+  bundle: speaker
+  default_langcode: en
+default:
+  revision_uid:
+    -
+      target_id: 0
+  status:
+    -
+      value: true
+  uid:
+    -
+      target_id: 0
+  title:
+    -
+      value: 'Elena Ruiz'
+  promote:
+    -
+      value: false
+  sticky:
+    -
+      value: false
+  revision_translation_affected:
+    -
+      value: true
+  path:
+    -
+      alias: /speakers/elena-ruiz
+      langcode: en
+  body:
+    -
+      value: 'Leads accessibility reviews for public sector sites. This speaker is fictional.'
+      format: plain_text
+      summary: ''

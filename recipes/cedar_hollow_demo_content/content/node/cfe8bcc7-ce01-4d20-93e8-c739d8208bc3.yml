@@ -1,0 +1,63 @@
+_meta:
+  version: '1.0'
+  entity_type: node
+  uuid: cfe8bcc7-ce01-4d20-93e8-c739d8208bc3
+  bundle: session
+  default_langcode: en
+  depends:
+    9eb292f0-bdfe-45a4-9067-c94f861073bb: node
+    7b487e17-a160-4958-b807-bc4b632fc757: taxonomy_term
+default:
+  revision_uid:
+    -
+      target_id: 0
+  status:
+    -
+      value: true
+  uid:
+    -
+      target_id: 0
+  title:
+    -
+      value: 'Caching render arrays'
+  promote:
+    -
+      value: false
+  sticky:
+    -
+      value: false
+  revision_translation_affected:
+    -
+      value: true
+  path:
+    -
+      alias: /sessions/caching-render-arrays
+      langcode: en
+  body:
+    -
+      value: 'Cache tags, contexts and max-age, and how to see them in response headers.'
+      format: plain_text
+      summary: 'Cache tags, contexts and max-age, and how to see them in response headers.'
+  field_day:
+    -
+      value: fri
+  field_registration:
+    -
+      registration_type: attendee
+  field_room:
+    -
+      value: 'Hall B'
+  field_session_time:
+    -
+      value: 1804864500
+      end_value: 1804867200
+      duration: 45
+      rrule: 0
+      rrule_index: 0
+      timezone: America/New_York
+  field_speakers:
+    -
+      entity: 9eb292f0-bdfe-45a4-9067-c94f861073bb
+  field_track:
+    -
+      entity: 7b487e17-a160-4958-b807-bc4b632fc757

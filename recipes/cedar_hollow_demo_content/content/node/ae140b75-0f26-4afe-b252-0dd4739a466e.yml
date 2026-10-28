@@ -1,0 +1,69 @@
+_meta:
+  version: '1.0'
+  entity_type: node
+  uuid: ae140b75-0f26-4afe-b252-0dd4739a466e
+  bundle: session
+  default_langcode: en
+  depends:
+    4f5d129a-c4cb-4bd1-a043-afd2dddb50f2: node
+    8e86b71e-4a33-4dd4-b77c-9307bc3a6501: node
+    70fcd247-6d98-4567-ae35-5bf973756a72: node
+    7ad1830a-2129-4b48-8873-19389357d480: taxonomy_term
+default:
+  revision_uid:
+    -
+      target_id: 0
+  status:
+    -
+      value: true
+  uid:
+    -
+      target_id: 0
+  title:
+    -
+      value: 'Closing panel'
+  promote:
+    -
+      value: false
+  sticky:
+    -
+      value: false
+  revision_translation_affected:
+    -
+      value: true
+  path:
+    -
+      alias: /sessions/closing-panel
+      langcode: en
+  body:
+    -
+      value: 'What the camp learned, and what to build next.'
+      format: plain_text
+      summary: 'What the camp learned, and what to build next.'
+  field_day:
+    -
+      value: sat
+  field_registration:
+    -
+      registration_type: attendee
+  field_room:
+    -
+      value: Atrium
+  field_session_time:
+    -
+      value: 1804964400
+      end_value: 1804967100
+      duration: 45
+      rrule: 0
+      rrule_index: 0
+      timezone: America/New_York
+  field_speakers:
+    -
+      entity: 4f5d129a-c4cb-4bd1-a043-afd2dddb50f2
+    -
+      entity: 8e86b71e-4a33-4dd4-b77c-9307bc3a6501
+    -
+      entity: 70fcd247-6d98-4567-ae35-5bf973756a72
+  field_track:
+    -
+      entity: 7ad1830a-2129-4b48-8873-19389357d480

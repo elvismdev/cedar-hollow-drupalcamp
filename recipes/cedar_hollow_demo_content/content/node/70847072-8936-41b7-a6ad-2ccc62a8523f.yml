@@ -1,0 +1,63 @@
+_meta:
+  version: '1.0'
+  entity_type: node
+  uuid: 70847072-8936-41b7-a6ad-2ccc62a8523f
+  bundle: session
+  default_langcode: en
+  depends:
+    b5d84e08-59b9-4be4-a48b-90c447ac7f50: node
+    e9c49f9b-1aaf-4ced-b2f1-dc11b86f4838: taxonomy_term
+default:
+  revision_uid:
+    -
+      target_id: 0
+  status:
+    -
+      value: true
+  uid:
+    -
+      target_id: 0
+  title:
+    -
+      value: 'Cascade layers and BEM'
+  promote:
+    -
+      value: false
+  sticky:
+    -
+      value: false
+  revision_translation_affected:
+    -
+      value: true
+  path:
+    -
+      alias: /sessions/cascade-layers-and-bem
+      langcode: en
+  body:
+    -
+      value: 'Order theme CSS with cascade layers instead of specificity.'
+      format: plain_text
+      summary: 'Order theme CSS with cascade layers instead of specificity.'
+  field_day:
+    -
+      value: sat
+  field_registration:
+    -
+      registration_type: attendee
+  field_room:
+    -
+      value: 'Hall A'
+  field_session_time:
+    -
+      value: 1804951800
+      end_value: 1804954500
+      duration: 45
+      rrule: 0
+      rrule_index: 0
+      timezone: America/New_York
+  field_speakers:
+    -
+      entity: b5d84e08-59b9-4be4-a48b-90c447ac7f50
+  field_track:
+    -
+      entity: e9c49f9b-1aaf-4ced-b2f1-dc11b86f4838

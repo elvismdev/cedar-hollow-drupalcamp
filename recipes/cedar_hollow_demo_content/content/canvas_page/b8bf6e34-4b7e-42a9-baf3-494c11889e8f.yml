@@ -1,0 +1,90 @@
+_meta:
+  version: '1.0'
+  entity_type: canvas_page
+  uuid: b8bf6e34-4b7e-42a9-baf3-494c11889e8f
+  default_langcode: en
+default:
+  status:
+    -
+      value: true
+  owner:
+    -
+      target_id: 0
+  title:
+    -
+      value: 'Welcome to Cedar Hollow DrupalCamp'
+  components:
+    -
+      uuid: 1a6dcfed-6c34-4549-991c-f08e514705a1
+      component_id: sdc.cedar_hollow.page-section
+      inputs:
+        width: wide
+    -
+      parent_uuid: 1a6dcfed-6c34-4549-991c-f08e514705a1
+      slot: content
+      uuid: 44c8bdd6-1581-4fbb-8b7f-97c13cc0fb4c
+      component_id: sdc.cedar_hollow.callout
+      inputs:
+        heading: '12 and 13 March 2027'
+        teaser: '<p>Two days of sessions on front end, back end and site building, with seats you can claim and an agenda you can plan.</p>'
+        cta_text: 'Browse sessions'
+        cta_url: /sessions
+        cta_variant: primary
+        layout: stacked
+        style: default
+    -
+      parent_uuid: 1a6dcfed-6c34-4549-991c-f08e514705a1
+      slot: content
+      uuid: d9648e6b-9fd5-4473-816b-eedda4f40de4
+      component_id: sdc.cedar_hollow.button
+      inputs:
+        text: 'Build your agenda'
+        url: /agenda
+        variant: secondary
+    -
+      uuid: 2ca5549e-d187-4c6b-87e7-4634e11cd817
+      component_id: sdc.cedar_hollow.page-section
+      inputs:
+        heading: 'Three tracks'
+        width: wide
+    -
+      parent_uuid: 2ca5549e-d187-4c6b-87e7-4634e11cd817
+      slot: content
+      uuid: a1d2f35c-6dba-44d5-87e7-0cbb87080a25
+      component_id: sdc.cedar_hollow.card-grid
+      inputs:
+        columns: '3'
+    -
+      parent_uuid: a1d2f35c-6dba-44d5-87e7-0cbb87080a25
+      slot: items
+      uuid: 894f864a-f793-4dc7-9377-dc63ad3aa4dc
+      component_id: sdc.cedar_hollow.card
+      inputs:
+        heading: 'Front end'
+        url: '/sessions?field_track_target_id=10'
+        eyebrow: Track
+    -
+      parent_uuid: a1d2f35c-6dba-44d5-87e7-0cbb87080a25
+      slot: items
+      uuid: 75010cf0-7262-44ff-87c8-3890e5503eaf
+      component_id: sdc.cedar_hollow.card
+      inputs:
+        heading: 'Back end'
+        url: '/sessions?field_track_target_id=11'
+        eyebrow: Track
+    -
+      parent_uuid: a1d2f35c-6dba-44d5-87e7-0cbb87080a25
+      slot: items
+      uuid: e48ae977-4817-4ba4-87f5-fe01cd2bfa80
+      component_id: sdc.cedar_hollow.card
+      inputs:
+        heading: 'Site building'
+        url: '/sessions?field_track_target_id=12'
+        eyebrow: Track
+  path:
+    -
+      alias: /home
+      langcode: en
+  revision_translation_affected:
+    -
+      value: true

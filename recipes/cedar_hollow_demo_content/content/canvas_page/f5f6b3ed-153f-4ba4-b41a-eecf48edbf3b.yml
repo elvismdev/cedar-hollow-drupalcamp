@@ -1,0 +1,35 @@
+_meta:
+  version: '1.0'
+  entity_type: canvas_page
+  uuid: f5f6b3ed-153f-4ba4-b41a-eecf48edbf3b
+  default_langcode: en
+default:
+  status:
+    -
+      value: true
+  owner:
+    -
+      target_id: 0
+  title:
+    -
+      value: Agenda
+  components:
+    -
+      uuid: 5c8dbfbb-4451-4ef1-91f5-c5d988883563
+      component_id: sdc.cedar_hollow.page-section
+      inputs:
+        width: wide
+    -
+      parent_uuid: 5c8dbfbb-4451-4ef1-91f5-c5d988883563
+      slot: content
+      uuid: e3786bf9-30dd-471d-af19-7a6e0c46195f
+      component_id: js.agenda_builder
+      inputs:
+        heading: 'Build your agenda'
+  path:
+    -
+      alias: /agenda
+      langcode: en
+  revision_translation_affected:
+    -
+      value: true
