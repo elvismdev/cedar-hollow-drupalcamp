@@ -6,6 +6,14 @@
 $settings['container_yamls'][] = __DIR__ . '/services.yml';
 
 /**
+ * Configuration sync directory, the same on every environment.
+ *
+ * Set before settings.pantheon.php, which otherwise picks '../config' only
+ * when Pantheon's DOCROOT is set, and 'sites/default/files' during install.
+ */
+$settings['config_sync_directory'] = '../config';
+
+/**
  * Include the Pantheon-specific settings file.
  *
  * n.b. The settings.pantheon.php file makes some changes

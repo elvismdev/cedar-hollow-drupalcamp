@@ -1,0 +1,7 @@
+# Local development services. Copy to web/sites/default/local.services.yml.
+# Turns on Twig debug output so template suggestions show in the HTML source.
+parameters:
+  twig.config:
+    debug: true
+    auto_reload: true
+    cache: false

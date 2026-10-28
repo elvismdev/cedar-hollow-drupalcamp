@@ -1,0 +1,5 @@
+# Exposes X-Drupal-Cache-Tags and X-Drupal-Cache-Contexts response headers on
+# every environment, so the seats endpoint's cache tags can be checked on the
+# Pantheon sandbox without shell access. It reveals cache tags only.
+parameters:
+  http.response.debug_cacheability_headers: true
