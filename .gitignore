@@ -95,3 +95,20 @@
 
 # Ignore .env files as they are personal
 #/.env
+
+# Cedar Hollow: theme and test tooling output (rules live here because the
+# upstream ignores .gitignore files under web/).
+/web/themes/custom/cedar_hollow/node_modules/
+/web/themes/custom/cedar_hollow/storybook/
+/tests/node_modules/
+/test-results/
+/playwright-report/
+/a11y-results/
+/.ddev/config.local.yaml
+/web/sites/default/local.services.yml
+
+# Planning and review notes kept out of the public repository.
+/research/
+/concepts_brief.md
+/design_draft.md
+/*_report.md
