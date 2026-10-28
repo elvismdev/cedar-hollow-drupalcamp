@@ -115,3 +115,4 @@
 /web/sites/default/settings.ddev.php
 # drupal/ai_best_practices: per-developer settings, see its README
 /ai_best_practices.yaml
+/scripts/__pycache__/

@@ -174,7 +174,7 @@ Not used because the site has no need for them: Key (no secrets to store once ma
 
 ### Theme and components
 
-*   **Model.** The theme follows Surface's workflow (Storybook with the html renderer, Vite, BEM class names, Atomic Design tiers) but every component is a Single Directory Component (SDC, Drupal core's component format): `components/<tier>/<name>/` with `<name>.component.yml`, `<name>.twig`, `<name>.css` and `<name>.stories.js`. Machine names are unique across tiers, because a component's ID ignores its folder.
+*   **Model.** The theme is uclahs/surface (the theme the client project builds on) carried to Drupal 11 Single Directory Components (SDC, Drupal core's component format) so Canvas can use it. Surface's tokens, reset, prose and element and component CSS are ported by `scripts/port-surface-css.py`, pinned to Surface commit `76e5dc6`: PostCSS custom media become literal media queries, the five UCLA brand variables become brand slots filled by `css/props/brand.css`, and each file is wrapped in its tier's cascade layer. Surface's markup and BEM classes are kept; its nested object props are flattened and its modifier classes become enum props, because Canvas cannot store object props. Surface's Storybook setup (html renderer, Vite, `vite-plugin-twig-drupal`, the Drupal behaviors shim) is kept. Every component lives in `components/<tier>/<name>/` with `<name>.component.yml`, `<name>.twig`, `<name>.css` and `<name>.stories.js`. Machine names are unique across tiers, because a component's ID ignores its folder.
 
 | Atomic Design tier | Folder | Canvas group | CSS layer |
 | --- | --- | --- | --- |
@@ -185,7 +185,7 @@ Not used because the site has no need for them: Key (no secrets to store once ma
 
 Canvas reserves the group name `Elements` (Surface's name for atoms), so the atoms tier is named `atoms` throughout. The project's CSS rules (`css-atomic-bem`, an AI-agent skill used during the build) call this layer `elements`; this design overrides that.
 
-*   **Initial component set.** Atoms: button, heading, eyebrow, date badge, tag, seats indicator. Molecules: card, session meta (time, room, track), speaker byline, callout, filter group. Organisms: card grid, session list, site header, site footer. Layouts: page section (a width-constrained band with an optional heading), two-column. Visually hidden text uses core's `.visually-hidden` class and is not a component.
+*   **Component set.** From Surface: atoms button, title, eyebrow, date badge, date, read time and breadcrumb (`noUi`, fed by the breadcrumb template); molecules card, featured card, callout and quote. Cedar Hollow additions on Surface's tokens: atoms seats indicator and tag; molecules session meta, speaker byline and filter group; organisms card grid, session list, site header and site footer; layouts page section and two-column. The session teaser uses Surface's card as is (track as event type, time as date, room as location) plus one footer slot for seats. Visually hidden text uses core's `.visually-hidden` class and is not a component.
 *   **Props for Canvas.** Props are flat scalars or enums with a title and, when required, an example. Read in the Canvas 1.12.0 source: no `type: object` props (Canvas cannot store them), no `minLength`, and SDC `variants:` are ignored, so anything an editor chooses is an enum prop. Repeating or nested content goes in slots. Rich text in Canvas allows no headings, so headings are their own string props.
 *   **CSS.** Standard CSS only: design tokens as custom properties in a global `tokens` library listed in the theme's `.info.yml` (so the Canvas preview loads it), each component's CSS in its own file inside `@layer` order (reset, tokens, base, atoms, components, collections, layouts, utilities), native nesting without `&__` concatenation, container queries for component layout, `:focus-visible`, `prefers-reduced-motion`. Core and contrib CSS is unlayered and therefore wins over layered rules; collisions are fixed with `libraries-override`, never `!important`.
 *   **Build.** No theme CSS bundle: Drupal attaches each component's CSS where it is used and aggregates per page in production. Vite runs Storybook locally and builds the static Storybook. Linting (stylelint and a CSS checker script kept in `scripts/`) runs locally.
@@ -255,9 +255,9 @@ A `demo_editor` role may create, edit and publish Canvas pages. It cannot edit p
 
 ### Alternative B: Keep Surface's namespaced Twig model (Components module) instead of SDC
 
-*   **Pros**: Closest to Surface as published; less conversion work; Storybook setup already works.
-*   **Cons**: Canvas offers only SDC (and its own code components) as components, so none of the theme would be usable in Canvas. Surface also declares no Drupal 11 support and needs the Components module.
-*   **Reason for Rejection**: Incompatible with the Canvas goal and with Drupal 11's core component system.
+*   **Pros**: Closest to Surface as published; no conversion work; Storybook setup already works.
+*   **Cons**: Canvas offers only SDC (and its own code components) as components, so none of the theme would be usable in Canvas. Surface also declares no Drupal 11 support and needs the Components module and PostCSS.
+*   **Reason for Rejection**: Incompatible with the Canvas goal and with Drupal 11's core component system. Surface's components, tokens and Storybook setup are ported to SDC instead, with the port kept as a script so it can be repeated when Surface changes.
 
 ### Alternative C: Layout Builder or Paragraphs instead of Canvas
 
