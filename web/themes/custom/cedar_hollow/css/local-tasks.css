@@ -1,0 +1,35 @@
+/**
+ * @file
+ * Local task tabs (View, Register, Edit) above page content.
+ */
+
+@layer reset, tokens, base, atoms, components, collections, layouts, utilities;
+
+@layer collections {
+  .local-tasks {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-xs);
+    margin: 0;
+    padding: 0;
+    border-block-end: 1px solid var(--color-border-soft);
+    list-style: none;
+  }
+
+  .local-tasks__link {
+    display: inline-flex;
+    align-items: center;
+    min-block-size: var(--target-size);
+    padding-inline: var(--space-m);
+    border-block-end: 3px solid transparent;
+    color: var(--color-text);
+    font-weight: 700;
+    text-decoration: none;
+
+    &:hover,
+    &.is-active {
+      border-color: var(--color-accent);
+      color: var(--color-accent);
+    }
+  }
+}

@@ -1,0 +1,27 @@
+{#
+/**
+ * @file
+ * Session page. Passes data to components; values come from preprocess in
+ * ThemeHooks::preprocessNodeSession().
+ */
+#}
+{{ attach_library('cedar_hollow/sessions') }}
+{% set body %}
+  <div class="session__summary">
+    {% if date_badge %}
+      {% include 'cedar_hollow:date-badge' with date_badge only %}
+    {% endif %}
+    {% include 'cedar_hollow:session-meta' with {time_range: time_range, room: room, track: track_label} only %}
+    {% if seats %}
+      {% include 'cedar_hollow:seats-indicator' with seats only %}
+    {% endif %}
+  </div>
+  {{ content.field_speakers }}
+  {{ content.body }}
+  {{ content.field_registration }}
+  {{ content.field_forward }}
+  {{ content|without('body', 'field_registration', 'field_forward', 'field_session_time', 'field_room', 'field_track', 'field_speakers', 'field_day') }}
+{% endset %}
+<article{{ attributes.addClass('session') }}>
+  {% include 'cedar_hollow:page-section' with {width: 'narrow', content: body} only %}
+</article>

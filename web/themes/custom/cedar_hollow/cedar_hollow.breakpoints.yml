@@ -1,0 +1,18 @@
+cedar_hollow.mobile:
+  label: Mobile
+  mediaQuery: 'all and (max-width: 47.9375em)'
+  weight: 0
+  multipliers:
+    - 1x
+cedar_hollow.tablet:
+  label: Tablet
+  mediaQuery: 'all and (min-width: 48em)'
+  weight: 1
+  multipliers:
+    - 1x
+cedar_hollow.desktop:
+  label: Desktop
+  mediaQuery: 'all and (min-width: 80em)'
+  weight: 2
+  multipliers:
+    - 1x

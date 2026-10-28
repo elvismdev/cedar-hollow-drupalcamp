@@ -1,0 +1,54 @@
+/**
+ * @file
+ * Base element styles and the skip link. Element selectors only, plus the
+ * classes core puts on its skip link in html.html.twig.
+ */
+
+@layer reset, tokens, base, atoms, components, collections, layouts, utilities;
+
+@layer base {
+  body {
+    background-color: var(--color-surface);
+    color: var(--color-text);
+    font-family: var(--font-body);
+    font-size: var(--font-size-m);
+    line-height: var(--line-height-body);
+  }
+
+  h1,
+  h2,
+  h3,
+  h4 {
+    font-family: var(--font-heading);
+    line-height: var(--line-height-tight);
+  }
+
+  h1 {
+    font-size: var(--font-size-2xl);
+  }
+
+  a {
+    color: var(--color-accent);
+    text-underline-offset: 0.15em;
+  }
+
+  a:hover {
+    color: var(--color-accent-strong);
+  }
+
+  :focus-visible {
+    outline: var(--focus-ring-width) solid var(--color-focus);
+    outline-offset: var(--focus-ring-offset);
+  }
+
+  /* Core's skip link while it has focus; .visually-hidden.focusable is core's. */
+  .visually-hidden.focusable:focus {
+    position: absolute;
+    inset-block-start: var(--space-xs);
+    inset-inline-start: var(--space-xs);
+    z-index: 100;
+    padding: var(--space-xs) var(--space-m);
+    background-color: var(--color-accent);
+    color: var(--color-on-accent);
+  }
+}

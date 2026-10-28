@@ -1,0 +1,9 @@
+{#
+/**
+ * @file
+ * Breadcrumb trail, rendered by the breadcrumb component as Surface does.
+ */
+#}
+{% if breadcrumb %}
+  {% include 'cedar_hollow:breadcrumb' with {breadcrumb: breadcrumb} only %}
+{% endif %}

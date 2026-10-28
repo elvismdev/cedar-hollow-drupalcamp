@@ -1,0 +1,16 @@
+name: 'Cedar Hollow'
+type: theme
+description: 'Single Directory Component theme for the Cedar Hollow DrupalCamp demo: standard CSS, BEM, Atomic Design tiers, components shared with Storybook and Drupal Canvas.'
+package: 'Cedar Hollow'
+core_version_requirement: ^11.3
+base theme: false
+libraries:
+  - cedar_hollow/base
+regions:
+  header: Header
+  highlighted: Highlighted
+  content: Content
+  footer: Footer
+# Theme hooks read seats through cedar_hollow_core's SeatsSummary service.
+dependencies:
+  - cedar_hollow_core:cedar_hollow_core

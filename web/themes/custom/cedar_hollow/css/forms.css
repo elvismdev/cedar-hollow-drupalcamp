@@ -1,0 +1,91 @@
+/**
+ * @file
+ * Form controls rendered by core and contrib forms (registration sign-up,
+ * exposed filters, log in). Buttons get their look from the button atom,
+ * whose library the global library depends on.
+ */
+
+@layer reset, tokens, base, atoms, components, collections, layouts, utilities;
+
+@layer base {
+  label {
+    font-weight: 700;
+  }
+
+  input:where([type="text"], [type="email"], [type="password"], [type="search"]),
+  select,
+  textarea {
+    inline-size: 100%;
+    max-inline-size: 32rem;
+    min-block-size: var(--target-size);
+    padding: var(--space-xs) var(--space-s);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-s);
+    background-color: var(--color-surface);
+    color: var(--color-text);
+    font: inherit;
+  }
+
+  input:where([type="radio"], [type="checkbox"]) {
+    inline-size: 1.25rem;
+    block-size: 1.25rem;
+    accent-color: var(--color-accent);
+  }
+
+  fieldset {
+    margin: 0;
+    padding: 0;
+    border: 0;
+  }
+
+  legend {
+    padding: 0;
+    font-weight: 700;
+  }
+
+  .form-item {
+    margin-block: 0 var(--space-m);
+  }
+
+  .form-item > label {
+    display: block;
+    margin-block-end: var(--space-2xs);
+  }
+
+  .description {
+    margin-block-start: var(--space-2xs);
+    color: var(--color-text-muted);
+    font-size: var(--font-size-s);
+  }
+
+  /* Radio and checkbox options sit in a row, each a full-size target. */
+  .form-radios,
+  .form-checkboxes {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2xs) var(--space-m);
+  }
+
+  .form-type-radio,
+  .form-type-checkbox {
+    display: inline-flex;
+    gap: var(--space-xs);
+    align-items: center;
+    min-block-size: var(--target-size);
+    margin: 0;
+  }
+
+  .form-type-radio > label,
+  .form-type-checkbox > label {
+    display: inline;
+    margin: 0;
+    font-weight: 400;
+  }
+
+  .form-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-s);
+    align-items: center;
+  }
+}

@@ -1,0 +1,43 @@
+# Global styles, loaded on every page and in the Canvas preview. The base
+# category and the weights keep the cascade layer statement first.
+base:
+  css:
+    base:
+      css/layers.css: { weight: -100 }
+      css/reset.css: { weight: -90 }
+      css/props/colors.css: { weight: -80 }
+      css/props/sizes.css: { weight: -80 }
+      css/props/fonts.css: { weight: -80 }
+      css/props/borders.css: { weight: -80 }
+      css/props/shadows.css: { weight: -80 }
+      css/props/animations.css: { weight: -80 }
+      css/props/easing.css: { weight: -80 }
+      css/props/aspects.css: { weight: -80 }
+      css/props/zindex.css: { weight: -80 }
+      css/props/brand.css: { weight: -79 }
+      css/tokens.css: { weight: -78 }
+      css/base.css: { weight: -70 }
+      css/prose.css: { weight: -69 }
+      css/forms.css: { weight: -68 }
+    layout:
+      css/page.css: {}
+      css/block.css: {}
+    component:
+      css/local-tasks.css: {}
+  dependencies:
+    - core/components.cedar_hollow--button
+
+menu-toggle:
+  css:
+    component:
+      css/main-menu.css: {}
+  js:
+    js/menu-toggle.js: {}
+  dependencies:
+    - core/drupal
+    - core/once
+
+sessions:
+  css:
+    component:
+      css/sessions.css: {}

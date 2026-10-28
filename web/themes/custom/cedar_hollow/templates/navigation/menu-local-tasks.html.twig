@@ -1,0 +1,11 @@
+{#
+/**
+ * @file
+ * Primary local tasks as tabs. Secondary tasks are not used on the front end.
+ */
+#}
+{% if primary %}
+  <nav aria-label="{{ 'Page tabs'|t }}">
+    <ul class="local-tasks">{{ primary }}</ul>
+  </nav>
+{% endif %}

@@ -1,0 +1,26 @@
+/**
+ * @file
+ * Page frame: the width of the main region and the spacing between the
+ * header, main content and footer.
+ */
+
+@layer reset, tokens, base, atoms, components, collections, layouts, utilities;
+
+@layer layouts {
+  .page {
+    display: flex;
+    flex-direction: column;
+    min-block-size: 100vh;
+  }
+
+  .page__main {
+    flex: 1;
+    inline-size: min(100% - 2 * var(--space-m), var(--content-width));
+    margin-inline: auto;
+    padding-block: var(--space-l) var(--space-xl);
+  }
+
+  .page__main > * + * {
+    margin-block-start: var(--space-m);
+  }
+}

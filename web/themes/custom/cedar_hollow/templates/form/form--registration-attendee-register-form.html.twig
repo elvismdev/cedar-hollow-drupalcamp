@@ -1,0 +1,15 @@
+{#
+/**
+ * @file
+ * Entity Registration's attendee sign-up form inside a page section.
+ *
+ * Available variables beyond core's:
+ * - form_heading: "Sign up: {session title}", from preprocess.
+ */
+#}
+{% set form_markup %}
+  <form{{ attributes }}>
+    {{ children }}
+  </form>
+{% endset %}
+{% include 'cedar_hollow:page-section' with {heading: form_heading, width: 'narrow', content: form_markup} only %}

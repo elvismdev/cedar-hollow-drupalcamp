@@ -1,0 +1,25 @@
+/**
+ * @file
+ * Session page summary row and the sessions listing's filter form.
+ */
+
+@layer reset, tokens, base, atoms, components, collections, layouts, utilities;
+
+@layer collections {
+  /* Date badge beside the meta; the seats indicator on its own row. */
+  .session__summary {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: var(--space-s) var(--space-l);
+    align-items: center;
+  }
+
+  .session__summary > .seats-indicator {
+    grid-column: 1 / -1;
+    justify-self: start;
+  }
+
+  .sessions-filters {
+    margin-block-end: var(--space-l);
+  }
+}

@@ -1,0 +1,67 @@
+/**
+ * @file
+ * Theme layer: the role tokens Cedar Hollow's own components read, defined on
+ * Surface's scales in css/props/, plus the font roles Surface's components
+ * expect from its theme file. Colour pairs used for text meet 4.5:1.
+ */
+
+@layer reset, tokens, base, atoms, components, collections, layouts, utilities;
+
+@layer tokens {
+  :where(html) {
+    --font-body: var(--font-system);
+    --font-heading: var(--font-serif);
+    --text-color: var(--gray-900);
+    --background-color: var(--white);
+
+    /* Colour roles. */
+    --color-text: var(--gray-900);
+    --color-text-muted: var(--gray-700);
+    --color-surface: var(--white);
+    --color-surface-alt: var(--gray-100);
+    --color-accent: var(--brand-primary);
+    --color-accent-strong: var(--brand-primary-dark);
+    --color-accent-soft: var(--brand-primary-light);
+    --color-on-accent: var(--white);
+    --color-warning: var(--yellow-800);
+    --color-warning-soft: var(--yellow-50);
+    --color-danger: var(--red-700);
+    --color-border: var(--gray-500);
+    --color-border-soft: var(--gray-300);
+    --color-focus: var(--blue-600);
+
+    /* Spacing. */
+    --space-2xs: var(--size-1);
+    --space-xs: var(--size-2);
+    --space-s: var(--size-3);
+    --space-m: var(--size-4);
+    --space-l: clamp(var(--size-5), 1rem + 1vw, var(--size-8));
+    --space-xl: clamp(var(--size-8), 1.5rem + 2vw, var(--size-14));
+
+    /* Type. */
+    --font-size-s: var(--font-size-0);
+    --font-size-m: var(--font-size-1);
+    --font-size-l: clamp(var(--font-size-2), 1rem + 0.5vw, var(--font-size-4));
+    --font-size-xl: clamp(var(--font-size-5), 1.2rem + 1.2vw, var(--font-size-8));
+    --font-size-2xl: clamp(var(--font-size-7), 1.5rem + 2vw, var(--font-size-10));
+    --line-height-tight: var(--leading-tight);
+    --line-height-body: var(--leading-normal);
+
+    /* Shape, focus, layout and motion. */
+    --radius-s: var(--radius-2);
+    --radius-m: var(--radius-4);
+    --shadow-card: var(--shadow-3);
+    --focus-ring-width: var(--border-size-3);
+    --focus-ring-offset: var(--border-size-2);
+    --target-size: var(--size-11);
+    --content-width: 72rem;
+    --content-width-narrow: 44rem;
+    --duration-fast: 150ms;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    :where(html) {
+      --duration-fast: 0s;
+    }
+  }
+}

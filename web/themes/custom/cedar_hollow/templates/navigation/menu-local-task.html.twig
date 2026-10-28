@@ -1,0 +1,9 @@
+{#
+/**
+ * @file
+ * One local task tab.
+ */
+#}
+<li class="local-tasks__item">
+  {{ link(link['#title'], link['#url'], {class: ['local-tasks__link', is_active ? 'is-active'], 'aria-current': is_active ? 'page' : null}) }}
+</li>

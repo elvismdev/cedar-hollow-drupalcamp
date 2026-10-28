@@ -1,0 +1,20 @@
+/**
+ * @file
+ * Cedar Hollow brand. Surface reads its brand through these five slots
+ * (UCLA's palette in Surface itself), so a different brand is this one file.
+ * Text on brand-primary and brand-primary-dark is white; text on the accent
+ * colours is brand-primary-darkest.
+ */
+
+@layer reset, tokens, base, atoms, components, collections, layouts, utilities;
+
+@layer tokens {
+  :where(html) {
+    --brand-primary: hsl(155deg 45% 26%);
+    --brand-primary-dark: hsl(155deg 50% 19%);
+    --brand-primary-darkest: hsl(155deg 55% 12%);
+    --brand-primary-light: hsl(150deg 35% 92%);
+    --brand-accent: hsl(40deg 90% 62%);
+    --brand-accent-dark: hsl(38deg 85% 52%);
+  }
+}

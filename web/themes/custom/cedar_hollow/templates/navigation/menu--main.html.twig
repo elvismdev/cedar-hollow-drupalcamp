@@ -1,0 +1,20 @@
+{#
+/**
+ * @file
+ * Main menu: one level, with a toggle button on small screens.
+ */
+#}
+{{ attach_library('cedar_hollow/menu-toggle') }}
+{% set menu_id = 'main-menu' %}
+<nav class="main-menu" aria-label="{{ 'Main'|t }}">
+  <button class="main-menu__toggle" type="button" aria-expanded="false" aria-controls="{{ menu_id }}" data-menu-toggle>{{ 'Menu'|t }}</button>
+  {% if items %}
+    <ul{{ attributes.addClass('main-menu__list').setAttribute('id', menu_id) }}>
+      {% for item in items %}
+        <li class="main-menu__item">
+          {{ link(item.title, item.url, {class: ['main-menu__link'], 'aria-current': item.in_active_trail ? 'page' : null}) }}
+        </li>
+      {% endfor %}
+    </ul>
+  {% endif %}
+</nav>

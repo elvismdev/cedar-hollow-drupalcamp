@@ -1,0 +1,13 @@
+{#
+/**
+ * @file
+ * The sessions listing: exposed filters, then the session-list component.
+ */
+#}
+<div{{ attributes.addClass('sessions-view') }}>
+  {{ title_prefix }}
+  {{ title_suffix }}
+  {{ exposed }}
+  {% include 'cedar_hollow:session-list' with {items: rows, empty_text: 'No sessions match these filters.'|t} only %}
+  {{ pager }}
+</div>

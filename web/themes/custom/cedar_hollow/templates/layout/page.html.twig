@@ -1,0 +1,22 @@
+{#
+/**
+ * @file
+ * Page frame for every front-end route, Canvas pages included: the
+ * site-header and site-footer components around the main landmark.
+ *
+ * Available variables beyond core's:
+ * - site_name: The site name, from preprocess.
+ * - demo_notice: The footer notice, from preprocess.
+ */
+#}
+{% set branding %}
+  <a href="{{ path('<front>') }}" rel="home">{{ site_name }}</a>
+{% endset %}
+<div class="page">
+  {% include 'cedar_hollow:site-header' with {branding: branding, navigation: page.header} only %}
+  <main id="main-content" class="page__main" tabindex="-1">
+    {{ page.highlighted }}
+    {{ page.content }}
+  </main>
+  {% include 'cedar_hollow:site-footer' with {links: page.footer, notice: demo_notice} only %}
+</div>

@@ -1,0 +1,65 @@
+/**
+ * @file
+ * Main menu in the site header. Below the tablet breakpoint the list is
+ * hidden until the toggle button opens it.
+ */
+
+@layer reset, tokens, base, atoms, components, collections, layouts, utilities;
+
+@layer collections {
+  .main-menu {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+  }
+
+  .main-menu__toggle {
+    min-block-size: var(--target-size);
+    padding-inline: var(--space-m);
+    border: 2px solid var(--color-accent);
+    border-radius: var(--radius-s);
+    background-color: var(--color-surface);
+    color: var(--color-accent);
+    font: inherit;
+    font-weight: 700;
+    cursor: pointer;
+  }
+
+  .main-menu__list {
+    display: none;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+
+    &.is-open {
+      display: block;
+    }
+  }
+
+  .main-menu__link {
+    display: inline-flex;
+    align-items: center;
+    min-block-size: var(--target-size);
+    padding-inline: var(--space-xs);
+    color: var(--color-text);
+    font-weight: 700;
+    text-decoration: none;
+
+    &:hover,
+    &[aria-current="page"] {
+      color: var(--color-accent);
+      text-decoration: underline;
+    }
+  }
+
+  @media (width >= 48em) {
+    .main-menu__toggle {
+      display: none;
+    }
+
+    .main-menu__list {
+      display: flex;
+      gap: var(--space-s);
+    }
+  }
+}

@@ -1,0 +1,8 @@
+/**
+ * @file
+ * Declares the cascade layer order. Loaded first; every other theme and
+ * component stylesheet repeats the same statement, so the order holds no
+ * matter which file the browser reads first.
+ */
+
+@layer reset, tokens, base, atoms, components, collections, layouts, utilities;

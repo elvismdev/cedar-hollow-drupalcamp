@@ -1,0 +1,12 @@
+{#
+/**
+ * @file
+ * Speaker teaser, rendered by the speaker-byline component.
+ */
+#}
+{% include 'cedar_hollow:speaker-byline' with {
+  name: label|render|striptags|trim,
+  image: content.field_photo,
+  attributes: attributes,
+} only %}
+{{ content|without('field_photo') }}
