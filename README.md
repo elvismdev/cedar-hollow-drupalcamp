@@ -85,7 +85,7 @@ terminus drush cedar-hollow-demo.dev -- deploy -y
 
 Pantheon's build runs `composer install` and builds Storybook (`frontend_build` in `pantheon.yml`). Content reached Pantheon once, by database copy from DDEV.
 
-Restore Dev from its latest backup (a backup of 2026-10-28 exists; the restore itself has not been run on this site yet):
+Restore Dev from its latest backup (tested on 2026-10-28: after a full restore every page returned 200, configuration matched the code and the reviewer account was intact):
 
 ```bash
 terminus backup:restore cedar-hollow-demo.dev --element=all -y
@@ -109,5 +109,5 @@ terminus drush cedar-hollow-demo.dev -- entity:delete registration -y  # on Pant
 * `scripts/rebuild.sh` installs the site from code with no configuration differences.
 * PHPUnit: 5 tests, 69 assertions, passing. Playwright against DDEV: e2e and a11y passing, with zero axe violations on the eight main pages.
 * On Pantheon Dev: every main page returns 200, `/api/agenda` is sent with `no-cache`, and the Storybook build lists the same 45 stories as the local build.
-* The Playwright smoke and a11y projects against Pantheon pass for 18 of 23 checks. The other five fail because Pantheon answers CSS and JavaScript requests from a headless Chrome user agent with 403, so pages that need JavaScript cannot be tested that way; the same files return 200 to an ordinary browser.
+* The Playwright smoke and a11y projects pass against Pantheon (21 checks), using Chromium's new headless mode; the default headless shell gets 403s for CSS and JavaScript there. Two sign-up checks are skipped on Pantheon because its edge may answer automated requests on that path with a bot challenge, which the tests do not try to get past; the sign-up flow is tested against DDEV.
 * Each automated check was shown to fail on a known defect before its passing result was trusted. Details are in `docs/accessibility.md` and `docs/checks.md`.
