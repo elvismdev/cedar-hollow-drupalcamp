@@ -41,7 +41,7 @@ $changes = [];
 /**
  * Loads the media item for a manifest entry, creating it if it is missing.
  */
-$media_for = static function (array $entry) use ($repository, &$changes): MediaInterface {
+$media_for = static function (array $entry) use ($repository, $etm, &$changes): MediaInterface {
   $media = $repository->loadEntityByUuid('media', $entry['uuid']);
   if ($media instanceof MediaInterface) {
     return $media;
@@ -54,7 +54,10 @@ $media_for = static function (array $entry) use ($repository, &$changes): MediaI
   $directory = DemoImages::FILES_DIR;
   $file_system->prepareDirectory($directory, $file_system::CREATE_DIRECTORY);
   $uri = $file_system->copy(DemoImages::FETCHED_DIR . '/' . $source['file'], DemoImages::FILES_DIR . '/' . $source['file'], $file_system::EXISTS_REPLACE);
-  $file = File::create(['uri' => $uri, 'status' => 1]);
+  // A run that failed after this point left a file entity at this URI;
+  // reuse it rather than add another for the same file.
+  $files = $etm->getStorage('file')->loadByProperties(['uri' => $uri]);
+  $file = reset($files) ?: File::create(['uri' => $uri, 'status' => 1]);
   $file->save();
 
   $media = Media::create([
