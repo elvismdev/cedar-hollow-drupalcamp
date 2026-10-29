@@ -2,9 +2,8 @@
  * @file
  * Collapses the main navigation behind a toggle button on small screens.
  *
- * Progressive enhancement: the markup shows every link and hides the button.
- * This behavior reveals the button and marks the menu collapsible, and only
- * then does CSS collapse the list.
+ * CSS collapses the list and shows the button whenever scripting is on, so
+ * the page is laid out once; this behavior only opens and closes the list.
  */
 
 ((Drupal, once) => {
@@ -15,8 +14,6 @@
         if (!menu) {
           return;
         }
-        button.closest('.main-menu')?.classList.add('main-menu--collapsible');
-        button.hidden = false;
         button.addEventListener('click', () => {
           const open = button.getAttribute('aria-expanded') === 'true';
           button.setAttribute('aria-expanded', String(!open));

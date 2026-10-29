@@ -7,8 +7,8 @@
 {{ attach_library('cedar_hollow/menu-toggle') }}
 {% set menu_id = 'main-menu' %}
 <nav class="main-menu" aria-label="{{ 'Main'|t }}">
-  {# Hidden until the menu-toggle behavior runs, so without JavaScript the links stay visible. #}
-  <button class="main-menu__toggle" type="button" aria-expanded="false" aria-controls="{{ menu_id }}" data-menu-toggle hidden>{{ 'Menu'|t }}</button>
+  {# CSS shows the button only when scripting is on, so without JavaScript the links stay visible. #}
+  <button class="main-menu__toggle" type="button" aria-expanded="false" aria-controls="{{ menu_id }}" data-menu-toggle>{{ 'Menu'|t }}</button>
   {% if items %}
     <ul{{ attributes.addClass('main-menu__list').setAttribute('id', menu_id) }}>
       {% for item in items %}

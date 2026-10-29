@@ -1,9 +1,10 @@
 /**
  * @file
- * Main menu in the site header. Every link shows by default; once the
- * menu-toggle behavior marks the menu collapsible, small screens collapse the
- * list behind the toggle button. The breakpoint is the page's, since the menu
- * spans the header.
+ * Main menu in the site header. When scripting is on, small screens collapse
+ * the list behind the toggle button from the first paint, so the page does
+ * not move when the menu-toggle behavior runs. Without scripting every link
+ * shows and the button is hidden. The breakpoint is the page's, since the
+ * menu spans the header.
  */
 
 @layer reset, tokens, base, atoms, components, collections, layouts, utilities;
@@ -53,18 +54,18 @@
     }
   }
 
-  @media (width < 48rem) {
-    .main-menu--collapsible .main-menu__list:not(.is-open) {
-      display: none;
-    }
-
-    .main-menu--collapsible .main-menu__list {
+  @media (scripting: enabled) and (width < 48rem) {
+    .main-menu__list {
       flex-direction: column;
       gap: 0;
     }
+
+    .main-menu__list:not(.is-open) {
+      display: none;
+    }
   }
 
-  @media (width >= 48rem) {
+  @media (scripting: none), (width >= 48rem) {
     .main-menu__toggle {
       display: none;
     }
