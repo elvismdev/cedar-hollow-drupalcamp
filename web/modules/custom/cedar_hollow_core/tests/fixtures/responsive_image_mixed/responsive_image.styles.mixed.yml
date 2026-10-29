@@ -1,0 +1,20 @@
+langcode: en
+status: true
+dependencies:
+  config:
+    - image.style.16_9_640
+    - image.style.3_2_400
+id: mixed
+label: 'Mixed ratios'
+image_style_mappings:
+  -
+    image_mapping_type: sizes
+    image_mapping:
+      sizes: '100vw'
+      sizes_image_styles:
+        - '16_9_640'
+        - '3_2_400'
+    breakpoint_id: responsive_image.viewport_sizing
+    multiplier: 1x
+breakpoint_group: responsive_image
+fallback_image_style: '16_9_640'
