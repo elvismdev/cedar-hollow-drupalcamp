@@ -50,6 +50,12 @@ $media_for = static function (array $entry) use ($repository, $etm, &$changes): 
   $fetched ??= json_decode(file_get_contents(DemoImages::FETCHED_DIR . '/fetched.json'), TRUE, flags: JSON_THROW_ON_ERROR);
   $source = $fetched[$entry['commons_page_id']] ?? throw new \RuntimeException("{$entry['commons_page_id']} was not fetched; run fetch-demo-images.php first.");
 
+  // Core enforces a required alt only in the media form's image widget, so
+  // validate() accepts an empty one here.
+  if (trim($entry['alt'] ?? '') === '') {
+    throw new \RuntimeException("{$entry['commons_title']} has no alt text in demo-images.json.");
+  }
+
   $file_system = \Drupal::service('file_system');
   $directory = DemoImages::FILES_DIR;
   $file_system->prepareDirectory($directory, $file_system::CREATE_DIRECTORY);
