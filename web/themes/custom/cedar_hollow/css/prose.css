@@ -79,7 +79,6 @@
     }
 
     :where(h2, h3) {
-      font-family: var(--font-heading);
       margin-block: var(--size-6) var(--size-3);
     }
 
