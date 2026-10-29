@@ -17,6 +17,12 @@
     font-weight: var(--font-weight-700);
   }
 
+  .seats-indicator--open,
+  .seats-indicator--unlimited {
+    border-color: var(--color-accent);
+    background-color: var(--color-accent-soft);
+  }
+
   .seats-indicator--low,
   .seats-indicator--waitlist {
     border-color: var(--color-warning);

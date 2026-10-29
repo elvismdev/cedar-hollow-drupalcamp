@@ -34,7 +34,7 @@
 
   .callout__teaser {
     max-inline-size: var(--measure);
-    font-size: clamp(var(--font-size-2), 1rem + 0.4vw, var(--font-size-3));
+    font-size: clamp(var(--font-size-2), 1rem + 0.4cqi, var(--font-size-3));
 
     > :first-child {
       margin-block-start: 0;
@@ -48,7 +48,7 @@
   .callout--quote .callout__body {
     position: relative;
     z-index: var(--layer-1);
-    max-inline-size: 70ch;
+    max-inline-size: var(--measure);
     padding: var(--size-6);
     background-color: var(--color-surface);
   }

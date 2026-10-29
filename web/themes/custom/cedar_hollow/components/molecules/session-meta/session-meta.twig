@@ -1,15 +1,15 @@
 {% set attributes = attributes ?: create_attribute() %}
 <dl{{ attributes.addClass('session-meta') }}>
   <div class="session-meta__item">
-    <dt class="session-meta__label">Time</dt>
+    <dt class="session-meta__label">{{ 'Time'|t }}</dt>
     <dd class="session-meta__value">{{ time_range }}</dd>
   </div>
   <div class="session-meta__item">
-    <dt class="session-meta__label">Room</dt>
+    <dt class="session-meta__label">{{ 'Room'|t }}</dt>
     <dd class="session-meta__value">{{ room }}</dd>
   </div>
   <div class="session-meta__item">
-    <dt class="session-meta__label">Track</dt>
+    <dt class="session-meta__label">{{ 'Track'|t }}</dt>
     <dd class="session-meta__value">{{ track }}</dd>
   </div>
 </dl>

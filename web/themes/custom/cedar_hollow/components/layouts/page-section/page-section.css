@@ -14,6 +14,10 @@
     max-inline-size: var(--content-width-narrow);
   }
 
+  .page-section--full {
+    max-inline-size: none;
+  }
+
   .page-section--wide {
     max-inline-size: var(--content-width);
   }

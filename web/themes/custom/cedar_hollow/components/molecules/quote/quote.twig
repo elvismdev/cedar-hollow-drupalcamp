@@ -3,10 +3,12 @@
 <div{{ attributes.addClass('quote') }}>
   <div class="quote__content">
     <div class="quote__text">
-      <blockquote class="quote__body">
-        {{ quote }}
-        <span class="quote__author">{{ author }}</span>
-      </blockquote>
+      <figure class="quote__figure">
+        <blockquote class="quote__body">
+          {{ quote }}
+        </blockquote>
+        <figcaption class="quote__author">{{ author }}</figcaption>
+      </figure>
     </div>
     {% if image|render|trim %}
       <div class="quote__image">

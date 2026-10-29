@@ -3,6 +3,6 @@
   {% if items|render|striptags|trim %}
     {{ items }}
   {% else %}
-    <p class="session-list__empty">{{ empty_text ?: 'No sessions match these filters.' }}</p>
+    <p class="session-list__empty">{{ empty_text ?: 'No sessions match these filters.'|t }}</p>
   {% endif %}
 </div>

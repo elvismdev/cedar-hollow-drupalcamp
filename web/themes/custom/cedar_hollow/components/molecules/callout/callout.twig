@@ -19,7 +19,7 @@
     {% endif %}
     <div class="callout__text">
       <div class="callout__body">
-        {% include 'cedar_hollow:title' with {text: heading, level: '2', size: 'large'} only %}
+        {% include 'cedar_hollow:title' with {text: heading, level: heading_level ?: '2', size: 'large'} only %}
         {% if teaser %}
           <div class="callout__teaser prose">
             {{ teaser }}

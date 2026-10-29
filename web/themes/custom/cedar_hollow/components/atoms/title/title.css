@@ -20,7 +20,7 @@
 
   .title--h2,
   .title--size-large {
-    font-size: clamp(var(--font-size-6), 1.2rem + 1.5vw, var(--font-size-8));
+    font-size: clamp(var(--font-size-6), 1.2rem + 1.5cqi, var(--font-size-8));
   }
 
   .title--h3,

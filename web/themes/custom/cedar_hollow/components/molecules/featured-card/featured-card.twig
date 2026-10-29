@@ -11,7 +11,7 @@
       {% if eyebrow %}
         {% include 'cedar_hollow:eyebrow' with {text: eyebrow} only %}
       {% endif %}
-      {% include 'cedar_hollow:title' with {text: heading, url: url, level: '3', size: 'large'} only %}
+      {% include 'cedar_hollow:title' with {text: heading, url: url, level: heading_level ?: '3', size: 'large'} only %}
       {% if subtitle %}
         <p class="featured-card__subtitle">{{ subtitle }}</p>
       {% endif %}

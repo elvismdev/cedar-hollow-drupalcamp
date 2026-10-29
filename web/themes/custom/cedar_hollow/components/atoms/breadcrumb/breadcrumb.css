@@ -44,6 +44,8 @@
   }
 
   .breadcrumb--inverse {
+    --color-focus: var(--color-on-accent);
+
     color: var(--color-on-accent);
 
     .breadcrumb__link {

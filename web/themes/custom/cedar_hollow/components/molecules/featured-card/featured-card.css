@@ -35,13 +35,13 @@
     display: flex;
     flex-direction: column;
     gap: var(--size-3);
-    max-inline-size: var(--size-mobile);
+    max-inline-size: var(--content-width-narrow);
   }
 
   .featured-card__subtitle {
     margin: 0;
     color: var(--color-text);
-    font-size: clamp(var(--font-size-4), 1rem + 0.5vw, var(--font-size-5));
+    font-size: clamp(var(--font-size-4), 1rem + 0.5cqi, var(--font-size-5));
   }
 
   .featured-card__organization {

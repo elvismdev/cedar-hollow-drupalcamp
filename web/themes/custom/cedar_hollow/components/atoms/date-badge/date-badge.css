@@ -11,8 +11,8 @@
     display: flex;
     flex-direction: column;
     justify-content: center;
-    inline-size: var(--size-20);
-    block-size: var(--size-20);
+    min-inline-size: var(--size-20);
+    min-block-size: var(--size-20);
     padding: var(--size-3);
     background-color: var(--color-accent);
     color: var(--color-on-accent);
@@ -37,8 +37,8 @@
   }
 
   .date-badge--small {
-    inline-size: var(--size-14);
-    block-size: var(--size-14);
+    min-inline-size: var(--size-14);
+    min-block-size: var(--size-14);
     padding: var(--size-2);
     font-size: var(--font-size-4);
 

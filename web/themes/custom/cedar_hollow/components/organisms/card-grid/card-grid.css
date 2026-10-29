@@ -25,6 +25,10 @@
     --card-grid-columns: 2;
   }
 
+  .card-grid--cols-3 {
+    --card-grid-columns: 3;
+  }
+
   .card-grid--cols-4 {
     --card-grid-columns: 4;
     --card-grid-min: 13rem;
