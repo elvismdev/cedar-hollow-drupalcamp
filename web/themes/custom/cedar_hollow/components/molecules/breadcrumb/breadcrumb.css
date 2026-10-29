@@ -1,13 +1,13 @@
 /**
  * @file
- * Breadcrumb (Atomic Design: atom). Based on uclahs/surface's breadcrumb at
+ * Breadcrumb (Atomic Design: molecule). Based on uclahs/surface's breadcrumb at
  * 76e5dc6 (GPL-2.0-or-later). Surface drew it white on a dark band; here it
  * uses the page's text colours, with an inverse modifier for dark surfaces.
  */
 
 @layer reset, tokens, base, atoms, components, collections, layouts, utilities;
 
-@layer atoms {
+@layer components {
   .breadcrumb {
     color: var(--color-text-muted);
   }

@@ -2,7 +2,7 @@
 import breadcrumb from './breadcrumb.twig';
 
 export default {
-  title: 'Atoms/Breadcrumb',
+  title: 'Components/Breadcrumb',
   tags: ['autodocs'],
   parameters: {
     docs: {

@@ -1,7 +1,7 @@
 $schema: https://git.drupalcode.org/project/drupal/-/raw/HEAD/core/assets/schemas/v1/metadata.schema.json
 name: Breadcrumb
 status: stable
-group: Atoms
+group: Components
 description: "The breadcrumb trail, fed by Drupal's breadcrumb template. Ported from Surface."
 noUi: true
 props:
