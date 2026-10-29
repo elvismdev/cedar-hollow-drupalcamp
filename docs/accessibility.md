@@ -6,7 +6,7 @@ No conformance claim is made for this demo. This page records what was checked, 
 
 | Check | Tool | Pages | Result (2026-10-28, DDEV) |
 | --- | --- | --- | --- |
-| WCAG 2.2 A and AA rules | `@axe-core/playwright` 4.14.0 with tags `wcag2a`, `wcag2aa`, `wcag21a`, `wcag21aa`, `wcag22aa` (`tests/a11y/a11y.spec.ts`) | Home, agenda, about, sessions listing, a session, its sign-up form, site map, log in | 0 violations on all 8 |
+| WCAG 2.2 A and AA rules | `@axe-core/playwright` 4.14.0 with tags `wcag2a`, `wcag2aa`, `wcag21a`, `wcag21aa`, `wcag22aa` (`tests/a11y/a11y.spec.ts`) | Home, agenda, about, sessions listing, a session, its sign-up form, site map, log in, image credits | 0 violations on all 9 (image credits added 2026-10-29, with every image in place) |
 | Reflow (WCAG 1.4.10), the automated part of the 400 percent zoom check | Playwright at 320 CSS pixels wide (`tests/a11y/reflow.spec.ts`) | The same pages plus "Try Canvas here" | No page scrolls sideways |
 | Keyboard path through the agenda builder | Playwright (`tests/e2e/agenda-builder.spec.ts`) | Agenda | Tab reaches each "Add to agenda" button, Space presses it, focus stays on it, and the status region announces the conflict once |
 | Component accessibility while building | Storybook's accessibility panel (`@storybook/addon-a11y`) | Every story | Visual panel for reviewers; not a gate |
