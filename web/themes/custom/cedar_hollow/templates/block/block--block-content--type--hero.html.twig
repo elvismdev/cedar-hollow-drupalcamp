@@ -1,0 +1,13 @@
+{#
+/**
+ * @file
+ * Hero block: the block content's image, rendered by the hero component.
+ *
+ * Block content builds its fields only when it renders, so the template
+ * passes the whole content; the hero view display shows only the image.
+ */
+#}
+{% include 'cedar_hollow:hero' with {
+  image: content,
+  attributes: attributes,
+} only %}

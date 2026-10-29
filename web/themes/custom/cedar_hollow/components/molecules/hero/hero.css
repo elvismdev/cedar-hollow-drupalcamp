@@ -1,0 +1,21 @@
+/**
+ * @file
+ * Hero (Atomic Design: molecule). The image fills the main column and keeps
+ * the 16:9 shape its image style cropped it to; width and height on the img
+ * reserve that space before it loads.
+ */
+
+@layer reset, tokens, base, atoms, components, collections, layouts, utilities;
+
+@layer components {
+  .hero {
+    overflow: hidden;
+    border-radius: var(--radius-2);
+  }
+
+  .hero__img {
+    display: block;
+    inline-size: 100%;
+    block-size: auto;
+  }
+}
