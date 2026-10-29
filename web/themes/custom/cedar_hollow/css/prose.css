@@ -83,6 +83,12 @@
       margin-block: var(--size-6) var(--size-3);
     }
 
+    /* The next block's own start margin would collapse with the heading's
+     * end margin and win, so the block after a heading sets the gap. */
+    :where(h2, h3) + :where(*) {
+      margin-block-start: var(--size-3);
+    }
+
     :where(h2) {
       font-size: var(--font-size-4);
     }
