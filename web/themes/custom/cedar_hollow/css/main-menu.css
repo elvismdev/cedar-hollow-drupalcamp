@@ -37,6 +37,23 @@
     &::-webkit-details-marker {
       display: none;
     }
+
+    /* A chevron drawn with borders, so it has no text to announce; it
+     * points down when closed and up when open. */
+    &::after {
+      content: "";
+      inline-size: var(--size-2);
+      block-size: var(--size-2);
+      margin-inline-start: var(--size-2);
+      border-block-end: var(--border-size-2) solid currentcolor;
+      border-inline-end: var(--border-size-2) solid currentcolor;
+      transform: translateY(-25%) rotate(45deg);
+      transition: transform var(--duration-fast);
+    }
+  }
+
+  .main-menu__disclosure[open] > .main-menu__toggle::after {
+    transform: translateY(25%) rotate(-135deg);
   }
 
   .main-menu__list {
