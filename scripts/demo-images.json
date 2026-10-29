@@ -1,0 +1,386 @@
+[
+  {
+    "uuid": "1257c06d-8647-4f64-b9a1-e076114defc8",
+    "commons_title": "File:Coniferous Forest - Green Valley 2014-05-08 1606.JPG",
+    "commons_page_id": 33306986,
+    "revision_timestamp": "2014-06-10T11:10:53Z",
+    "use": "hero",
+    "target": null,
+    "ratio": "16:9",
+    "alt": "Conifers on a forested mountain slope",
+    "focal": {
+      "x": 40,
+      "y": 50
+    },
+    "caption": null,
+    "reviewed": "2026-10-29"
+  },
+  {
+    "uuid": "aa2b4965-9e66-4449-a3aa-6cfdc081d59d",
+    "commons_title": "File:Braille textbook.jpg",
+    "commons_page_id": 27376110,
+    "revision_timestamp": "2013-07-22T02:50:52Z",
+    "use": "session",
+    "target": "/sessions/accessible-forms-in-drupal",
+    "ratio": "16:9",
+    "alt": "Rows of raised braille dots on a page",
+    "focal": {
+      "x": 50,
+      "y": 50
+    },
+    "caption": null,
+    "reviewed": "2026-10-29"
+  },
+  {
+    "uuid": "2bb255f1-f4b8-41fc-8782-91d9a57445c3",
+    "commons_title": "File:Data Center (22370911658).jpg",
+    "commons_page_id": 44808034,
+    "revision_timestamp": "2015-11-05T22:20:58Z",
+    "use": "session",
+    "target": "/sessions/caching-render-arrays",
+    "ratio": "16:9",
+    "alt": "Server racks with patch cables in a small machine room",
+    "focal": {
+      "x": 62,
+      "y": 50
+    },
+    "caption": null,
+    "reviewed": "2026-10-29"
+  },
+  {
+    "uuid": "83e3a3a1-f7c7-4d22-83d6-96842732a561",
+    "commons_title": "File:Mix of paints (Unsplash).jpg",
+    "commons_page_id": 61805251,
+    "revision_timestamp": "2017-08-20T08:34:41Z",
+    "use": "session",
+    "target": "/sessions/canvas-for-site-builders",
+    "ratio": "16:9",
+    "alt": "A clay bowl of mixed paints with a brush resting in it",
+    "focal": {
+      "x": 62,
+      "y": 45
+    },
+    "caption": null,
+    "reviewed": "2026-10-29"
+  },
+  {
+    "uuid": "e00545d7-6558-4b66-8f9c-fa3e20ae6909",
+    "commons_title": "File:Strata along Saddle Rock Trail, Scotts Bluff National Monument, 2009.jpg",
+    "commons_page_id": 156012290,
+    "revision_timestamp": "2024-11-30T14:35:44Z",
+    "use": "session",
+    "target": "/sessions/cascade-layers-and-bem",
+    "ratio": "16:9",
+    "alt": "Layers of pale sandstone in a cliff face",
+    "focal": {
+      "x": 50,
+      "y": 40
+    },
+    "caption": null,
+    "reviewed": "2026-10-29"
+  },
+  {
+    "uuid": "d8c44ec6-21e2-4a17-83dc-4f2019709619",
+    "commons_title": "File:TEDxUtrecht University (5589955410).jpg",
+    "commons_page_id": 126295547,
+    "revision_timestamp": "2022-12-04T12:51:12Z",
+    "use": "session",
+    "target": "/sessions/closing-panel",
+    "ratio": "16:9",
+    "alt": "A microphone on a stand in front of rows of empty red seats",
+    "focal": {
+      "x": 28,
+      "y": 45
+    },
+    "caption": null,
+    "reviewed": "2026-10-29"
+  },
+  {
+    "uuid": "a9298fb0-f8b7-4597-a1a8-dbd0392bf3b3",
+    "commons_title": "File:SES-10 Launch - world's first reflight of an orbital class rocket (33361035200).jpg",
+    "commons_page_id": 57565631,
+    "revision_timestamp": "2019-04-02T20:26:40Z",
+    "use": "session",
+    "target": "/sessions/configuration-and-deploys-on-pantheon",
+    "ratio": "16:9",
+    "alt": "A rocket lifting off from a launch pad by the sea",
+    "focal": {
+      "x": 70,
+      "y": 50
+    },
+    "caption": null,
+    "reviewed": "2026-10-29"
+  },
+  {
+    "uuid": "6447c04a-0dcd-4854-9ea6-990affd30b4e",
+    "commons_title": "File:Defcon-24-badge-front.jpg",
+    "commons_page_id": 78726252,
+    "revision_timestamp": "2019-05-05T16:55:37Z",
+    "use": "session",
+    "target": "/sessions/entity-registration-for-events",
+    "ratio": "16:9",
+    "alt": "A conference badge shaped like a circuit-board skull, on a lanyard",
+    "focal": {
+      "x": 68,
+      "y": 65
+    },
+    "caption": null,
+    "reviewed": "2026-10-29"
+  },
+  {
+    "uuid": "a1ae86a9-6c96-45bf-8e15-b199a432bd29",
+    "commons_title": "File:FishHooks.JPG",
+    "commons_page_id": 1703896,
+    "revision_timestamp": "2007-02-22T13:42:05Z",
+    "use": "session",
+    "target": "/sessions/preprocess-hooks-without-the-mess",
+    "ratio": "16:9",
+    "alt": "Three fishing hooks of different sizes on a grey surface",
+    "focal": {
+      "x": 45,
+      "y": 55
+    },
+    "caption": null,
+    "reviewed": "2026-10-29"
+  },
+  {
+    "uuid": "d4a7c925-7442-4940-a0a9-8967d43cab76",
+    "commons_title": "File:4304Food ingredients of home cooking 13.jpg",
+    "commons_page_id": 93261515,
+    "revision_timestamp": "2020-08-18T11:44:51Z",
+    "use": "session",
+    "target": "/sessions/recipes-in-practice",
+    "ratio": "16:9",
+    "alt": "A plate of chopped peppers, garlic, onion and green beans held in one hand",
+    "focal": {
+      "x": 55,
+      "y": 50
+    },
+    "caption": null,
+    "reviewed": "2026-10-29"
+  },
+  {
+    "uuid": "c391e726-b33b-424b-ab7d-7f01d1ba6036",
+    "commons_title": "File:Open book with apples placed on a wooden table in a bright indoor setting.jpg",
+    "commons_page_id": 198191944,
+    "revision_timestamp": "2026-08-26T09:47:05Z",
+    "use": "session",
+    "target": "/sessions/storybook-for-drupal-themes",
+    "ratio": "16:9",
+    "alt": "An apple resting on an open book on a wooden table",
+    "focal": {
+      "x": 50,
+      "y": 50
+    },
+    "caption": null,
+    "reviewed": "2026-10-29"
+  },
+  {
+    "uuid": "0da26eee-d16c-4cec-b707-27b9464e6f50",
+    "commons_title": "File:A notebook with paint brushes.jpg",
+    "commons_page_id": 106878932,
+    "revision_timestamp": "2021-06-22T14:41:10Z",
+    "use": "session",
+    "target": "/sessions/theming-with-sdc",
+    "ratio": "16:9",
+    "alt": "A watercolour set, brushes and a blank spiral notebook on a wooden table",
+    "focal": {
+      "x": 50,
+      "y": 45
+    },
+    "caption": null,
+    "reviewed": "2026-10-29"
+  },
+  {
+    "uuid": "14622788-b42f-4995-b6d2-2d808398b56b",
+    "commons_title": "File:Binoculars (AM 2016.34.1-8).jpg",
+    "commons_page_id": 83258646,
+    "revision_timestamp": "2019-10-21T16:16:16Z",
+    "use": "session",
+    "target": "/sessions/views-and-exposed-filters",
+    "ratio": "16:9",
+    "alt": "A pair of antique brass binoculars seen from the front",
+    "focal": {
+      "x": 50,
+      "y": 50
+    },
+    "caption": null,
+    "reviewed": "2026-10-29"
+  },
+  {
+    "uuid": "f77ec99e-95c6-46d1-9884-1f340824e1c9",
+    "commons_title": "File:A hand rests on a laptop keyboard, pressing a key.jpg",
+    "commons_page_id": 196893578,
+    "revision_timestamp": "2026-08-06T08:40:56Z",
+    "use": "speaker",
+    "target": "Ana Calder",
+    "ratio": "1:1",
+    "alt": "A hand on a laptop keyboard",
+    "focal": {
+      "x": 40,
+      "y": 60
+    },
+    "caption": null,
+    "reviewed": "2026-10-29"
+  },
+  {
+    "uuid": "18c8c146-bb79-498e-ab57-b29321635bee",
+    "commons_title": "File:Hands are typing on a laptop keyboard while a clock rests next to the device.jpg",
+    "commons_page_id": 195963594,
+    "revision_timestamp": "2026-07-21T11:33:42Z",
+    "use": "speaker",
+    "target": "Ben Okafor",
+    "ratio": "1:1",
+    "alt": "Hands typing on a laptop beside an alarm clock",
+    "focal": {
+      "x": 52,
+      "y": 60
+    },
+    "caption": null,
+    "reviewed": "2026-10-29"
+  },
+  {
+    "uuid": "cd601ac0-be55-49f5-ae8e-d31623f7eda3",
+    "commons_title": "File:A hand is pressing keys on a laptop keyboard.jpg",
+    "commons_page_id": 196893577,
+    "revision_timestamp": "2026-08-06T08:40:54Z",
+    "use": "speaker",
+    "target": "Chloe Marsh",
+    "ratio": "1:1",
+    "alt": "A finger pressing a key on a laptop",
+    "focal": {
+      "x": 55,
+      "y": 55
+    },
+    "caption": null,
+    "reviewed": "2026-10-29"
+  },
+  {
+    "uuid": "ac815b4f-db6a-43f7-9c2e-c38c13cc81f0",
+    "commons_title": "File:Hands on a laptop keyboard (Unsplash).jpg",
+    "commons_page_id": 61684280,
+    "revision_timestamp": "2017-08-15T00:12:28Z",
+    "use": "speaker",
+    "target": "Dev Raman",
+    "ratio": "1:1",
+    "alt": "Hands on a laptop on a wooden desk, seen from above",
+    "focal": {
+      "x": 45,
+      "y": 50
+    },
+    "caption": null,
+    "reviewed": "2026-10-29"
+  },
+  {
+    "uuid": "b139339f-ebd8-44b2-b713-486d1e4c7aba",
+    "commons_title": "File:Hand-laptop-notebook-technology (24326528895).jpg",
+    "commons_page_id": 51439800,
+    "revision_timestamp": "2016-09-16T05:02:39Z",
+    "use": "speaker",
+    "target": "Elena Ruiz",
+    "ratio": "1:1",
+    "alt": "A hand at a laptop keyboard in warm light",
+    "focal": {
+      "x": 40,
+      "y": 55
+    },
+    "caption": null,
+    "reviewed": "2026-10-29"
+  },
+  {
+    "uuid": "e8abaef5-3392-467a-b276-bb8ac4381a75",
+    "commons_title": "File:Hand-laptop-notebook-typing (23698140194).jpg",
+    "commons_page_id": 51439983,
+    "revision_timestamp": "2016-09-16T05:09:53Z",
+    "use": "speaker",
+    "target": "Femi Adeyemi",
+    "ratio": "1:1",
+    "alt": "Fingers on a black laptop keyboard",
+    "focal": {
+      "x": 55,
+      "y": 45
+    },
+    "caption": null,
+    "reviewed": "2026-10-29"
+  },
+  {
+    "uuid": "1c4f2189-76b8-4139-b450-5b3884244bdd",
+    "commons_title": "File:Keyboard and pen.JPG",
+    "commons_page_id": 2216036,
+    "revision_timestamp": "2007-06-07T21:19:54Z",
+    "use": "speaker",
+    "target": "Grace Lindqvist",
+    "ratio": "1:1",
+    "alt": "A pen lying on a laptop keyboard",
+    "focal": {
+      "x": 60,
+      "y": 55
+    },
+    "caption": null,
+    "reviewed": "2026-10-29"
+  },
+  {
+    "uuid": "4e7104f7-c61b-4026-84d7-b82e015e28df",
+    "commons_title": "File:Computer Keyboard - stock photo.jpg",
+    "commons_page_id": 184883534,
+    "revision_timestamp": "2026-02-24T01:13:07Z",
+    "use": "speaker",
+    "target": "Hugo Tanaka",
+    "ratio": "1:1",
+    "alt": "Close-up of black keyboard keys",
+    "focal": {
+      "x": 50,
+      "y": 50
+    },
+    "caption": null,
+    "reviewed": "2026-10-29"
+  },
+  {
+    "uuid": "5711e43f-4813-415b-8d47-00affc346a18",
+    "commons_title": "File:Code on computer monitor (Unsplash).jpg",
+    "commons_page_id": 62049414,
+    "revision_timestamp": "2017-08-31T11:16:36Z",
+    "use": "embed",
+    "target": "/sessions/theming-with-sdc",
+    "ratio": "16:9",
+    "alt": "Lines of colour-highlighted code on a monitor",
+    "focal": {
+      "x": 60,
+      "y": 50
+    },
+    "caption": "Each component keeps its Twig, CSS and metadata in one directory.",
+    "reviewed": "2026-10-29"
+  },
+  {
+    "uuid": "eca755f9-069e-49be-9923-92885df8b660",
+    "commons_title": "File:Designer's two-screen setup (Unsplash).jpg",
+    "commons_page_id": 61684829,
+    "revision_timestamp": "2017-08-15T01:14:40Z",
+    "use": "embed",
+    "target": "/sessions/storybook-for-drupal-themes",
+    "ratio": "16:9",
+    "alt": "Two monitors on a desk lit by a lamp, one showing code",
+    "focal": {
+      "x": 45,
+      "y": 45
+    },
+    "caption": "Stories render the same Twig and CSS the site loads.",
+    "reviewed": "2026-10-29"
+  },
+  {
+    "uuid": "2cdf67be-f970-489a-b44f-52bb626e3b04",
+    "commons_title": "File:Home-office-336377.jpg",
+    "commons_page_id": 97131977,
+    "revision_timestamp": "2020-11-29T17:54:11Z",
+    "use": "embed",
+    "target": "/sessions/recipes-in-practice",
+    "ratio": "3:2",
+    "alt": "An open laptop, a notebook and a cup of coffee on a wooden table",
+    "focal": {
+      "x": 55,
+      "y": 45
+    },
+    "caption": "A recipe applies once; configuration sync owns the result afterwards.",
+    "reviewed": "2026-10-29"
+  }
+]
