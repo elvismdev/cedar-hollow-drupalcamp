@@ -1,7 +1,9 @@
 /**
  * @file
  * Image credits page: the table scrolls inside its own region on narrow
- * screens instead of making the page scroll sideways.
+ * screens instead of making the page scroll sideways. The table comes from
+ * the Views table style, so its cells are styled by element inside the
+ * region.
  */
 
 @layer reset, tokens, base, atoms, components, collections, layouts, utilities;
@@ -20,6 +22,23 @@
     position: relative;
     overflow-x: auto;
 
+    & table {
+      inline-size: 100%;
+      border-collapse: collapse;
+    }
+
+    & caption {
+      padding-block-end: var(--size-2);
+      text-align: start;
+      font-weight: var(--font-weight-700);
+    }
+
+    & :is(th, td) {
+      padding: var(--size-2) var(--size-3);
+      border-block-end: var(--border-size-1) solid var(--color-border-soft);
+      text-align: start;
+      vertical-align: middle;
+    }
   }
 
   /* The thumbnail's sizes attribute says 3rem, so it renders at 3rem. */
