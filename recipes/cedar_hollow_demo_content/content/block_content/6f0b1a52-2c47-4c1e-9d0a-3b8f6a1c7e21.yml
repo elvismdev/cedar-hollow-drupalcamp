@@ -1,0 +1,24 @@
+_meta:
+  version: '1.0'
+  entity_type: block_content
+  uuid: 6f0b1a52-2c47-4c1e-9d0a-3b8f6a1c7e21
+  bundle: hero
+  default_langcode: en
+  depends:
+    1257c06d-8647-4f64-b9a1-e076114defc8: media
+default:
+  status:
+    -
+      value: true
+  info:
+    -
+      value: 'Front page hero'
+  reusable:
+    -
+      value: true
+  revision_translation_affected:
+    -
+      value: true
+  field_media:
+    -
+      entity: 1257c06d-8647-4f64-b9a1-e076114defc8

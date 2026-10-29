@@ -1,0 +1,51 @@
+_meta:
+  version: '1.0'
+  entity_type: media
+  uuid: 18c8c146-bb79-498e-ab57-b29321635bee
+  bundle: image
+  default_langcode: en
+  depends:
+    088fc989-924b-4008-a4ef-a180f34656ef: file
+default:
+  status:
+    -
+      value: true
+  uid:
+    -
+      target_id: 0
+  name:
+    -
+      value: 'Hands are typing on a laptop keyboard while a clock rests next to the device'
+  revision_translation_affected:
+    -
+      value: true
+  path:
+    -
+      langcode: en
+      alias: null
+  field_creator:
+    -
+      value: Shixart1985
+  field_licence:
+    -
+      value: cc_by
+  field_licence_url:
+    -
+      uri: 'https://creativecommons.org/licenses/by/2.0'
+      title: null
+      options: {  }
+  field_media_image:
+    -
+      alt: 'Hands typing on a laptop beside an alarm clock'
+      title: ''
+      width: 1920
+      height: 1282
+      entity: 088fc989-924b-4008-a4ef-a180f34656ef
+  field_source_url:
+    -
+      uri: 'https://commons.wikimedia.org/wiki/File:Hands_are_typing_on_a_laptop_keyboard_while_a_clock_rests_next_to_the_device.jpg'
+      title: null
+      options: {  }
+  field_verified:
+    -
+      value: true

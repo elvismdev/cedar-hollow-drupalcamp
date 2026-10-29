@@ -1,0 +1,51 @@
+_meta:
+  version: '1.0'
+  entity_type: media
+  uuid: 2bb255f1-f4b8-41fc-8782-91d9a57445c3
+  bundle: image
+  default_langcode: en
+  depends:
+    eea6240a-5403-4276-add4-5114d674b490: file
+default:
+  status:
+    -
+      value: true
+  uid:
+    -
+      target_id: 0
+  name:
+    -
+      value: 'Data Center (22370911658)'
+  revision_translation_affected:
+    -
+      value: true
+  path:
+    -
+      langcode: en
+      alias: null
+  field_creator:
+    -
+      value: 'Carl Lender from Sunrise, USA'
+  field_licence:
+    -
+      value: cc_by
+  field_licence_url:
+    -
+      uri: 'https://creativecommons.org/licenses/by/2.0'
+      title: null
+      options: {  }
+  field_media_image:
+    -
+      alt: 'Server racks with patch cables in a small machine room'
+      title: ''
+      width: 1280
+      height: 853
+      entity: eea6240a-5403-4276-add4-5114d674b490
+  field_source_url:
+    -
+      uri: 'https://commons.wikimedia.org/wiki/File:Data_Center_(22370911658).jpg'
+      title: null
+      options: {  }
+  field_verified:
+    -
+      value: true

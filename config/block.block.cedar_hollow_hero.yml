@@ -1,0 +1,28 @@
+uuid: c7003de4-eb2b-40ec-b046-48dfcb0a9cef
+langcode: en
+status: true
+dependencies:
+  content:
+    - 'block_content:hero:6f0b1a52-2c47-4c1e-9d0a-3b8f6a1c7e21'
+  module:
+    - block_content
+    - system
+  theme:
+    - cedar_hollow
+id: cedar_hollow_hero
+theme: cedar_hollow
+region: highlighted
+weight: -10
+provider: null
+plugin: 'block_content:6f0b1a52-2c47-4c1e-9d0a-3b8f6a1c7e21'
+settings:
+  id: 'block_content:6f0b1a52-2c47-4c1e-9d0a-3b8f6a1c7e21'
+  label: 'Front page hero'
+  label_display: '0'
+  provider: block_content
+  view_mode: full
+visibility:
+  request_path:
+    id: request_path
+    negate: false
+    pages: '<front>'

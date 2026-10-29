@@ -1,0 +1,51 @@
+_meta:
+  version: '1.0'
+  entity_type: media
+  uuid: c391e726-b33b-424b-ab7d-7f01d1ba6036
+  bundle: image
+  default_langcode: en
+  depends:
+    099b3b82-94a6-4394-93de-c766ed47834a: file
+default:
+  status:
+    -
+      value: true
+  uid:
+    -
+      target_id: 0
+  name:
+    -
+      value: 'Open book with apples placed on a wooden table in a bright indoor setting'
+  revision_translation_affected:
+    -
+      value: true
+  path:
+    -
+      langcode: en
+      alias: null
+  field_creator:
+    -
+      value: Shixart1985
+  field_licence:
+    -
+      value: cc_by
+  field_licence_url:
+    -
+      uri: 'https://creativecommons.org/licenses/by/2.0'
+      title: null
+      options: {  }
+  field_media_image:
+    -
+      alt: 'An apple resting on an open book on a wooden table'
+      title: ''
+      width: 1920
+      height: 1282
+      entity: 099b3b82-94a6-4394-93de-c766ed47834a
+  field_source_url:
+    -
+      uri: 'https://commons.wikimedia.org/wiki/File:Open_book_with_apples_placed_on_a_wooden_table_in_a_bright_indoor_setting.jpg'
+      title: null
+      options: {  }
+  field_verified:
+    -
+      value: true

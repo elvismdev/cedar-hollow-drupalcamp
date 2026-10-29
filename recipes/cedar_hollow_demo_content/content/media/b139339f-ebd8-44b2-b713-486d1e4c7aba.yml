@@ -1,0 +1,51 @@
+_meta:
+  version: '1.0'
+  entity_type: media
+  uuid: b139339f-ebd8-44b2-b713-486d1e4c7aba
+  bundle: image
+  default_langcode: en
+  depends:
+    65b1e8af-2194-4229-8114-b632c99d95aa: file
+default:
+  status:
+    -
+      value: true
+  uid:
+    -
+      target_id: 0
+  name:
+    -
+      value: 'Hand-laptop-notebook-technology (24326528895)'
+  revision_translation_affected:
+    -
+      value: true
+  path:
+    -
+      langcode: en
+      alias: null
+  field_creator:
+    -
+      value: 'www.Pixel.la Free Stock Photos'
+  field_licence:
+    -
+      value: cc0
+  field_licence_url:
+    -
+      uri: 'http://creativecommons.org/publicdomain/zero/1.0/deed.en'
+      title: null
+      options: {  }
+  field_media_image:
+    -
+      alt: 'A hand at a laptop keyboard in warm light'
+      title: ''
+      width: 1920
+      height: 1280
+      entity: 65b1e8af-2194-4229-8114-b632c99d95aa
+  field_source_url:
+    -
+      uri: 'https://commons.wikimedia.org/wiki/File:Hand-laptop-notebook-technology_(24326528895).jpg'
+      title: null
+      options: {  }
+  field_verified:
+    -
+      value: true

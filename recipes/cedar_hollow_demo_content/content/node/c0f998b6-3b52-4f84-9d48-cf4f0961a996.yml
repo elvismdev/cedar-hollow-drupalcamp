@@ -5,6 +5,7 @@ _meta:
   bundle: session
   default_langcode: en
   depends:
+    6447c04a-0dcd-4854-9ea6-990affd30b4e: media
     8e86b71e-4a33-4dd4-b77c-9307bc3a6501: node
     7b487e17-a160-4958-b807-bc4b632fc757: taxonomy_term
 default:
@@ -16,7 +17,7 @@ default:
       value: true
   uid:
     -
-      target_id: 0
+      target_id: 1
   title:
     -
       value: 'Entity Registration for events'
@@ -41,6 +42,9 @@ default:
   field_day:
     -
       value: fri
+  field_image:
+    -
+      entity: 6447c04a-0dcd-4854-9ea6-990affd30b4e
   field_registration:
     -
       registration_type: attendee

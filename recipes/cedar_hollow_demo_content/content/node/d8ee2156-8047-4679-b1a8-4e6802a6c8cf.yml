@@ -4,6 +4,8 @@ _meta:
   uuid: d8ee2156-8047-4679-b1a8-4e6802a6c8cf
   bundle: speaker
   default_langcode: en
+  depends:
+    cd601ac0-be55-49f5-ae8e-d31623f7eda3: media
 default:
   revision_uid:
     -
@@ -13,7 +15,7 @@ default:
       value: true
   uid:
     -
-      target_id: 0
+      target_id: 1
   title:
     -
       value: 'Chloe Marsh'
@@ -35,3 +37,6 @@ default:
       value: 'Runs a small agency that ships sites from Storybook first. This speaker is fictional.'
       format: plain_text
       summary: ''
+  field_image:
+    -
+      entity: cd601ac0-be55-49f5-ae8e-d31623f7eda3

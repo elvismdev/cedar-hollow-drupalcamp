@@ -1,0 +1,51 @@
+_meta:
+  version: '1.0'
+  entity_type: media
+  uuid: 5711e43f-4813-415b-8d47-00affc346a18
+  bundle: image
+  default_langcode: en
+  depends:
+    339ab5fe-3fb1-46fe-a692-a4c7427c7d5d: file
+default:
+  status:
+    -
+      value: true
+  uid:
+    -
+      target_id: 0
+  name:
+    -
+      value: 'Code on computer monitor (Unsplash)'
+  revision_translation_affected:
+    -
+      value: true
+  path:
+    -
+      langcode: en
+      alias: null
+  field_creator:
+    -
+      value: 'Markus Spiske markusspiske'
+  field_licence:
+    -
+      value: cc0
+  field_licence_url:
+    -
+      uri: 'http://creativecommons.org/publicdomain/zero/1.0/deed.en'
+      title: null
+      options: {  }
+  field_media_image:
+    -
+      alt: 'Lines of colour-highlighted code on a monitor'
+      title: ''
+      width: 1280
+      height: 853
+      entity: 339ab5fe-3fb1-46fe-a692-a4c7427c7d5d
+  field_source_url:
+    -
+      uri: 'https://commons.wikimedia.org/wiki/File:Code_on_computer_monitor_(Unsplash).jpg'
+      title: null
+      options: {  }
+  field_verified:
+    -
+      value: true

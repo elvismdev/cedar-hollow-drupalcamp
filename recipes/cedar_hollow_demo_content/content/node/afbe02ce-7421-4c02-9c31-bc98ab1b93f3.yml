@@ -5,6 +5,7 @@ _meta:
   bundle: session
   default_langcode: en
   depends:
+    c391e726-b33b-424b-ab7d-7f01d1ba6036: media
     d8ee2156-8047-4679-b1a8-4e6802a6c8cf: node
     e9c49f9b-1aaf-4ced-b2f1-dc11b86f4838: taxonomy_term
 default:
@@ -16,7 +17,7 @@ default:
       value: true
   uid:
     -
-      target_id: 0
+      target_id: 1
   title:
     -
       value: 'Storybook for Drupal themes'
@@ -35,12 +36,17 @@ default:
       langcode: en
   body:
     -
-      value: 'Render Twig components in Storybook with the same CSS Drupal loads.'
-      format: plain_text
+      value: |-
+        <p>Render Twig components in Storybook with the same CSS Drupal loads.</p>
+        <drupal-media data-entity-type="media" data-entity-uuid="eca755f9-069e-49be-9923-92885df8b660" data-view-mode="embed_wide" data-caption="Stories render the same Twig and CSS the site loads."></drupal-media>
+      format: session_html
       summary: 'Render Twig components in Storybook with the same CSS Drupal loads.'
   field_day:
     -
       value: fri
+  field_image:
+    -
+      entity: c391e726-b33b-424b-ab7d-7f01d1ba6036
   field_registration:
     -
       registration_type: attendee

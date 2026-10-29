@@ -1,0 +1,51 @@
+_meta:
+  version: '1.0'
+  entity_type: media
+  uuid: 6447c04a-0dcd-4854-9ea6-990affd30b4e
+  bundle: image
+  default_langcode: en
+  depends:
+    3406b6a5-7321-449f-8128-05990ca09b40: file
+default:
+  status:
+    -
+      value: true
+  uid:
+    -
+      target_id: 0
+  name:
+    -
+      value: Defcon-24-badge-front
+  revision_translation_affected:
+    -
+      value: true
+  path:
+    -
+      langcode: en
+      alias: null
+  field_creator:
+    -
+      value: 'Hanno Böck'
+  field_licence:
+    -
+      value: cc0
+  field_licence_url:
+    -
+      uri: 'http://creativecommons.org/publicdomain/zero/1.0/deed.en'
+      title: null
+      options: {  }
+  field_media_image:
+    -
+      alt: 'A conference badge shaped like a circuit-board skull, on a lanyard'
+      title: ''
+      width: 1280
+      height: 960
+      entity: 3406b6a5-7321-449f-8128-05990ca09b40
+  field_source_url:
+    -
+      uri: 'https://commons.wikimedia.org/wiki/File:Defcon-24-badge-front.jpg'
+      title: null
+      options: {  }
+  field_verified:
+    -
+      value: true

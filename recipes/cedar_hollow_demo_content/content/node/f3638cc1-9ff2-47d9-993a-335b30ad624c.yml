@@ -5,6 +5,7 @@ _meta:
   bundle: session
   default_langcode: en
   depends:
+    0da26eee-d16c-4cec-b707-27b9464e6f50: media
     4f5d129a-c4cb-4bd1-a043-afd2dddb50f2: node
     e9c49f9b-1aaf-4ced-b2f1-dc11b86f4838: taxonomy_term
 default:
@@ -16,7 +17,7 @@ default:
       value: true
   uid:
     -
-      target_id: 0
+      target_id: 1
   title:
     -
       value: 'Theming with SDC'
@@ -35,12 +36,17 @@ default:
       langcode: en
   body:
     -
-      value: 'Build components once and use them in Storybook, Twig templates and Canvas.'
-      format: plain_text
+      value: |-
+        <p>Build components once and use them in Storybook, Twig templates and Canvas.</p>
+        <drupal-media data-entity-type="media" data-entity-uuid="5711e43f-4813-415b-8d47-00affc346a18" data-view-mode="embed_wide" data-caption="Each component keeps its Twig, CSS and metadata in one directory."></drupal-media>
+      format: session_html
       summary: 'Build components once and use them in Storybook, Twig templates and Canvas.'
   field_day:
     -
       value: fri
+  field_image:
+    -
+      entity: 0da26eee-d16c-4cec-b707-27b9464e6f50
   field_registration:
     -
       registration_type: attendee

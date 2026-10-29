@@ -1,0 +1,51 @@
+_meta:
+  version: '1.0'
+  entity_type: media
+  uuid: e00545d7-6558-4b66-8f9c-fa3e20ae6909
+  bundle: image
+  default_langcode: en
+  depends:
+    9f1328ef-14bc-49f0-933a-e630a810d645: file
+default:
+  status:
+    -
+      value: true
+  uid:
+    -
+      target_id: 0
+  name:
+    -
+      value: 'Strata along Saddle Rock Trail, Scotts Bluff National Monument, 2009'
+  revision_translation_affected:
+    -
+      value: true
+  path:
+    -
+      langcode: en
+      alias: null
+  field_creator:
+    -
+      value: DimiTalen
+  field_licence:
+    -
+      value: cc0
+  field_licence_url:
+    -
+      uri: 'http://creativecommons.org/publicdomain/zero/1.0/deed.en'
+      title: null
+      options: {  }
+  field_media_image:
+    -
+      alt: 'Layers of pale sandstone in a cliff face'
+      title: ''
+      width: 1280
+      height: 851
+      entity: 9f1328ef-14bc-49f0-933a-e630a810d645
+  field_source_url:
+    -
+      uri: 'https://commons.wikimedia.org/wiki/File:Strata_along_Saddle_Rock_Trail,_Scotts_Bluff_National_Monument,_2009.jpg'
+      title: null
+      options: {  }
+  field_verified:
+    -
+      value: true

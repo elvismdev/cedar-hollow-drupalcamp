@@ -1,0 +1,51 @@
+_meta:
+  version: '1.0'
+  entity_type: media
+  uuid: aa2b4965-9e66-4449-a3aa-6cfdc081d59d
+  bundle: image
+  default_langcode: en
+  depends:
+    ee029b46-4f77-4231-95d3-b8b093b1b210: file
+default:
+  status:
+    -
+      value: true
+  uid:
+    -
+      target_id: 0
+  name:
+    -
+      value: 'Braille textbook'
+  revision_translation_affected:
+    -
+      value: true
+  path:
+    -
+      langcode: en
+      alias: null
+  field_creator:
+    -
+      value: 'Basilio Briceño'
+  field_licence:
+    -
+      value: cc_by
+  field_licence_url:
+    -
+      uri: 'https://creativecommons.org/licenses/by/2.0'
+      title: null
+      options: {  }
+  field_media_image:
+    -
+      alt: 'Rows of raised braille dots on a page'
+      title: ''
+      width: 1280
+      height: 853
+      entity: ee029b46-4f77-4231-95d3-b8b093b1b210
+  field_source_url:
+    -
+      uri: 'https://commons.wikimedia.org/wiki/File:Braille_textbook.jpg'
+      title: null
+      options: {  }
+  field_verified:
+    -
+      value: true

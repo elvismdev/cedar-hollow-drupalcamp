@@ -4,6 +4,8 @@ _meta:
   uuid: 706060f0-ffe0-49b1-99bf-2a62b6f4875f
   bundle: speaker
   default_langcode: en
+  depends:
+    1c4f2189-76b8-4139-b450-5b3884244bdd: media
 default:
   revision_uid:
     -
@@ -13,7 +15,7 @@ default:
       value: true
   uid:
     -
-      target_id: 0
+      target_id: 1
   title:
     -
       value: 'Grace Lindqvist'
@@ -35,3 +37,6 @@ default:
       value: 'Trains content teams on page building. This speaker is fictional.'
       format: plain_text
       summary: ''
+  field_image:
+    -
+      entity: 1c4f2189-76b8-4139-b450-5b3884244bdd

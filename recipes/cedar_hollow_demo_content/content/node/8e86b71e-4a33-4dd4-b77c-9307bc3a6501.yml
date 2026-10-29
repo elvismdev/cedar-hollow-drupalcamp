@@ -4,6 +4,8 @@ _meta:
   uuid: 8e86b71e-4a33-4dd4-b77c-9307bc3a6501
   bundle: speaker
   default_langcode: en
+  depends:
+    e8abaef5-3392-467a-b276-bb8ac4381a75: media
 default:
   revision_uid:
     -
@@ -13,7 +15,7 @@ default:
       value: true
   uid:
     -
-      target_id: 0
+      target_id: 1
   title:
     -
       value: 'Femi Adeyemi'
@@ -35,3 +37,6 @@ default:
       value: 'Builds event and membership features on Drupal. This speaker is fictional.'
       format: plain_text
       summary: ''
+  field_image:
+    -
+      entity: e8abaef5-3392-467a-b276-bb8ac4381a75

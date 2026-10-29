@@ -5,6 +5,7 @@ _meta:
   bundle: session
   default_langcode: en
   depends:
+    d4a7c925-7442-4940-a0a9-8967d43cab76: media
     d30903ec-5187-449d-b4d1-a9695f5dc5e1: node
     7ad1830a-2129-4b48-8873-19389357d480: taxonomy_term
 default:
@@ -16,7 +17,7 @@ default:
       value: true
   uid:
     -
-      target_id: 0
+      target_id: 1
   title:
     -
       value: 'Recipes in practice'
@@ -35,12 +36,17 @@ default:
       langcode: en
   body:
     -
-      value: 'Package a feature as a recipe and apply it to a fresh site.'
-      format: plain_text
+      value: |-
+        <p>Package a feature as a recipe and apply it to a fresh site.</p>
+        <drupal-media data-entity-type="media" data-entity-uuid="2cdf67be-f970-489a-b44f-52bb626e3b04" data-view-mode="embed_photo" data-caption="A recipe applies once; configuration sync owns the result afterwards."></drupal-media>
+      format: session_html
       summary: 'Package a feature as a recipe and apply it to a fresh site.'
   field_day:
     -
       value: fri
+  field_image:
+    -
+      entity: d4a7c925-7442-4940-a0a9-8967d43cab76
   field_registration:
     -
       registration_type: attendee

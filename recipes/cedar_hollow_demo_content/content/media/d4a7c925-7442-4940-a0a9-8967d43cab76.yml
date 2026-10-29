@@ -1,0 +1,51 @@
+_meta:
+  version: '1.0'
+  entity_type: media
+  uuid: d4a7c925-7442-4940-a0a9-8967d43cab76
+  bundle: image
+  default_langcode: en
+  depends:
+    d271dca4-fe3e-4970-b7c5-b928a615b29d: file
+default:
+  status:
+    -
+      value: true
+  uid:
+    -
+      target_id: 0
+  name:
+    -
+      value: '4304Food ingredients of home cooking 13'
+  revision_translation_affected:
+    -
+      value: true
+  path:
+    -
+      langcode: en
+      alias: null
+  field_creator:
+    -
+      value: Judgefloro
+  field_licence:
+    -
+      value: cc0
+  field_licence_url:
+    -
+      uri: 'http://creativecommons.org/publicdomain/zero/1.0/deed.en'
+      title: null
+      options: {  }
+  field_media_image:
+    -
+      alt: 'A plate of chopped peppers, garlic, onion and green beans held in one hand'
+      title: ''
+      width: 1280
+      height: 960
+      entity: d271dca4-fe3e-4970-b7c5-b928a615b29d
+  field_source_url:
+    -
+      uri: 'https://commons.wikimedia.org/wiki/File:4304Food_ingredients_of_home_cooking_13.jpg'
+      title: null
+      options: {  }
+  field_verified:
+    -
+      value: true

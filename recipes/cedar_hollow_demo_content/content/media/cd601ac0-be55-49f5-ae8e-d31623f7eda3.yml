@@ -1,0 +1,51 @@
+_meta:
+  version: '1.0'
+  entity_type: media
+  uuid: cd601ac0-be55-49f5-ae8e-d31623f7eda3
+  bundle: image
+  default_langcode: en
+  depends:
+    11e3696d-fbbe-46b7-8c6a-21d166d5e3b9: file
+default:
+  status:
+    -
+      value: true
+  uid:
+    -
+      target_id: 0
+  name:
+    -
+      value: 'A hand is pressing keys on a laptop keyboard'
+  revision_translation_affected:
+    -
+      value: true
+  path:
+    -
+      langcode: en
+      alias: null
+  field_creator:
+    -
+      value: Shixart1985
+  field_licence:
+    -
+      value: cc_by
+  field_licence_url:
+    -
+      uri: 'https://creativecommons.org/licenses/by/2.0'
+      title: null
+      options: {  }
+  field_media_image:
+    -
+      alt: 'A finger pressing a key on a laptop'
+      title: ''
+      width: 1920
+      height: 1282
+      entity: 11e3696d-fbbe-46b7-8c6a-21d166d5e3b9
+  field_source_url:
+    -
+      uri: 'https://commons.wikimedia.org/wiki/File:A_hand_is_pressing_keys_on_a_laptop_keyboard.jpg'
+      title: null
+      options: {  }
+  field_verified:
+    -
+      value: true

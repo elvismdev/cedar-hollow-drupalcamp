@@ -5,6 +5,7 @@ _meta:
   bundle: session
   default_langcode: en
   depends:
+    d8c44ec6-21e2-4a17-83dc-4f2019709619: media
     4f5d129a-c4cb-4bd1-a043-afd2dddb50f2: node
     8e86b71e-4a33-4dd4-b77c-9307bc3a6501: node
     70fcd247-6d98-4567-ae35-5bf973756a72: node
@@ -18,7 +19,7 @@ default:
       value: true
   uid:
     -
-      target_id: 0
+      target_id: 1
   title:
     -
       value: 'Closing panel'
@@ -43,6 +44,9 @@ default:
   field_day:
     -
       value: sat
+  field_image:
+    -
+      entity: d8c44ec6-21e2-4a17-83dc-4f2019709619
   field_registration:
     -
       registration_type: attendee

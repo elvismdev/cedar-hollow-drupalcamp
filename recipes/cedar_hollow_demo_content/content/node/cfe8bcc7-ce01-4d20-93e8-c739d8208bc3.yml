@@ -5,6 +5,7 @@ _meta:
   bundle: session
   default_langcode: en
   depends:
+    2bb255f1-f4b8-41fc-8782-91d9a57445c3: media
     9eb292f0-bdfe-45a4-9067-c94f861073bb: node
     7b487e17-a160-4958-b807-bc4b632fc757: taxonomy_term
 default:
@@ -16,7 +17,7 @@ default:
       value: true
   uid:
     -
-      target_id: 0
+      target_id: 1
   title:
     -
       value: 'Caching render arrays'
@@ -41,6 +42,9 @@ default:
   field_day:
     -
       value: fri
+  field_image:
+    -
+      entity: 2bb255f1-f4b8-41fc-8782-91d9a57445c3
   field_registration:
     -
       registration_type: attendee

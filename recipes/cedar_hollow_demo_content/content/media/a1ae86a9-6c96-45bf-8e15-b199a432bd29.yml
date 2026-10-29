@@ -1,0 +1,51 @@
+_meta:
+  version: '1.0'
+  entity_type: media
+  uuid: a1ae86a9-6c96-45bf-8e15-b199a432bd29
+  bundle: image
+  default_langcode: en
+  depends:
+    8d1cf31c-9508-4a03-b37e-a81f8994024a: file
+default:
+  status:
+    -
+      value: true
+  uid:
+    -
+      target_id: 0
+  name:
+    -
+      value: FishHooks
+  revision_translation_affected:
+    -
+      value: true
+  path:
+    -
+      langcode: en
+      alias: null
+  field_creator:
+    -
+      value: Viridiflavus
+  field_licence:
+    -
+      value: public_domain
+  field_licence_url:
+    -
+      uri: 'https://creativecommons.org/publicdomain/mark/1.0/'
+      title: null
+      options: {  }
+  field_media_image:
+    -
+      alt: 'Three fishing hooks of different sizes on a grey surface'
+      title: ''
+      width: 1280
+      height: 960
+      entity: 8d1cf31c-9508-4a03-b37e-a81f8994024a
+  field_source_url:
+    -
+      uri: 'https://commons.wikimedia.org/wiki/File:FishHooks.JPG'
+      title: null
+      options: {  }
+  field_verified:
+    -
+      value: true

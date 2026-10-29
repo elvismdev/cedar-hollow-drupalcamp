@@ -4,6 +4,8 @@ _meta:
   uuid: d30903ec-5187-449d-b4d1-a9695f5dc5e1
   bundle: speaker
   default_langcode: en
+  depends:
+    ac815b4f-db6a-43f7-9c2e-c38c13cc81f0: media
 default:
   revision_uid:
     -
@@ -13,7 +15,7 @@ default:
       value: true
   uid:
     -
-      target_id: 0
+      target_id: 1
   title:
     -
       value: 'Dev Raman'
@@ -35,3 +37,6 @@ default:
       value: 'Maintains configuration and deployment tooling. This speaker is fictional.'
       format: plain_text
       summary: ''
+  field_image:
+    -
+      entity: ac815b4f-db6a-43f7-9c2e-c38c13cc81f0

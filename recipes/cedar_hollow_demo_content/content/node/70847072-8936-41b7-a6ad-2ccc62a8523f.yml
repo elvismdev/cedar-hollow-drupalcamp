@@ -5,6 +5,7 @@ _meta:
   bundle: session
   default_langcode: en
   depends:
+    e00545d7-6558-4b66-8f9c-fa3e20ae6909: media
     b5d84e08-59b9-4be4-a48b-90c447ac7f50: node
     e9c49f9b-1aaf-4ced-b2f1-dc11b86f4838: taxonomy_term
 default:
@@ -16,7 +17,7 @@ default:
       value: true
   uid:
     -
-      target_id: 0
+      target_id: 1
   title:
     -
       value: 'Cascade layers and BEM'
@@ -41,6 +42,9 @@ default:
   field_day:
     -
       value: sat
+  field_image:
+    -
+      entity: e00545d7-6558-4b66-8f9c-fa3e20ae6909
   field_registration:
     -
       registration_type: attendee

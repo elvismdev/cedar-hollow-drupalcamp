@@ -1,0 +1,51 @@
+_meta:
+  version: '1.0'
+  entity_type: media
+  uuid: 0da26eee-d16c-4cec-b707-27b9464e6f50
+  bundle: image
+  default_langcode: en
+  depends:
+    6ce75a4b-0975-4095-a256-e5a3784fe884: file
+default:
+  status:
+    -
+      value: true
+  uid:
+    -
+      target_id: 0
+  name:
+    -
+      value: 'A notebook with paint brushes'
+  revision_translation_affected:
+    -
+      value: true
+  path:
+    -
+      langcode: en
+      alias: null
+  field_creator:
+    -
+      value: 'Tim Arterbury'
+  field_licence:
+    -
+      value: cc0
+  field_licence_url:
+    -
+      uri: 'http://creativecommons.org/publicdomain/zero/1.0/deed.en'
+      title: null
+      options: {  }
+  field_media_image:
+    -
+      alt: 'A watercolour set, brushes and a blank spiral notebook on a wooden table'
+      title: ''
+      width: 1280
+      height: 764
+      entity: 6ce75a4b-0975-4095-a256-e5a3784fe884
+  field_source_url:
+    -
+      uri: 'https://commons.wikimedia.org/wiki/File:A_notebook_with_paint_brushes.jpg'
+      title: null
+      options: {  }
+  field_verified:
+    -
+      value: true

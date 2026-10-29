@@ -1,0 +1,51 @@
+_meta:
+  version: '1.0'
+  entity_type: media
+  uuid: f77ec99e-95c6-46d1-9884-1f340824e1c9
+  bundle: image
+  default_langcode: en
+  depends:
+    6f1f3672-0393-4e69-b7ce-fbd6c606f15f: file
+default:
+  status:
+    -
+      value: true
+  uid:
+    -
+      target_id: 0
+  name:
+    -
+      value: 'A hand rests on a laptop keyboard, pressing a key'
+  revision_translation_affected:
+    -
+      value: true
+  path:
+    -
+      langcode: en
+      alias: null
+  field_creator:
+    -
+      value: Shixart1985
+  field_licence:
+    -
+      value: cc_by
+  field_licence_url:
+    -
+      uri: 'https://creativecommons.org/licenses/by/2.0'
+      title: null
+      options: {  }
+  field_media_image:
+    -
+      alt: 'A hand on a laptop keyboard'
+      title: ''
+      width: 1920
+      height: 1282
+      entity: 6f1f3672-0393-4e69-b7ce-fbd6c606f15f
+  field_source_url:
+    -
+      uri: 'https://commons.wikimedia.org/wiki/File:A_hand_rests_on_a_laptop_keyboard,_pressing_a_key.jpg'
+      title: null
+      options: {  }
+  field_verified:
+    -
+      value: true

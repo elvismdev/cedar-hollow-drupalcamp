@@ -5,6 +5,7 @@ _meta:
   bundle: session
   default_langcode: en
   depends:
+    aa2b4965-9e66-4449-a3aa-6cfdc081d59d: media
     70fcd247-6d98-4567-ae35-5bf973756a72: node
     e9c49f9b-1aaf-4ced-b2f1-dc11b86f4838: taxonomy_term
 default:
@@ -16,7 +17,7 @@ default:
       value: true
   uid:
     -
-      target_id: 0
+      target_id: 1
   title:
     -
       value: 'Accessible forms in Drupal'
@@ -41,6 +42,9 @@ default:
   field_day:
     -
       value: fri
+  field_image:
+    -
+      entity: aa2b4965-9e66-4449-a3aa-6cfdc081d59d
   field_registration:
     -
       registration_type: attendee

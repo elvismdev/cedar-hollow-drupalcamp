@@ -1,0 +1,51 @@
+_meta:
+  version: '1.0'
+  entity_type: media
+  uuid: 1257c06d-8647-4f64-b9a1-e076114defc8
+  bundle: image
+  default_langcode: en
+  depends:
+    3376797d-44ea-473d-8522-b8c3370d0072: file
+default:
+  status:
+    -
+      value: true
+  uid:
+    -
+      target_id: 0
+  name:
+    -
+      value: 'Coniferous Forest - Green Valley 2014-05-08 1606'
+  revision_translation_affected:
+    -
+      value: true
+  path:
+    -
+      langcode: en
+      alias: null
+  field_creator:
+    -
+      value: 'Biswarup Ganguly'
+  field_licence:
+    -
+      value: cc_by
+  field_licence_url:
+    -
+      uri: 'https://creativecommons.org/licenses/by/3.0'
+      title: null
+      options: {  }
+  field_media_image:
+    -
+      alt: 'Conifers on a forested mountain slope'
+      title: ''
+      width: 2304
+      height: 1532
+      entity: 3376797d-44ea-473d-8522-b8c3370d0072
+  field_source_url:
+    -
+      uri: 'https://commons.wikimedia.org/wiki/File:Coniferous_Forest_-_Green_Valley_2014-05-08_1606.JPG'
+      title: null
+      options: {  }
+  field_verified:
+    -
+      value: true

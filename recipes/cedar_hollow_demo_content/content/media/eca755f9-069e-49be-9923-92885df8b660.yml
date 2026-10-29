@@ -1,0 +1,51 @@
+_meta:
+  version: '1.0'
+  entity_type: media
+  uuid: eca755f9-069e-49be-9923-92885df8b660
+  bundle: image
+  default_langcode: en
+  depends:
+    c55f3a7a-2957-4730-b06f-ad7d4112dd33: file
+default:
+  status:
+    -
+      value: true
+  uid:
+    -
+      target_id: 0
+  name:
+    -
+      value: "Designer's two-screen setup (Unsplash)"
+  revision_translation_affected:
+    -
+      value: true
+  path:
+    -
+      langcode: en
+      alias: null
+  field_creator:
+    -
+      value: 'Lee  Campbell leecampbell'
+  field_licence:
+    -
+      value: cc0
+  field_licence_url:
+    -
+      uri: 'http://creativecommons.org/publicdomain/zero/1.0/deed.en'
+      title: null
+      options: {  }
+  field_media_image:
+    -
+      alt: 'Two monitors on a desk lit by a lamp, one showing code'
+      title: ''
+      width: 1920
+      height: 1282
+      entity: c55f3a7a-2957-4730-b06f-ad7d4112dd33
+  field_source_url:
+    -
+      uri: 'https://commons.wikimedia.org/wiki/File:Designer%27s_two-screen_setup_(Unsplash).jpg'
+      title: null
+      options: {  }
+  field_verified:
+    -
+      value: true

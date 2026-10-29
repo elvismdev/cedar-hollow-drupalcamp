@@ -4,6 +4,8 @@ _meta:
   uuid: 4f5d129a-c4cb-4bd1-a043-afd2dddb50f2
   bundle: speaker
   default_langcode: en
+  depends:
+    f77ec99e-95c6-46d1-9884-1f340824e1c9: media
 default:
   revision_uid:
     -
@@ -13,7 +15,7 @@ default:
       value: true
   uid:
     -
-      target_id: 0
+      target_id: 1
   title:
     -
       value: 'Ana Calder'
@@ -35,3 +37,6 @@ default:
       value: 'Builds component libraries for university sites. This speaker is fictional.'
       format: plain_text
       summary: ''
+  field_image:
+    -
+      entity: f77ec99e-95c6-46d1-9884-1f340824e1c9

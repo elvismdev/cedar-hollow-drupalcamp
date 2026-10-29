@@ -4,6 +4,8 @@ _meta:
   uuid: 9eb292f0-bdfe-45a4-9067-c94f861073bb
   bundle: speaker
   default_langcode: en
+  depends:
+    18c8c146-bb79-498e-ab57-b29321635bee: media
 default:
   revision_uid:
     -
@@ -13,7 +15,7 @@ default:
       value: true
   uid:
     -
-      target_id: 0
+      target_id: 1
   title:
     -
       value: 'Ben Okafor'
@@ -35,3 +37,6 @@ default:
       value: 'Works on caching and performance for large Drupal sites. This speaker is fictional.'
       format: plain_text
       summary: ''
+  field_image:
+    -
+      entity: 18c8c146-bb79-498e-ab57-b29321635bee

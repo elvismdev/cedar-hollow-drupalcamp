@@ -4,6 +4,8 @@ _meta:
   uuid: 70fcd247-6d98-4567-ae35-5bf973756a72
   bundle: speaker
   default_langcode: en
+  depends:
+    b139339f-ebd8-44b2-b713-486d1e4c7aba: media
 default:
   revision_uid:
     -
@@ -13,7 +15,7 @@ default:
       value: true
   uid:
     -
-      target_id: 0
+      target_id: 1
   title:
     -
       value: 'Elena Ruiz'
@@ -35,3 +37,6 @@ default:
       value: 'Leads accessibility reviews for public sector sites. This speaker is fictional.'
       format: plain_text
       summary: ''
+  field_image:
+    -
+      entity: b139339f-ebd8-44b2-b713-486d1e4c7aba

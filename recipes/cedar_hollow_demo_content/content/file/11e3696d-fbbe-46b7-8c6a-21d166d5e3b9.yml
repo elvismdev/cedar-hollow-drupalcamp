@@ -1,0 +1,21 @@
+_meta:
+  version: '1.0'
+  entity_type: file
+  uuid: 11e3696d-fbbe-46b7-8c6a-21d166d5e3b9
+  default_langcode: en
+default:
+  filename:
+    -
+      value: 196893577.jpg
+  uri:
+    -
+      value: 'public://demo-images/196893577.jpg'
+  filemime:
+    -
+      value: image/jpeg
+  filesize:
+    -
+      value: 397886
+  status:
+    -
+      value: true

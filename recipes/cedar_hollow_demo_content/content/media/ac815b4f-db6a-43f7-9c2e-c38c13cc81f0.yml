@@ -1,0 +1,51 @@
+_meta:
+  version: '1.0'
+  entity_type: media
+  uuid: ac815b4f-db6a-43f7-9c2e-c38c13cc81f0
+  bundle: image
+  default_langcode: en
+  depends:
+    2ff0421b-09f0-43fd-8834-e3fb7d1ecb03: file
+default:
+  status:
+    -
+      value: true
+  uid:
+    -
+      target_id: 0
+  name:
+    -
+      value: 'Hands on a laptop keyboard (Unsplash)'
+  revision_translation_affected:
+    -
+      value: true
+  path:
+    -
+      langcode: en
+      alias: null
+  field_creator:
+    -
+      value: 'Fabian Irsara firsara'
+  field_licence:
+    -
+      value: cc0
+  field_licence_url:
+    -
+      uri: 'http://creativecommons.org/publicdomain/zero/1.0/deed.en'
+      title: null
+      options: {  }
+  field_media_image:
+    -
+      alt: 'Hands on a laptop on a wooden desk, seen from above'
+      title: ''
+      width: 1280
+      height: 853
+      entity: 2ff0421b-09f0-43fd-8834-e3fb7d1ecb03
+  field_source_url:
+    -
+      uri: 'https://commons.wikimedia.org/wiki/File:Hands_on_a_laptop_keyboard_(Unsplash).jpg'
+      title: null
+      options: {  }
+  field_verified:
+    -
+      value: true

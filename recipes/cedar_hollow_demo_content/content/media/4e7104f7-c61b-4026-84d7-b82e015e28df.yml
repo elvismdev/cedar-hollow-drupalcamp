@@ -1,0 +1,51 @@
+_meta:
+  version: '1.0'
+  entity_type: media
+  uuid: 4e7104f7-c61b-4026-84d7-b82e015e28df
+  bundle: image
+  default_langcode: en
+  depends:
+    556aeb5d-0250-44cc-a285-db993a08a344: file
+default:
+  status:
+    -
+      value: true
+  uid:
+    -
+      target_id: 0
+  name:
+    -
+      value: 'Computer Keyboard - stock photo'
+  revision_translation_affected:
+    -
+      value: true
+  path:
+    -
+      langcode: en
+      alias: null
+  field_creator:
+    -
+      value: espensorvik
+  field_licence:
+    -
+      value: cc_by
+  field_licence_url:
+    -
+      uri: 'https://creativecommons.org/licenses/by/2.0'
+      title: null
+      options: {  }
+  field_media_image:
+    -
+      alt: 'Close-up of black keyboard keys'
+      title: ''
+      width: 1920
+      height: 1285
+      entity: 556aeb5d-0250-44cc-a285-db993a08a344
+  field_source_url:
+    -
+      uri: 'https://commons.wikimedia.org/wiki/File:Computer_Keyboard_-_stock_photo.jpg'
+      title: null
+      options: {  }
+  field_verified:
+    -
+      value: true

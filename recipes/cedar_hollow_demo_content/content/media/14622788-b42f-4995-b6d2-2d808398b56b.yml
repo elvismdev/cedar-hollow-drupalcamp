@@ -1,0 +1,51 @@
+_meta:
+  version: '1.0'
+  entity_type: media
+  uuid: 14622788-b42f-4995-b6d2-2d808398b56b
+  bundle: image
+  default_langcode: en
+  depends:
+    09df86f5-651b-4c9f-ad31-a5e94defdc4f: file
+default:
+  status:
+    -
+      value: true
+  uid:
+    -
+      target_id: 0
+  name:
+    -
+      value: 'Binoculars (AM 2016.34.1-8)'
+  revision_translation_affected:
+    -
+      value: true
+  path:
+    -
+      langcode: en
+      alias: null
+  field_creator:
+    -
+      value: 'Auckland Museum'
+  field_licence:
+    -
+      value: cc_by
+  field_licence_url:
+    -
+      uri: 'https://creativecommons.org/licenses/by/4.0'
+      title: null
+      options: {  }
+  field_media_image:
+    -
+      alt: 'A pair of antique brass binoculars seen from the front'
+      title: ''
+      width: 1920
+      height: 872
+      entity: 09df86f5-651b-4c9f-ad31-a5e94defdc4f
+  field_source_url:
+    -
+      uri: 'https://commons.wikimedia.org/wiki/File:Binoculars_(AM_2016.34.1-8).jpg'
+      title: null
+      options: {  }
+  field_verified:
+    -
+      value: true

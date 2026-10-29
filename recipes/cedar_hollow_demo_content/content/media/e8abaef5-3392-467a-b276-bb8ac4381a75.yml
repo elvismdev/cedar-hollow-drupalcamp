@@ -1,0 +1,51 @@
+_meta:
+  version: '1.0'
+  entity_type: media
+  uuid: e8abaef5-3392-467a-b276-bb8ac4381a75
+  bundle: image
+  default_langcode: en
+  depends:
+    7d5a4da0-0a3c-4cb5-b15d-8e181bc8efc7: file
+default:
+  status:
+    -
+      value: true
+  uid:
+    -
+      target_id: 0
+  name:
+    -
+      value: 'Hand-laptop-notebook-typing (23698140194)'
+  revision_translation_affected:
+    -
+      value: true
+  path:
+    -
+      langcode: en
+      alias: null
+  field_creator:
+    -
+      value: 'www.Pixel.la Free Stock Photos'
+  field_licence:
+    -
+      value: cc0
+  field_licence_url:
+    -
+      uri: 'http://creativecommons.org/publicdomain/zero/1.0/deed.en'
+      title: null
+      options: {  }
+  field_media_image:
+    -
+      alt: 'Fingers on a black laptop keyboard'
+      title: ''
+      width: 1920
+      height: 1272
+      entity: 7d5a4da0-0a3c-4cb5-b15d-8e181bc8efc7
+  field_source_url:
+    -
+      uri: 'https://commons.wikimedia.org/wiki/File:Hand-laptop-notebook-typing_(23698140194).jpg'
+      title: null
+      options: {  }
+  field_verified:
+    -
+      value: true

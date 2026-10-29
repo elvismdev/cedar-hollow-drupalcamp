@@ -4,6 +4,8 @@ _meta:
   uuid: b5d84e08-59b9-4be4-a48b-90c447ac7f50
   bundle: speaker
   default_langcode: en
+  depends:
+    4e7104f7-c61b-4026-84d7-b82e015e28df: media
 default:
   revision_uid:
     -
@@ -13,7 +15,7 @@ default:
       value: true
   uid:
     -
-      target_id: 0
+      target_id: 1
   title:
     -
       value: 'Hugo Tanaka'
@@ -35,3 +37,6 @@ default:
       value: 'Writes front-end tooling and CSS architecture guides. This speaker is fictional.'
       format: plain_text
       summary: ''
+  field_image:
+    -
+      entity: 4e7104f7-c61b-4026-84d7-b82e015e28df

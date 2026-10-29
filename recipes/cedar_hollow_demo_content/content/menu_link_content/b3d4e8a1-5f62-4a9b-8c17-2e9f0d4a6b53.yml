@@ -1,0 +1,36 @@
+_meta:
+  version: '1.0'
+  entity_type: menu_link_content
+  uuid: b3d4e8a1-5f62-4a9b-8c17-2e9f0d4a6b53
+  bundle: menu_link_content
+  default_langcode: en
+default:
+  enabled:
+    -
+      value: true
+  title:
+    -
+      value: 'Image credits'
+  menu_name:
+    -
+      value: footer
+  link:
+    -
+      uri: 'internal:/credits'
+      title: null
+      options: {  }
+  external:
+    -
+      value: false
+  rediscover:
+    -
+      value: true
+  weight:
+    -
+      value: 4
+  expanded:
+    -
+      value: false
+  revision_translation_affected:
+    -
+      value: true

@@ -1,0 +1,51 @@
+_meta:
+  version: '1.0'
+  entity_type: media
+  uuid: d8c44ec6-21e2-4a17-83dc-4f2019709619
+  bundle: image
+  default_langcode: en
+  depends:
+    28a965a2-d864-42d9-89b6-2af4611d8778: file
+default:
+  status:
+    -
+      value: true
+  uid:
+    -
+      target_id: 0
+  name:
+    -
+      value: 'TEDxUtrecht University (5589955410)'
+  revision_translation_affected:
+    -
+      value: true
+  path:
+    -
+      langcode: en
+      alias: null
+  field_creator:
+    -
+      value: TEDxUU
+  field_licence:
+    -
+      value: cc_by
+  field_licence_url:
+    -
+      uri: 'https://creativecommons.org/licenses/by/2.0'
+      title: null
+      options: {  }
+  field_media_image:
+    -
+      alt: 'A microphone on a stand in front of rows of empty red seats'
+      title: ''
+      width: 1920
+      height: 1275
+      entity: 28a965a2-d864-42d9-89b6-2af4611d8778
+  field_source_url:
+    -
+      uri: 'https://commons.wikimedia.org/wiki/File:TEDxUtrecht_University_(5589955410).jpg'
+      title: null
+      options: {  }
+  field_verified:
+    -
+      value: true

@@ -1,0 +1,30 @@
+_meta:
+  version: '1.0'
+  entity_type: crop
+  uuid: 5e532437-bff9-4079-9976-4d79df33b2c1
+  bundle: focal_point
+  default_langcode: en
+  depends:
+    3406b6a5-7321-449f-8128-05990ca09b40: file
+default:
+  entity_id:
+    -
+      uuid: 3406b6a5-7321-449f-8128-05990ca09b40
+  entity_type:
+    -
+      value: file
+  uri:
+    -
+      value: 'public://demo-images/78726252.jpg'
+  x:
+    -
+      value: 870
+  'y':
+    -
+      value: 624
+  revision_uid:
+    -
+      target_id: 0
+  revision_translation_affected:
+    -
+      value: true
