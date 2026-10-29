@@ -33,6 +33,7 @@ test('a session page shows its image as AVIF', async ({ page, request }) => {
   const src = await image.getAttribute('src');
   expect(src, 'session image src').toBeTruthy();
   const response = await request.get(src!);
+  test.skip(response.headers()['cf-mitigated'] === 'challenge', 'The edge answered with a bot challenge, which a test must not get past; the page above still referenced an AVIF srcset.');
   expect(response.status()).toBe(200);
   expect(response.headers()['content-type']).toBe('image/avif');
 });
