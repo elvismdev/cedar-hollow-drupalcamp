@@ -34,7 +34,7 @@ jobs:
         run: vendor/bin/phpstan analyse --no-progress --memory-limit=1G
 
   theme:
-    name: Theme CSS, component hierarchy, Storybook build and npm audit
+    name: Theme CSS, component hierarchy, Storybook build and tests, and npm audit
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
@@ -62,6 +62,13 @@ jobs:
       - name: Known vulnerabilities in npm packages, less reviewed exceptions
         run: node scripts/npm-audit-check.mjs web/themes/custom/cedar_hollow tests
       - run: npm run build
+        working-directory: web/themes/custom/cedar_hollow
+      # Every story runs as a test in headless Chromium and fails on an axe violation.
+      - name: Chromium for Storybook Test
+        run: npx playwright install --with-deps chromium
+        working-directory: web/themes/custom/cedar_hollow
+      - name: Storybook Test
+        run: npm run test:storybook
         working-directory: web/themes/custom/cedar_hollow
       - uses: actions/upload-artifact@v4
         with:
