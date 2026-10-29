@@ -1,4 +1,6 @@
 import { join, sep } from 'node:path';
+import { storybookTest } from '@storybook/addon-vitest/vitest-plugin';
+import { playwright } from '@vitest/browser-playwright';
 import { defineConfig } from 'vite';
 import twig from 'vite-plugin-twig-drupal';
 
@@ -37,4 +39,27 @@ export default defineConfig({
   // Drupal core names global stylesheets *.module.css; keep their class names
   // as written instead of scoping them as CSS Modules.
   css: { modules: { generateScopedName: '[local]' } },
+  // Prebundled up front: found mid-run, they make Vite reload the page and a
+  // cold Storybook Test run loses the story files that were loading.
+  optimizeDeps: {
+    include: ['twig', 'drupal-attribute', 'drupal-twig-extensions/twig', 'preact/compat', 'preact/jsx-dev-runtime'],
+  },
+  // Storybook Test: every story runs as a test in headless Chromium, with this
+  // file's Twig plugin, so it renders as it does in Storybook. The Storybook
+  // MCP server's test-run tool runs the same project.
+  test: {
+    projects: [{
+      extends: true,
+      plugins: [storybookTest({ configDir: join(import.meta.dirname, '.storybook') })],
+      test: {
+        name: 'storybook',
+        browser: {
+          enabled: true,
+          headless: true,
+          provider: playwright(),
+          instances: [{ browser: 'chromium' }],
+        },
+      },
+    }],
+  },
 });

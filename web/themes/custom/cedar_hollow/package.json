@@ -6,22 +6,27 @@
   "scripts": {
     "storybook": "storybook dev -p 6006",
     "build": "storybook build -o storybook",
-    "lint:css": "stylelint 'components/**/*.css' 'css/**/*.css' 'agenda-builder/**/*.css' && python3 ../../../../scripts/check_css.py components css agenda-builder && python3 ../../../../scripts/check_hierarchy.py components"
+    "lint:css": "stylelint 'components/**/*.css' 'css/**/*.css' 'agenda-builder/**/*.css' && python3 ../../../../scripts/check_css.py components css agenda-builder && python3 ../../../../scripts/check_hierarchy.py components",
+    "test:storybook": "vitest --project=storybook --run"
   },
   "devDependencies": {
     "@drupal/once": "1.0.1",
     "@storybook/addon-a11y": "10.6.5",
     "@storybook/addon-docs": "10.6.5",
     "@storybook/addon-mcp": "10.6.5",
+    "@storybook/addon-vitest": "10.6.5",
     "@storybook/html-vite": "10.6.5",
+    "@vitest/browser-playwright": "5.0.5",
     "esbuild": "0.28.2",
+    "playwright": "1.64.1",
     "preact": "10.29.8",
     "storybook": "10.6.5",
     "stylelint": "17.16.0",
     "stylelint-config-standard": "40.0.0",
     "twig-drupal-filters": "3.2.0",
     "vite": "7.3.7",
-    "vite-plugin-twig-drupal": "1.6.2"
+    "vite-plugin-twig-drupal": "1.6.2",
+    "vitest": "5.0.5"
   },
   "overrides": {
     "minimatch": "3.1.5"
