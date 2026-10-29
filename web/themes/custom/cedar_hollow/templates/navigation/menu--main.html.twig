@@ -1,21 +1,27 @@
 {#
 /**
  * @file
- * Main menu: one level, with a toggle button on small screens.
+ * Main menu: one level, rendered twice. Below 48rem the links sit behind a
+ * native details disclosure; from 48rem the same links show in a row. CSS
+ * shows one rendering per width and hides the other with display: none, so
+ * only one copy is visible or in the accessibility tree, and the menu needs
+ * no JavaScript.
  */
 #}
-{{ attach_library('cedar_hollow/menu-toggle') }}
-{% set menu_id = 'main-menu' %}
+{{ attach_library('cedar_hollow/main-menu') }}
 <nav class="main-menu" aria-label="{{ 'Main'|t }}">
-  {# CSS shows the button only when scripting is on, so without JavaScript the links stay visible. #}
-  <button class="main-menu__toggle" type="button" aria-expanded="false" aria-controls="{{ menu_id }}" data-menu-toggle>{{ 'Menu'|t }}</button>
   {% if items %}
-    <ul{{ attributes.addClass('main-menu__list').setAttribute('id', menu_id) }}>
+    {% set links %}
       {% for item in items %}
         <li class="main-menu__item">
           {{ link(item.title, item.url, {class: ['main-menu__link'], 'aria-current': item.in_active_trail ? 'page' : null}) }}
         </li>
       {% endfor %}
-    </ul>
+    {% endset %}
+    <details class="main-menu__disclosure">
+      <summary class="main-menu__toggle">{{ 'Menu'|t }}</summary>
+      <ul class="main-menu__list main-menu__list--stacked">{{ links }}</ul>
+    </details>
+    <ul{{ attributes.addClass('main-menu__list', 'main-menu__list--wide') }}>{{ links }}</ul>
   {% endif %}
 </nav>

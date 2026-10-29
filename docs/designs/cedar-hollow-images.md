@@ -69,7 +69,7 @@ Every goal must ship. Each names the check that shows it was met.
 ## Non-Goals
 
 *   **A browser-side AVIF fallback.** Images are served as AVIF only, and the write-up states that core's fallback applies only on the server. The supported browsers (below) all decode AVIF.
-*   **Browsers older than Chrome and Edge 121, Safari 17 and Firefox 117.** The main design targets browsers with CSS nesting, cascade layers and container queries; this design raises that floor to the versions that also decode AVIF and support the `scripting` media feature, and amends the main design's browser non-goal to match.
+*   **Browsers older than Chrome and Edge 121, Safari 17 and Firefox 117.** The main design targets browsers with CSS nesting, cascade layers and container queries; this design raises that floor to the versions that also decode AVIF and support the `scripting` media feature (which an earlier version of the main menu used), and amends the main design's browser non-goal to match.
 *   **Focal Point and the site's image styles on Canvas image props.** Canvas keeps its own scale-only path. Editors choose Canvas images from the shared Media library, and the Focal Point widget is not shown where Canvas uploads, because it would have no effect there.
 *   **Art direction.** No image changes its crop or subject between screen sizes, so `<picture>` with per-breakpoint sources is not used.
 *   **Other media types.** No video, audio, document or remote media types.
@@ -242,11 +242,12 @@ Embedded media are not exported with the node that embeds them (I3), so the expo
 
 ### Main menu without layout shift
 
-The menu starts expanded and collapses when its script runs, which moved the home page (I5). It changes to collapse before first paint:
+The menu started expanded and collapsed when its script ran, which moved the home page (I5). It now needs no script:
 
-*   The toggle button is rendered without `hidden`. CSS hides it under `@media (scripting: none)` and at widths of 48rem and above.
-*   Below 48rem, the list is hidden under `@media (scripting: enabled)` until it has `.is-open`, instead of under a class the script adds after load.
-*   The script only handles the button's click and `aria-expanded`. Without JavaScript the links stay visible and the button stays hidden, as today. If scripting is on but the script fails to load, the list stays collapsed behind a button that does nothing; this is accepted and stated in the write-up.
+*   The template renders the links twice: inside a `<details>` element whose `<summary>` reads "Menu", and as a plain list.
+*   Below 48rem CSS hides the plain list with `display: none`; from 48rem it hides the `<details>`. Each width is laid out once, so nothing moves after first paint, and the hidden copy is out of the accessibility tree.
+*   The browser opens and closes the disclosure, so the menu works with JavaScript off or with a script that fails to load. A single `<details>` open on wide screens would need `::details-content`, which is newer than the browser floor (Chrome 131, Firefox 143, Safari 18.4).
+*   The cost is the menu's links appearing twice in the HTML.
 
 ### Theme and CSS
 
@@ -414,7 +415,7 @@ Every later deploy needs only the backup, `drush deploy` and the warm-up; the ma
 
 *   **Pros**: A reserved height needs no media query; an inline script runs before first paint in every browser.
 *   **Cons**: A fixed height breaks when the header wraps or text is enlarged; an inline script is JavaScript the theme would have to add outside its libraries.
-*   **Reason for Rejection**: `@media (scripting: enabled)` collapses the menu in CSS before first paint in every supported browser.
+*   **Reason for Rejection**: A disclosure the browser opens and closes is shown or hidden by CSS before first paint in every supported browser, with no script at all.
 
 ### Alternative S: A caption on each image instead of a credits page
 
@@ -680,10 +681,10 @@ Paths are relative to the repository root. Configuration follows the workflow in
 *   **Type / Scope**: Playwright.
 *   **Proposed Changes**: At 412 by 823 CSS pixels, with images loading normally (blocked image requests log console errors, which every test refuses, and a loaded image with `width` and `height` reserves its space anyway), sums the `layout-shift` entries whose `hadRecentInput` is false on `/` and fails when the sum is above 0. Run first against the current menu, where it fails; the failure is recorded in item 27's commit message.
 
-#### 27. `web/themes/custom/cedar_hollow/templates/navigation/menu--main.html.twig`, `css/main-menu.css`, `js/menu-toggle.js` (Modify)
+#### 27. `web/themes/custom/cedar_hollow/templates/navigation/menu--main.html.twig`, `css/main-menu.css`, `js/menu-toggle.js` (Modify; the script is deleted)
 
 *   **Type / Scope**: Main menu.
-*   **Proposed Changes**: The button renders without `hidden`; CSS hides it under `@media (scripting: none)` and at widths of 48rem and above; below 48rem the list is hidden under `@media (scripting: enabled)` until it has `.is-open`; the open list's column layout, scoped today to `.main-menu--collapsible`, moves under `@media (scripting: enabled) and (width < 48rem)`, and the script no longer adds that class; it only handles the button's click and `aria-expanded`.
+*   **Proposed Changes**: The template renders the links into a `<details class="main-menu__disclosure">` with a `<summary class="main-menu__toggle">` and a `main-menu__list--stacked` list, and again into a `main-menu__list--wide` list. CSS hides the wide list below 48rem and the disclosure from 48rem. The `menu-toggle` library becomes `main-menu` with CSS only; `js/menu-toggle.js` and its Storybook import are deleted. `tests/e2e/menu.spec.ts` covers click, keyboard, JavaScript off, a script that fails to load, and one visible copy of the links at each width.
 
 #### 28. `web/themes/custom/cedar_hollow/components/organisms/site-header/site-header.stories.js` and its visual baseline (Modify)
 

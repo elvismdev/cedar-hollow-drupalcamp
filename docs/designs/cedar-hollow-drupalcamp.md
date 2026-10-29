@@ -634,7 +634,7 @@ Defined in full in `docs/designs/cedar-hollow-images.md`. The values other files
 
 #### 17. `web/themes/custom/cedar_hollow/cedar_hollow.libraries.yml` (Create)
 
-*   **Proposed Changes**: `base` library with `css: base:` entries `css/layers.css` (weight -100), `css/reset.css`, `css/tokens.css`, `css/base.css`; `menu-toggle` library with `js/menu-toggle.js` and dependencies `core/drupal`, `core/once`.
+*   **Proposed Changes**: `base` library with `css: base:` entries `css/layers.css` (weight -100), `css/reset.css`, `css/tokens.css`, `css/base.css`; `main-menu` library with `css/main-menu.css` (it began as `menu-toggle` with a script, removed when the menu became a `<details>` disclosure).
 
 #### 18. `web/themes/custom/cedar_hollow/cedar_hollow.breakpoints.yml` and `cedar_hollow.canvas.yml` (Create)
 
@@ -648,9 +648,9 @@ Defined in full in `docs/designs/cedar-hollow-images.md`. The values other files
 
 *   **Proposed Changes**: `layers.css` contains only `@layer reset, tokens, base, atoms, components, collections, layouts, utilities;`. Each component's CSS uses the layer in the design's tier table: `atoms/` uses `atoms`, `molecules/` uses `components`, `organisms/` uses `collections`, `layouts/` uses `layouts`. Every other theme and component CSS file also starts with the same statement, so the order holds whichever file loads first. Tokens: colours with text contrast at least 4.5:1 and non-text contrast at least 3:1, a `clamp()` type scale, spacing, radius and focus ring. Base: element defaults, skip-link styles. Core's `.visually-hidden` is not redefined.
 
-#### 20. `web/themes/custom/cedar_hollow/js/menu-toggle.js` (Create)
+#### 20. `web/themes/custom/cedar_hollow/js/menu-toggle.js` (Create; later deleted)
 
-*   **Proposed Changes**: `Drupal.behaviors.cedarHollowMenuToggle` using `once()`; a button toggles `aria-expanded` and the menu's visibility below the tablet breakpoint.
+*   **Proposed Changes**: `Drupal.behaviors.cedarHollowMenuToggle` using `once()`; a button toggles `aria-expanded` and the menu's visibility below the tablet breakpoint. The script was later deleted: the menu now renders its links in a `<details>` disclosure below 48rem and in a plain list from 48rem, with no JavaScript.
 
 #### 21. `web/themes/custom/cedar_hollow/src/Hook/ThemeHooks.php` (Create, adapted from `drupal-theme-layer`)
 
@@ -662,7 +662,7 @@ Defined in full in `docs/designs/cedar-hollow-images.md`. The values other files
 *   **Proposed Changes**:
     *   `layout/html.html.twig`: skip link to `#main-content`.
     *   `layout/page.html.twig`: `include('cedar_hollow:site-header', {branding: '<a href="' ~ path('<front>') ~ '" rel="home">' ~ site_name ~ '</a>', navigation: page.header}, only)`; `<main id="main-content">` containing `page.highlighted` and `page.content`; `include('cedar_hollow:site-footer', {notice: demo_notice, links: page.footer}, only)`. Used on every front-end route, Canvas pages included.
-    *   `navigation/menu--main.html.twig`: the main menu list with the toggle button, attaching `cedar_hollow/menu-toggle`.
+    *   `navigation/menu--main.html.twig`: the main menu: the links in a `<details>` disclosure for narrow screens and in a plain list for wide ones, attaching `cedar_hollow/main-menu`.
     *   `content/node--session--full.html.twig`: `page-section` with `heading` = title; its `content` slot holds, in order: `date-badge`, `session-meta` and `seats-indicator` (from preprocess), `content.field_speakers`, `content.body`, `content.field_registration`, `content.field_forward`; then the rest of `content` through `content|without('body', 'field_registration', 'field_forward', 'field_session_time', 'field_room', 'field_track', 'field_speakers', 'field_day')` so its cache metadata is kept.
     *   `content/node--session--teaser.html.twig`: `card` with `eyebrow` = track label, `heading` = title, `url` = node URL, slot `meta` = `session-meta`, slot `footer` = `seats-indicator`.
     *   `content/node--speaker--teaser.html.twig`: `speaker-byline`.

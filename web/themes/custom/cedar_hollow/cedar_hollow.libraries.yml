@@ -26,15 +26,10 @@ base:
     - core/components.cedar_hollow--button
     - core/components.cedar_hollow--seats-indicator
 
-menu-toggle:
+main-menu:
   css:
     component:
       css/main-menu.css: {}
-  js:
-    js/menu-toggle.js: {}
-  dependencies:
-    - core/drupal
-    - core/once
 
 sessions:
   css:
