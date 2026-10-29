@@ -61,4 +61,11 @@ test.describe('on a wide screen', () => {
     await expect(nav.getByRole('link', { name: 'Sessions' })).toBeVisible();
     await expect(nav.getByRole('link', { name: 'Sessions' })).toHaveCount(1);
   });
+
+  test('the main and footer menus are one named landmark each', async ({ page }) => {
+    await page.goto('/');
+    await expect(page.getByRole('navigation', { name: 'Main', exact: true })).toHaveCount(1);
+    await expect(page.getByRole('navigation', { name: 'Footer', exact: true })).toHaveCount(1);
+    await expect(page.getByRole('navigation', { name: 'Main', exact: true }).getByRole('navigation')).toHaveCount(0);
+  });
 });

@@ -5,11 +5,12 @@
  * native details disclosure; from 48rem the same links show in a row. CSS
  * shows one rendering per width and hides the other with display: none, so
  * only one copy is visible or in the accessibility tree, and the menu needs
- * no JavaScript.
+ * no JavaScript. The menu block's nav, named by its "Main" label, is the
+ * landmark around it.
  */
 #}
 {{ attach_library('cedar_hollow/main-menu') }}
-<nav class="main-menu" aria-label="{{ 'Main'|t }}">
+<div class="main-menu">
   {% if items %}
     {% set links %}
       {% for item in items %}
@@ -24,4 +25,4 @@
     </details>
     <ul{{ attributes.addClass('main-menu__list', 'main-menu__list--wide') }}>{{ links }}</ul>
   {% endif %}
-</nav>
+</div>
