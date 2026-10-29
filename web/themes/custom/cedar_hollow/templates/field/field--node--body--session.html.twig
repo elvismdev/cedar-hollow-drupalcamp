@@ -1,0 +1,11 @@
+{#
+/**
+ * @file
+ * Session body without the field wrapper, so the body's own markup is the
+ * direct child of the .prose wrapper the session page puts around it and
+ * the prose list rules reach it.
+ */
+#}
+{% for item in items %}
+  {{ item.content }}
+{% endfor %}
