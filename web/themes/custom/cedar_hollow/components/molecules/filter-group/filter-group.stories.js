@@ -13,4 +13,4 @@ export default {
   render: (args) => filter_group(args),
 };
 
-export const Default = { args: {"legend": "Track", "options": "<label><input type=\"radio\" name=\"track\" checked> Any track</label><label><input type=\"radio\" name=\"track\"> Front end</label><label><input type=\"radio\" name=\"track\"> Back end</label>"} };
+export const Default = { args: {"legend": "Track", "options": "<div class=\"filter-group__option\"><input type=\"radio\" id=\"track-0\" name=\"track\" checked><label class=\"filter-group__label\" for=\"track-0\">Any track</label></div><div class=\"filter-group__option\"><input type=\"radio\" id=\"track-1\" name=\"track\"><label class=\"filter-group__label\" for=\"track-1\">Front end</label></div><div class=\"filter-group__option\"><input type=\"radio\" id=\"track-2\" name=\"track\"><label class=\"filter-group__label\" for=\"track-2\">Back end</label></div>"} };

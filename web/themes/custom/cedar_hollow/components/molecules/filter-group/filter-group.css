@@ -24,11 +24,16 @@
     gap: var(--size-2) var(--size-4);
   }
 
-  /* Labels come from core's radio and checkbox markup, which has no BEM class. */
-  .filter-group__options label {
+  .filter-group__option {
     display: inline-flex;
-    gap: var(--size-1);
+    gap: var(--size-2);
     align-items: center;
     min-block-size: var(--target-size);
+    margin: 0;
+  }
+
+  .filter-group__label {
+    margin: 0;
+    font-weight: var(--font-weight-400);
   }
 }

@@ -1,0 +1,11 @@
+{#
+/**
+ * @file
+ * A radio filter of the sessions listing, rendered as a filter-group.
+ */
+#}
+{{ include('cedar_hollow:filter-group', {
+  attributes: attributes,
+  legend: legend.title,
+  options: children,
+}, with_context = false) }}

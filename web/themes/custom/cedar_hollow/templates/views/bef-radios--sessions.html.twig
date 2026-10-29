@@ -1,0 +1,12 @@
+{#
+/**
+ * @file
+ * Options of a sessions listing radio filter, classed as filter-group parts.
+ */
+#}
+{% for child in children %}
+  {{ attribute(element, child)|merge({
+    '#wrapper_attributes': {class: ['filter-group__option']},
+    '#label_attributes': {class: ['filter-group__label']},
+  }) }}
+{% endfor %}

@@ -8,7 +8,9 @@ use Drupal\cedar_hollow_core\SeatsSummary;
 use Drupal\Core\Cache\CacheableMetadata;
 use Drupal\Core\Config\ConfigFactoryInterface;
 use Drupal\Core\Datetime\DateFormatterInterface;
+use Drupal\Core\Form\FormStateInterface;
 use Drupal\Core\Hook\Attribute\Hook;
+use Drupal\Core\Render\Element;
 use Drupal\Core\Routing\RouteMatchInterface;
 use Drupal\Core\StringTranslation\StringTranslationTrait;
 use Drupal\node\NodeInterface;
@@ -34,6 +36,16 @@ final class ThemeHooks {
    * The Surface theme variant, matched by data-theme selectors in its CSS.
    */
   private const SURFACE_THEME = 'surface';
+
+  /**
+   * The view whose radio filters render as filter-group components.
+   */
+  private const SESSIONS_VIEW = 'sessions';
+
+  /**
+   * Render property marking an exposed filter as a filter-group.
+   */
+  private const FILTER_GROUP = '#cedar_hollow_filter_group';
 
   public function __construct(
     private readonly SeatsSummary $seatsSummary,
@@ -152,15 +164,43 @@ final class ThemeHooks {
   /**
    * Implements hook_form_FORM_ID_alter() for views_exposed_form.
    *
-   * Makes the exposed filters' submit the primary button.
+   * Makes the exposed filters' submit the primary button. On the sessions
+   * listing, marks each radio filter to render as a filter-group and drops
+   * the bare radios wrapper, so its options sit directly in the group.
    *
    * @param array<mixed> $form
    *   The exposed form.
+   * @param \Drupal\Core\Form\FormStateInterface $form_state
+   *   The form state.
    */
   #[Hook('form_views_exposed_form_alter')]
-  public function formViewsExposedFormAlter(array &$form): void {
+  public function formViewsExposedFormAlter(array &$form, FormStateInterface $form_state): void {
     if (isset($form['actions']['submit'])) {
       $form['actions']['submit']['#button_type'] = 'primary';
+    }
+    if ($form_state->get('view')?->id() !== self::SESSIONS_VIEW) {
+      return;
+    }
+    foreach (Element::children($form) as $key) {
+      if (($form[$key]['#type'] ?? NULL) === 'radios') {
+        $form[$key][self::FILTER_GROUP] = TRUE;
+        $form[$key]['#theme_wrappers'] = [];
+      }
+    }
+  }
+
+  /**
+   * Implements hook_theme_suggestions_HOOK_alter() for fieldset.
+   *
+   * @param string[] $suggestions
+   *   The template suggestions.
+   * @param array<mixed> $variables
+   *   The template variables.
+   */
+  #[Hook('theme_suggestions_fieldset_alter')]
+  public function themeSuggestionsFieldsetAlter(array &$suggestions, array $variables): void {
+    if (!empty($variables['element'][self::FILTER_GROUP])) {
+      $suggestions[] = 'fieldset__filter_group';
     }
   }
 
