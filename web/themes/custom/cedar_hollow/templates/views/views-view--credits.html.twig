@@ -1,19 +1,50 @@
 {#
 /**
  * @file
- * The image credits page. The table scrolls inside its own focusable region
- * on narrow screens, so the page itself never scrolls sideways (WCAG 1.4.10
- * allows two-dimensional scrolling for data tables).
+ * The image credits page: core's views-view.html.twig with the rows in a
+ * focusable region that scrolls on narrow screens, so the page itself
+ * never scrolls sideways (WCAG 1.4.10 allows two-dimensional scrolling for
+ * data tables).
  */
 #}
 {{ attach_library('cedar_hollow/credits') }}
-<div{{ attributes.addClass('credits-view') }}>
+{%
+  set classes = [
+    'credits-view',
+    dom_id ? 'js-view-dom-id-' ~ dom_id,
+  ]
+%}
+<div{{ attributes.addClass(classes) }}>
   {{ title_prefix }}
+  {{ title }}
   {{ title_suffix }}
-  {{ header }}
-  <div class="credits-view__table" role="region" aria-label="{{ 'Image credits table'|t }}" tabindex="0">
-    {{ rows }}
-  </div>
-  {{ empty }}
+
+  {% if header %}
+    <header>
+      {{ header }}
+    </header>
+  {% endif %}
+
+  {{ exposed }}
+  {{ attachment_before }}
+
+  {% if rows -%}
+    <div class="credits-view__table" role="region" aria-label="{{ 'Image credits table'|t }}" tabindex="0">
+      {{ rows }}
+    </div>
+  {% elseif empty -%}
+    {{ empty }}
+  {% endif %}
   {{ pager }}
+
+  {{ attachment_after }}
+  {{ more }}
+
+  {% if footer %}
+    <footer>
+      {{ footer }}
+    </footer>
+  {% endif %}
+
+  {{ feed_icons }}
 </div>
