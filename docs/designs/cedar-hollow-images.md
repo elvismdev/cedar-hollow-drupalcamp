@@ -634,7 +634,7 @@ Paths are relative to the repository root. Configuration follows the workflow in
 #### 18. `web/themes/custom/cedar_hollow/stories/fixtures/images/` (Create)
 
 *   **Type / Scope**: Storybook image fixtures.
-*   **Proposed Changes**: AVIF files at 640x360, 400x267 and 96x96, each under 50 KB, made on DDEV by running the `16_9_640`, `3_2_400` and `1_1_96` styles on the CC0 photo used in spike I2 ("Forest of Himalayan Cedar Tress in Shimla", Wikimedia Commons), with a `LICENCE.md` beside them naming the source and licence. Stories `import` each file, so Vite copies it into the static Storybook build the visual test serves (the Storybook config has no static directory). Visual baselines never depend on a remote image.
+*   **Proposed Changes**: AVIF files at 640x360, 400x267 and 96x96, each under 60 KB (GD writes AVIF at PHP's default quality, which the site cannot set, and the 640x360 crop comes out at 52 KB), made on DDEV by running the `16_9_640`, `3_2_400` and `1_1_96` styles on the CC0 photo used in spike I2 ("Forest of Himalayan Cedar Tress in Shimla", Wikimedia Commons), with a `LICENCE.md` beside them naming the source and licence. Stories `import` each file, so Vite copies it into the static Storybook build the visual test serves (the Storybook config has no static directory). Visual baselines never depend on a remote image.
 
 #### 19. `web/themes/custom/cedar_hollow/templates/block/block--block-content--type--hero.html.twig` (Create)
 
