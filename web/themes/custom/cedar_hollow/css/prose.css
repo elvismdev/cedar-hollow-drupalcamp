@@ -1,7 +1,9 @@
 /**
  * @file
  * Prose: rich text from the Canvas text formats, which allow only p, a,
- * br, strong, em, u and lists, with no class attributes.
+ * br, strong, em, u and lists, and from the session_html format, which adds
+ * h2, h3 and embedded images in a figure with a caption. Neither allows
+ * class attributes.
  */
 
 /* Ported from uclahs/surface source/patterns/base/utilities/prose.css at 76e5dc6 (GPL-2.0-or-later). */
@@ -74,6 +76,32 @@
 
     :where(ul ul, ul ol, ol ul, ol ol) {
       margin-block: var(--size-4);
+    }
+
+    :where(h2, h3) {
+      font-family: var(--font-heading);
+      margin-block: var(--size-6) var(--size-3);
+    }
+
+    :where(h2) {
+      font-size: var(--font-size-4);
+    }
+
+    :where(h3) {
+      font-size: var(--font-size-3);
+    }
+
+    :where(figure) {
+      inline-size: fit-content;
+      margin-block: var(--size-6);
+      margin-inline: auto;
+    }
+
+    :where(figcaption) {
+      color: var(--color-text-muted);
+      contain: inline-size;
+      font-size: var(--font-size-0);
+      margin-block-start: var(--size-2);
     }
 
     :where(strong *) {
