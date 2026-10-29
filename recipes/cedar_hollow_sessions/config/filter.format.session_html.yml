@@ -1,0 +1,39 @@
+langcode: en
+status: true
+dependencies:
+  config:
+    - core.entity_view_mode.media.embed_photo
+    - core.entity_view_mode.media.embed_wide
+  module:
+    - media
+name: 'Session HTML'
+format: session_html
+weight: 5
+filters:
+  filter_caption:
+    id: filter_caption
+    provider: filter
+    status: true
+    weight: 5
+    settings: {  }
+  filter_html:
+    id: filter_html
+    provider: filter
+    status: true
+    weight: -10
+    settings:
+      allowed_html: '<br> <p> <h2> <h3> <strong> <em> <a href> <ul> <ol> <li> <drupal-media data-entity-type data-entity-uuid alt data-view-mode data-caption>'
+      filter_html_help: false
+      filter_html_nofollow: false
+  media_embed:
+    id: media_embed
+    provider: media
+    status: true
+    weight: 100
+    settings:
+      default_view_mode: embed_wide
+      allowed_view_modes:
+        embed_wide: embed_wide
+        embed_photo: embed_photo
+      allowed_media_types:
+        image: image

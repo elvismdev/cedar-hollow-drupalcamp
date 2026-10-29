@@ -1,0 +1,35 @@
+uuid: 46c8a7c6-a977-4c9a-8720-278cfa880b82
+langcode: en
+status: true
+dependencies:
+  config:
+    - filter.format.session_html
+  module:
+    - ckeditor5
+format: session_html
+editor: ckeditor5
+settings:
+  toolbar:
+    items:
+      - heading
+      - bold
+      - italic
+      - link
+      - bulletedList
+      - numberedList
+      - drupalMedia
+  plugins:
+    ckeditor5_heading:
+      enabled_headings:
+        - heading2
+        - heading3
+    ckeditor5_list:
+      properties:
+        reversed: false
+        startIndex: false
+        styles: false
+      multiBlock: true
+    media_media:
+      allow_view_mode_override: true
+image_upload:
+  status: false

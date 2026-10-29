@@ -5,6 +5,8 @@ recipes:
   - cedar_hollow_media
 install:
   - filter
+  - editor
+  - ckeditor5
   - node
   - text
   - options
