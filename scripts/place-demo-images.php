@@ -70,6 +70,8 @@ $media_for = static function (array $entry) use ($repository, $etm, &$changes): 
   $media = Media::create([
     'uuid' => $entry['uuid'],
     'bundle' => 'image',
+    // Drush runs as anonymous; the demo's content belongs to the administrator.
+    'uid' => 1,
     'name' => preg_replace('/^File:|\.[^.]+$/', '', $entry['commons_title']),
     'status' => 1,
     'field_media_image' => [

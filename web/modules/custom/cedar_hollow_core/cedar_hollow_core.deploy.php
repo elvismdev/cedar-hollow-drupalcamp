@@ -61,3 +61,22 @@ function cedar_hollow_core_deploy_session_body_format(): string {
   }
   return sprintf('Converted %d session bodies to %s.', count($ids), SessionBody::FORMAT);
 }
+
+/**
+ * Gives demo images owned by anonymous to the administrator.
+ *
+ * The image script ran under Drush as anonymous, so the media it created
+ * had no owner, unlike the demo's nodes, which belong to user 1.
+ */
+function cedar_hollow_core_deploy_demo_media_owner(): string {
+  $storage = \Drupal::entityTypeManager()->getStorage('media');
+  $ids = $storage->getQuery()
+    ->accessCheck(FALSE)
+    ->condition('bundle', 'image')
+    ->condition('uid', 0)
+    ->execute();
+  foreach ($storage->loadMultiple($ids) as $media) {
+    $media->setOwnerId(1)->save();
+  }
+  return sprintf('Gave %d image media items to user 1.', count($ids));
+}
