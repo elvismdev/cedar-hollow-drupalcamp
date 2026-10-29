@@ -1,0 +1,19 @@
+{#
+/**
+ * @file
+ * The image credits page. The table scrolls inside its own focusable region
+ * on narrow screens, so the page itself never scrolls sideways (WCAG 1.4.10
+ * allows two-dimensional scrolling for data tables).
+ */
+#}
+{{ attach_library('cedar_hollow/credits') }}
+<div{{ attributes.addClass('credits-view') }}>
+  {{ title_prefix }}
+  {{ title_suffix }}
+  {{ header }}
+  <div class="credits-view__table" role="region" aria-label="{{ 'Image credits table'|t }}" tabindex="0">
+    {{ rows }}
+  </div>
+  {{ empty }}
+  {{ pager }}
+</div>

@@ -1,0 +1,19 @@
+/**
+ * @file
+ * Image credits page: the table scrolls inside its own region on narrow
+ * screens instead of making the page scroll sideways.
+ */
+
+@layer reset, tokens, base, atoms, components, collections, layouts, utilities;
+
+@layer collections {
+  .credits-view {
+    display: flex;
+    flex-direction: column;
+    gap: var(--size-4);
+  }
+
+  .credits-view__table {
+    overflow-x: auto;
+  }
+}

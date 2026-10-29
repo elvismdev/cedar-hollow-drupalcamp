@@ -40,3 +40,8 @@ sessions:
   css:
     component:
       css/sessions.css: {}
+
+credits:
+  css:
+    component:
+      css/credits.css: {}

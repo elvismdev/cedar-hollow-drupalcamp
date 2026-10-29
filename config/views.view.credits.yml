@@ -96,11 +96,17 @@ display:
           plugin_id: field
           label: Source
           exclude: false
+          alter:
+            alter_text: true
+            text: 'Wikimedia Commons'
+            make_link: true
+            path: '{{ field_source_url }}'
+            external: true
           type: link
           settings:
-            trim_length: 80
-            url_only: false
-            url_plain: false
+            trim_length: null
+            url_only: true
+            url_plain: true
             rel: ''
             target: ''
       pager:
