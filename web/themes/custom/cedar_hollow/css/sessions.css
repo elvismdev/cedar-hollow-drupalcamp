@@ -27,9 +27,7 @@
   }
 
   .session__img {
-    display: block;
     inline-size: 100%;
-    block-size: auto;
   }
 
   /* The listing's parts and the filter groups stack with gaps, not margins. */

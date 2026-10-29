@@ -24,9 +24,7 @@
   }
 
   .card__img {
-    display: block;
     inline-size: 100%;
-    block-size: auto;
   }
 
   .card__badge {
