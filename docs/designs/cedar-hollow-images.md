@@ -256,7 +256,7 @@ The menu starts expanded and collapses when its script runs, which moved the hom
 
 ### Configuration and recipes
 
-*   **`recipes/cedar_hollow_media`** composes `core/recipes/image_media_type`, installs `responsive_image`, `breakpoint`, `block_content`, `crop`, `focal_point`, `views`, `link` and `options`, applies the config actions above, imports the licence fields, image styles, responsive image styles, Media view modes, the `hero` block type and the credits View, and grants `view media` to the anonymous and authenticated roles. Focal Point's crop type and settings come from module install and are not shipped.
+*   **`recipes/cedar_hollow_media`** composes `core/recipes/image_media_type`, installs `responsive_image`, `breakpoint`, `block_content`, `crop`, `focal_point`, `views`, `link` and `options`, applies the config actions above, imports the licence fields, image styles, responsive image styles, Media view modes, the `hero` block type and the credits View, and grants `view media` to the anonymous and authenticated roles. A module installed by a recipe creates only its simple configuration, so the recipe imports Focal Point's `crop.type.focal_point` explicitly with `config.import`; without it every focal-point image style would fail to crop.
 *   **`recipes/cedar_hollow_sessions`** composes `cedar_hollow_media`, installs `editor` and `ckeditor5`, and adds the session image field, the speaker image field change and the `session_html` format and editor. Functional tests keep building their site from `cedar_hollow_sessions`.
 *   Changes are made on the site and exported with `ddev drush config:export -y` into `config/`, which stays the source of truth. The exported files a change touches are then copied into the recipe that installs them, without their `uuid` and `_core` keys, as the existing recipe copies are. `recipe.yml` files, recipe `composer.json` files and scripts are written by hand.
 
@@ -301,7 +301,7 @@ Every later deploy needs only the backup, `drush deploy` and the warm-up; the ma
 ### Tests
 
 *   **PHPUnit (unit):** `ResponsiveImageRatioTest` fails if any responsive image style maps image styles of more than one ratio, maps a style without a scale and crop, or has a fallback outside its mapping; a committed mixed-ratio fixture shows it failing.
-*   **PHPUnit (functional, from the sessions recipe):** licence validation on the entity and on the `media_library` form mode, built and submitted with Drupal's form builder (the Media Library's own upload flow is AJAX, which only FunctionalJavascript tests drive, and this project's CI does not run them); the `session_html` format and editor install, and an embed renders in each view mode inside a `figure` with its caption, with disallowed markup removed; `demo_editor` can pick and upload images through the Media Library and has no other new access.
+*   **PHPUnit (functional, from the sessions recipe):** licence validation on the entity and on the fields the Media Library upload form validates (its flow is AJAX, which only FunctionalJavascript tests drive, and this project's CI does not run them); the `session_html` format and editor install, and an embed renders in each view mode inside a `figure` with its caption, with disallowed markup removed; `demo_editor` can pick and upload images through the Media Library and has no other new access.
 *   **Playwright:** the loading and `fetchpriority` attributes of Goal 3; `sizes` on cards, the session image and bylines; the credits modification notice and titles; the layout-shift sum of Goal 9; axe on the existing page list plus `/credits`; the Pantheon smoke check of a session image.
 *   **Storybook:** stories for `hero`, `card`, `speaker-byline` and the session image with real image markup from committed AVIF fixtures that each story imports, so Vite copies them into the static build; visual baselines regenerated after review.
 *   **Test first:** each test is written in the stage whose behaviour it covers, run first against the code before the change, and the failing output is recorded in the commit message; no commit contains a failing test.
@@ -576,17 +576,17 @@ Paths are relative to the repository root. Configuration follows the workflow in
 #### 8. `config/user.role.demo_editor.yml` (Modify)
 
 *   **Type / Scope**: Permissions.
-*   **Proposed Changes**: The permissions recorded by the Media Library check, starting from `access media overview` and `create image media` and adding only what Canvas's Media Library widget requires.
+*   **Proposed Changes**: `create image media`, the only permission the Media Library check (image spike I7) found missing; `access media overview` is not granted.
 
 #### 9. `web/modules/custom/cedar_hollow_core/tests/src/Functional/MediaLicenceTest.php` (Create)
 
 *   **Type / Scope**: Functional test, site built from the sessions recipe.
-*   **Proposed Changes**: `$media->validate()` reports a `NotNull` violation for each missing licence field and an `AllowedValues` violation for a licence outside the list; the `media_library` form mode, built with `\Drupal::service('entity.form_builder')->getForm($media, 'media_library')` and submitted with `\Drupal::formBuilder()->submitForm()`, reports the same errors.
+*   **Proposed Changes**: `$media->validate()` reports a `NotNull` violation for each missing licence field and an `AllowedValues` violation for a licence outside the list; Media Library's add form (built inline by `AddFormBase`, not an entity form handler) validates only the fields on the `media_library` form display, so the test asserts the four licence fields are on that display and that validation filtered to it still reports each missing one.
 
 #### 10. `web/modules/custom/cedar_hollow_core/tests/src/Functional/DemoEditorAccessTest.php` (Modify)
 
 *   **Type / Scope**: Functional test.
-*   **Proposed Changes**: as `demo_editor`: `/admin/content/media` answers 200 (the `access media overview` permission) and `/media/add/image` answers 200; `/media/{id}/edit` and `/media/{id}/delete` for media created by another user answer 403; `/admin/structure/media` answers 403; the routes it is refused today stay refused. (Field UI is not enabled, so its pages answer 404 for every user and are not asserted.)
+*   **Proposed Changes**: as `demo_editor`: `/media/add/image` answers 200; `/admin/content/media` answers 403 (`access media overview` is not granted); `/media/{id}/edit` and `/media/{id}/delete` for media created by another user answer 403; `/admin/structure/media` answers 403; the routes it is refused today stay refused. (Field UI is not enabled, so its pages answer 404 for every user and are not asserted.)
 
 ### Stage 3: Rich-text session bodies
 

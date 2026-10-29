@@ -8,6 +8,7 @@ use Drupal\FunctionalTests\Core\Recipe\RecipeTestTrait;
 use Drupal\node\NodeInterface;
 use Drupal\registration\RegistrationSettingsStorage;
 use Drupal\Tests\BrowserTestBase;
+use Drupal\Tests\TestFileCreationTrait;
 
 /**
  * Builds the session feature from the cedar_hollow_sessions recipe.
@@ -18,6 +19,7 @@ use Drupal\Tests\BrowserTestBase;
 abstract class SessionTestBase extends BrowserTestBase {
 
   use RecipeTestTrait;
+  use TestFileCreationTrait;
 
   /**
    * {@inheritdoc}
