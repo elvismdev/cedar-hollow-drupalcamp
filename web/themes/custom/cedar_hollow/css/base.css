@@ -44,12 +44,12 @@
     outline-offset: var(--focus-ring-offset);
   }
 
-  /* Core's skip link while it has focus; .visually-hidden.focusable is core's. */
+  /* Core's skip link while it has focus; .visually-hidden.focusable is core's.
+   * Core sets position: static !important on it, so it shows in the flow
+   * above the header, as a block so its padding and focus ring fit. */
   .visually-hidden.focusable:focus {
-    position: absolute;
-    inset-block-start: var(--size-2);
-    inset-inline-start: var(--size-2);
-    z-index: var(--layer-50);
+    display: block;
+    margin: var(--size-2);
     padding: var(--size-2) var(--size-4);
     background-color: var(--color-accent);
     color: var(--color-on-accent);
