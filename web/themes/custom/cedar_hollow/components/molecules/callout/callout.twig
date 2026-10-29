@@ -10,9 +10,13 @@
 {% if style == 'quote' %}
   {% set classes = classes|merge(['callout--quote']) %}
 {% endif %}
+{% set image_markup = image|render|trim %}
+{% if image_markup %}
+  {% set classes = classes|merge(['callout--with-image']) %}
+{% endif %}
 <article{{ attributes.addClass(classes) }}>
   <div class="callout__layout">
-    {% if image|render|trim %}
+    {% if image_markup %}
       <div class="callout__image">
         {{ image }}
       </div>

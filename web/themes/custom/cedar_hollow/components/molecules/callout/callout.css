@@ -62,7 +62,7 @@
     }
 
     /* The quote panel overlaps its image; without an image there is nothing to overlap. */
-    .callout--quote:has(.callout__image) .callout__text {
+    .callout--quote.callout--with-image .callout__text {
       inline-size: 90%;
       margin-block-start: calc(var(--size-20) * -1);
       margin-inline: auto;

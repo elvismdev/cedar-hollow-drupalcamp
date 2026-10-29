@@ -10,23 +10,21 @@
 
 @layer components {
   .quote {
-    --quote-background: var(--color-accent);
-    --quote-text: var(--color-on-accent);
-    --quote-rule: var(--color-highlight);
+    --quote-background: transparent;
+    --quote-text: var(--color-accent);
+    --quote-rule: var(--color-accent);
 
     container: quote / inline-size;
     background-color: var(--quote-background);
     color: var(--quote-text);
   }
 
-  .quote:not(:has(.quote__image)) {
-    --quote-background: transparent;
-    --quote-text: var(--color-accent);
-    --quote-rule: var(--color-accent);
-  }
-
-  /* On the accent background the focus ring takes the on-accent colour, for 3:1 contrast. */
-  .quote:has(.quote__image) {
+  /* With an image the quote sits on the accent background, and the focus
+   * ring takes the on-accent colour, for 3:1 contrast. */
+  .quote--with-image {
+    --quote-background: var(--color-accent);
+    --quote-text: var(--color-on-accent);
+    --quote-rule: var(--color-highlight);
     --color-focus: var(--color-on-accent);
   }
 
@@ -38,7 +36,7 @@
   }
 
   @container quote (inline-size >= 48rem) {
-    .quote:has(.quote__image) .quote__content {
+    .quote--with-image .quote__content {
       display: grid;
       grid-template-columns: repeat(2, minmax(0, 1fr));
       gap: var(--size-10);
@@ -65,9 +63,9 @@
     padding-block: var(--size-6);
     padding-inline-start: var(--size-6);
     border-inline-start: var(--border-size-4) solid var(--quote-rule);
-    font-size: var(--font-size-3);
+    font-size: var(--font-size-4);
     font-style: italic;
-    font-weight: var(--font-weight-600);
+    font-weight: var(--font-weight-400);
     text-wrap: pretty;
     quotes: "\201C" "\201D" "\2018" "\2019";
 
@@ -80,9 +78,9 @@
     }
   }
 
-  .quote:not(:has(.quote__image)) .quote__body {
-    font-size: var(--font-size-4);
-    font-weight: var(--font-weight-400);
+  .quote--with-image .quote__body {
+    font-size: var(--font-size-3);
+    font-weight: var(--font-weight-600);
   }
 
   .quote__figure {

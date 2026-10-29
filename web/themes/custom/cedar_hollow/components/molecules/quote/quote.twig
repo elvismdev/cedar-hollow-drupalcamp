@@ -1,6 +1,10 @@
 {# Markup based on uclahs/surface source/patterns/components/quote (GPL-2.0-or-later). #}
 {% set attributes = attributes ?: create_attribute() %}
-<div{{ attributes.addClass('quote') }}>
+{% set classes = ['quote'] %}
+{% if image.src %}
+  {% set classes = classes|merge(['quote--with-image']) %}
+{% endif %}
+<div{{ attributes.addClass(classes) }}>
   <div class="quote__content">
     <div class="quote__text">
       <figure class="quote__figure">
