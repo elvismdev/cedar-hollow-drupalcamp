@@ -19,7 +19,7 @@
     max-inline-size: var(--content-width-narrow);
     min-block-size: var(--target-size);
     padding: var(--size-2) var(--size-3);
-    border: 1px solid var(--color-border);
+    border: var(--border-size-1) solid var(--color-border);
     border-radius: var(--radius-2);
     background-color: var(--color-surface);
     color: var(--color-text);

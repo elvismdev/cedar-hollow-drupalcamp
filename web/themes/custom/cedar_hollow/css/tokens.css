@@ -66,6 +66,7 @@
     --content-width: 72rem;
     --content-width-narrow: 44rem;
     --measure: 65ch;
+    --page-inline-size: min(100% - 2 * var(--size-4), var(--content-width));
     --duration-fast: 150ms;
   }
 

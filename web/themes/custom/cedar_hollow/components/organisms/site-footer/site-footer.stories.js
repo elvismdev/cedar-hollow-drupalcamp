@@ -13,4 +13,4 @@ export default {
   render: (args) => site_footer(args),
 };
 
-export const Default = { args: {"links": "<nav aria-label=\"Footer\"><ul><li><a href=\"/sitemap\">Site map</a></li><li><a href=\"/user/login\">Log in</a></li></ul></nav>", "notice": "Cedar Hollow DrupalCamp is a fictional event. This site is a demo."} };
+export const Default = { args: {"links": "<nav aria-label=\"Footer\"><ul class=\"site-footer__menu\"><li class=\"site-footer__menu-item\"><a class=\"site-footer__menu-link\" href=\"/sitemap\">Site map</a></li><li class=\"site-footer__menu-item\"><a class=\"site-footer__menu-link\" href=\"/user/login\">Log in</a></li></ul></nav>", "notice": "Cedar Hollow DrupalCamp is a fictional event. This site is a demo."} };

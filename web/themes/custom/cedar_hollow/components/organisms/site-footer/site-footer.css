@@ -7,19 +7,19 @@
 
 @layer collections {
   .site-footer {
-    border-block-start: 1px solid var(--color-border-soft);
+    border-block-start: var(--border-size-1) solid var(--color-border-soft);
     background-color: var(--color-surface-alt);
   }
 
   .site-footer__inner {
     display: grid;
     gap: var(--size-3);
-    inline-size: min(100% - 2 * var(--size-4), var(--content-width));
+    inline-size: var(--page-inline-size);
     margin-inline: auto;
     padding-block: var(--size-6);
   }
 
-  .site-footer__links ul {
+  .site-footer__menu {
     display: flex;
     flex-wrap: wrap;
     gap: var(--size-2) var(--size-6);
@@ -28,7 +28,7 @@
     list-style: none;
   }
 
-  .site-footer__links a {
+  .site-footer__menu-link {
     display: inline-flex;
     align-items: center;
     min-block-size: var(--target-size);

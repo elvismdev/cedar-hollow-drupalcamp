@@ -1,0 +1,15 @@
+{#
+/**
+ * @file
+ * Footer menu: one level of links, classed for the site-footer component.
+ */
+#}
+{% if items %}
+  <ul{{ attributes.addClass('site-footer__menu') }}>
+    {% for item in items %}
+      <li class="site-footer__menu-item">
+        {{ link(item.title, item.url, {class: ['site-footer__menu-link']}) }}
+      </li>
+    {% endfor %}
+  </ul>
+{% endif %}

@@ -10,7 +10,7 @@
  */
 #}
 {% set branding %}
-  <a href="{{ path('<front>') }}" rel="home">{{ site_name }}</a>
+  <a class="site-header__brand-link" href="{{ path('<front>') }}" rel="home">{{ site_name }}</a>
 {% endset %}
 <div class="page">
   {% include 'cedar_hollow:site-header' with {branding: branding, navigation: page.header} only %}
