@@ -4,13 +4,59 @@ status: true
 dependencies:
   config:
     - filter.format.canvas_html_block
+    - image.style.canvas_parametrized_width
   module:
+    - file
+    - image
     - text
   theme:
     - cedar_hollow
-active_version: 496d5cebe5a372e1
+active_version: 76c9fc4b80f60d4f
 versioned_properties:
   active:
+    settings:
+      prop_field_definitions:
+        image:
+          required: false
+          field_type: image
+          field_storage_settings: {  }
+          field_instance_settings: {  }
+          field_widget: image_image
+          default_value: {  }
+          expression: 'ℹ︎image␟{src↠src_with_alternate_widths,alt↠alt,width↠width,height↠height}'
+          derived_schema_metadata: {  }
+        quote:
+          required: false
+          field_type: text_long
+          field_storage_settings: {  }
+          field_instance_settings:
+            allowed_formats:
+              - canvas_html_block
+          field_widget: text_textarea
+          default_value:
+            -
+              value: '<p>Build the component once and every page builder can use it.</p>'
+              format: canvas_html_block
+          expression: ℹ︎text_long␟processed
+          derived_schema_metadata:
+            string_shape:
+              contentMediaType: text/html
+              x-formatting-context: block
+        author:
+          required: true
+          field_type: string
+          field_storage_settings: {  }
+          field_instance_settings: {  }
+          field_widget: string_textfield
+          default_value:
+            -
+              value: 'A camp organiser'
+          expression: ℹ︎string␟value
+          derived_schema_metadata:
+            string_shape: {  }
+    fallback_metadata:
+      slot_definitions: {  }
+  496d5cebe5a372e1:
     settings:
       prop_field_definitions:
         quote:

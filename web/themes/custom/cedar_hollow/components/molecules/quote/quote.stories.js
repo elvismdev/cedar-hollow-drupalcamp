@@ -14,5 +14,5 @@ export default {
   render: (args) => quote(args),
 };
 
-export const Media = { args: {"quote": "<p>Build the component once and every page builder can use it.</p>", "author": "A camp organiser", "image": "<img src=\"https://placehold.co/768x512/png\" alt=\"Placeholder image\" width=\"768\" height=\"512\">"} };
+export const Media = { args: {"quote": "<p>Build the component once and every page builder can use it.</p>", "author": "A camp organiser", "image": {"src": "https://placehold.co/768x512/png", "alt": "Placeholder image", "width": 768, "height": 512}} };
 export const Text = { args: {"quote": "<p>Build the component once and every page builder can use it.</p>", "author": "A camp organiser"} };

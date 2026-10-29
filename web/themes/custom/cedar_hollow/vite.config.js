@@ -26,6 +26,11 @@ export default defineConfig({
       // "cedar_hollow:card" resolves by searching this folder's tier
       // subfolders for card/card.twig, the same id Drupal's SDC uses.
       namespaces: { cedar_hollow: join(import.meta.dirname, 'components') },
+      // Canvas's toSrcSet filter returns null for plain URLs, the only kind
+      // stories pass, so Storybook registers it with that result.
+      functions: {
+        toSrcSet: (twigInstance) => twigInstance.extendFilter('toSrcSet', () => null),
+      },
     }),
   ],
   esbuild: { jsx: 'automatic', jsxImportSource: 'react' },

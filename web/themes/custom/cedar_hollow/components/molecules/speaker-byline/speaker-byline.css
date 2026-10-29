@@ -12,7 +12,7 @@
     align-items: center;
   }
 
-  .speaker-byline__image img {
+  .speaker-byline__img {
     inline-size: var(--size-12);
     block-size: var(--size-12);
     border-radius: 50%;

@@ -47,6 +47,11 @@ final class ThemeHooks {
    */
   private const FILTER_GROUP = '#cedar_hollow_filter_group';
 
+  /**
+   * The speaker-byline element class for the speaker photo.
+   */
+  private const SPEAKER_PHOTO_CLASS = 'speaker-byline__img';
+
   public function __construct(
     private readonly SeatsSummary $seatsSummary,
     private readonly DateFormatterInterface $dateFormatter,
@@ -93,6 +98,25 @@ final class ThemeHooks {
 
     $variables['seats'] = $this->seatsSummary->summarize($node, $cacheability);
     $cacheability->applyTo($variables);
+  }
+
+  /**
+   * Implements hook_preprocess_HOOK() for node--speaker.
+   *
+   * Gives the speaker photo the speaker-byline element class; the responsive
+   * image formatter applies #attributes to the img.
+   *
+   * @param array<mixed> $variables
+   *   The template variables.
+   */
+  #[Hook('preprocess_node__speaker')]
+  public function preprocessNodeSpeaker(array &$variables): void {
+    if (!isset($variables['content']['field_photo'])) {
+      return;
+    }
+    foreach (Element::children($variables['content']['field_photo']) as $delta) {
+      $variables['content']['field_photo'][$delta]['#attributes']['class'][] = self::SPEAKER_PHOTO_CLASS;
+    }
   }
 
   /**

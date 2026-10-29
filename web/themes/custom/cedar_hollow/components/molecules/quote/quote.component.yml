@@ -7,6 +7,15 @@ props:
   type: object
   required: [author]
   properties:
+    image:
+      title: Image
+      $ref: json-schema-definitions://canvas.module/image
+      type: object
+      examples:
+        - src: placeholder.png
+          alt: Placeholder image
+          width: 768
+          height: 512
     quote:
       type: string
       title: Quote
@@ -17,6 +26,3 @@ props:
       type: string
       title: Author
       examples: ["A camp organiser"]
-slots:
-  image:
-    title: Image

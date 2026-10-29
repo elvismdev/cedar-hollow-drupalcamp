@@ -14,4 +14,4 @@ export default {
   render: (args) => featured_card(args),
 };
 
-export const Event = { args: {"image": "<img src=\"https://placehold.co/768x512/png\" alt=\"Placeholder image\" width=\"768\" height=\"512\">", "heading": "Front end day", "url": "#", "eyebrow": "In-Person", "subtitle": "Two days of sessions on themes, components and site building.", "date_text": "March 12, 2027 | 9:00 AM to 5:00 PM", "cta_text": "See the full event", "cta_url": "/sessions", "cta_variant": "secondary", "more_dates_url": "#", "organization": "<a href=\"#\">Hall A</a>"} };
+export const Event = { args: {"image": {"src": "https://placehold.co/768x512/png", "alt": "Placeholder image", "width": 768, "height": 512}, "heading": "Front end day", "url": "#", "eyebrow": "In-Person", "subtitle": "Two days of sessions on themes, components and site building.", "date_text": "March 12, 2027 | 9:00 AM to 5:00 PM", "cta_text": "See the full event", "cta_url": "/sessions", "cta_variant": "secondary", "more_dates_url": "#", "organization": "<a href=\"#\">Hall A</a>"} };

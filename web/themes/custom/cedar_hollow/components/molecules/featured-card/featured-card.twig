@@ -2,9 +2,18 @@
 {% set attributes = attributes ?: create_attribute() %}
 <div{{ attributes.addClass('featured-card') }}>
   <div class="featured-card__layout">
-    {% if image|render|trim %}
+    {% if image.src %}
+      {% set srcset = image.src|toSrcSet(image.width) %}
       <div class="featured-card__image">
-        {{ image }}
+        <img
+          class="featured-card__img"
+          src="{{ image.src }}"
+          {% if srcset %}srcset="{{ srcset }}" sizes="auto, 100vw"{% endif %}
+          alt="{{ image.alt }}"
+          {% if image.width %}width="{{ image.width }}"{% endif %}
+          {% if image.height %}height="{{ image.height }}"{% endif %}
+          loading="lazy"
+        />
       </div>
     {% endif %}
     <div class="featured-card__content">

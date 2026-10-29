@@ -24,8 +24,7 @@
     }
   }
 
-  /* The img comes from Drupal or Canvas image markup, which has no BEM class. */
-  .featured-card__image img {
+  .featured-card__img {
     inline-size: 100%;
     border-radius: var(--radius-2);
     box-shadow: var(--shadow-2);

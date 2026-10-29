@@ -7,6 +7,15 @@ props:
   type: object
   required: [heading]
   properties:
+    image:
+      title: Image
+      $ref: json-schema-definitions://canvas.module/image
+      type: object
+      examples:
+        - src: placeholder.png
+          alt: Placeholder image
+          width: 768
+          height: 512
     heading_level:
       type: string
       title: Heading level
@@ -57,7 +66,5 @@ props:
       format: uri-reference
       examples: ["/sessions"]
 slots:
-  image:
-    title: Image
   organization:
     title: Organization

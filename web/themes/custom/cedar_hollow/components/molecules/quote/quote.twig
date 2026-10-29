@@ -10,9 +10,18 @@
         <figcaption class="quote__author">{{ author }}</figcaption>
       </figure>
     </div>
-    {% if image|render|trim %}
+    {% if image.src %}
+      {% set srcset = image.src|toSrcSet(image.width) %}
       <div class="quote__image">
-        {{ image }}
+        <img
+          class="quote__img"
+          src="{{ image.src }}"
+          {% if srcset %}srcset="{{ srcset }}" sizes="auto, 100vw"{% endif %}
+          alt="{{ image.alt }}"
+          {% if image.width %}width="{{ image.width }}"{% endif %}
+          {% if image.height %}height="{{ image.height }}"{% endif %}
+          loading="lazy"
+        />
       </div>
     {% endif %}
   </div>

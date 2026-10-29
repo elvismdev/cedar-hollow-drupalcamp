@@ -14,3 +14,5 @@ export default {
 };
 
 export const Default = { args: {"name": "Alex Rivera"} };
+
+export const WithPhoto = { args: {"name": "Alex Rivera", "image": "<img class=\"speaker-byline__img\" src=\"https://placehold.co/96x96/png\" alt=\"\" width=\"96\" height=\"96\">"} };
