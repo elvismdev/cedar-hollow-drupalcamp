@@ -76,6 +76,17 @@
     font-size: var(--font-size-3);
   }
 
+  /* Same treatment as the title component's link on the session cards. */
+  .agenda-builder__title-link {
+    color: var(--color-accent);
+    text-decoration-line: none;
+
+    &:hover {
+      color: var(--color-text);
+      text-decoration-line: underline;
+    }
+  }
+
   .agenda-builder__conflict {
     margin: var(--size-2) 0 0;
     color: var(--color-danger);

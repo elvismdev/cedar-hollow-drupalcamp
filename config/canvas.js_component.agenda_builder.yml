@@ -218,7 +218,7 @@ js:
                           {sessionTime.format(Date.parse(session.start))} to {sessionTime.format(Date.parse(session.end))}
                         </p>
                         <h4 className="agenda-builder__title">
-                          <a href={session.url}>{session.title}</a>
+                          <a className="agenda-builder__title-link" href={session.url}>{session.title}</a>
                         </h4>
                         <p className="agenda-builder__meta">{session.room} · {session.track}</p>
                         <p className={`seats-indicator seats-indicator--${seats.state}`}>{seats.text}</p>
@@ -413,7 +413,7 @@ js:
                   " to ",
                   sessionTime.format(Date.parse(session.end))
                 ] }),
-                /* @__PURE__ */ jsx("h4", { className: "agenda-builder__title", children: /* @__PURE__ */ jsx("a", { href: session.url, children: session.title }) }),
+                /* @__PURE__ */ jsx("h4", { className: "agenda-builder__title", children: /* @__PURE__ */ jsx("a", { className: "agenda-builder__title-link", href: session.url, children: session.title }) }),
                 /* @__PURE__ */ jsxs("p", { className: "agenda-builder__meta", children: [
                   session.room,
                   " \xB7 ",
@@ -538,6 +538,17 @@ css:
         font-size: var(--font-size-3);
       }
 
+      /* Same treatment as the title component's link on the session cards. */
+      .agenda-builder__title-link {
+        color: var(--color-accent);
+        text-decoration-line: none;
+
+        &:hover {
+          color: var(--color-text);
+          text-decoration-line: underline;
+        }
+      }
+
       .agenda-builder__conflict {
         margin: var(--size-2) 0 0;
         color: var(--color-danger);
@@ -635,6 +646,17 @@ css:
       .agenda-builder__title {
         margin: var(--size-1) 0;
         font-size: var(--font-size-3);
+      }
+
+      /* Same treatment as the title component's link on the session cards. */
+      .agenda-builder__title-link {
+        color: var(--color-accent);
+        text-decoration-line: none;
+
+        &:hover {
+          color: var(--color-text);
+          text-decoration-line: underline;
+        }
       }
 
       .agenda-builder__conflict {

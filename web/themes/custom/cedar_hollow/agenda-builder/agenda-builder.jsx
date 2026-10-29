@@ -201,7 +201,7 @@ export function AgendaBuilder({ heading, load }) {
                       {sessionTime.format(Date.parse(session.start))} to {sessionTime.format(Date.parse(session.end))}
                     </p>
                     <h4 className="agenda-builder__title">
-                      <a href={session.url}>{session.title}</a>
+                      <a className="agenda-builder__title-link" href={session.url}>{session.title}</a>
                     </h4>
                     <p className="agenda-builder__meta">{session.room} · {session.track}</p>
                     <p className={`seats-indicator seats-indicator--${seats.state}`}>{seats.text}</p>
