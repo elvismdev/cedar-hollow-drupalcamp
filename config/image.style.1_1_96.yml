@@ -1,0 +1,23 @@
+uuid: 65f7cfb2-23e1-42d5-b184-c2aac4d34cee
+langcode: en
+status: true
+dependencies:
+  module:
+    - focal_point
+name: '1_1_96'
+label: '1:1 (96x96)'
+effects:
+  17a1ab2d-4c5d-4e28-9dd2-959343ea4a29:
+    uuid: 17a1ab2d-4c5d-4e28-9dd2-959343ea4a29
+    id: focal_point_scale_and_crop
+    weight: 1
+    data:
+      width: 96
+      height: 96
+      crop_type: focal_point
+  f2288a5b-9108-4f5b-a762-e8100133915b:
+    uuid: f2288a5b-9108-4f5b-a762-e8100133915b
+    id: image_convert_avif
+    weight: 2
+    data:
+      extension: webp

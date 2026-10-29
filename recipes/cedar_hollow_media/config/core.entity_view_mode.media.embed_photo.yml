@@ -1,0 +1,10 @@
+langcode: en
+status: true
+dependencies:
+  module:
+    - media
+id: media.embed_photo
+label: 'Photo 3:2'
+description: null
+targetEntityType: media
+cache: true

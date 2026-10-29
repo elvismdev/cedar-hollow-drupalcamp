@@ -1,0 +1,11 @@
+uuid: 23a3012c-9cb9-475b-924b-89cf7320d0bb
+langcode: en
+status: true
+dependencies:
+  module:
+    - media
+id: media.page
+label: Page
+description: null
+targetEntityType: media
+cache: true

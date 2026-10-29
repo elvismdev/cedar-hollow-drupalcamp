@@ -1,0 +1,23 @@
+uuid: cc30bc22-ae5d-4598-a92a-90db3ded7eb1
+langcode: en
+status: true
+dependencies:
+  module:
+    - focal_point
+name: '16_9_2304'
+label: '16:9 (2304x1296)'
+effects:
+  620a2d17-7b3b-4152-8b77-bf21d5b55dac:
+    uuid: 620a2d17-7b3b-4152-8b77-bf21d5b55dac
+    id: focal_point_scale_and_crop
+    weight: 1
+    data:
+      width: 2304
+      height: 1296
+      crop_type: focal_point
+  57bf5b10-1081-46ed-9350-8f1f83e317b8:
+    uuid: 57bf5b10-1081-46ed-9350-8f1f83e317b8
+    id: image_convert_avif
+    weight: 2
+    data:
+      extension: webp

@@ -1,0 +1,23 @@
+uuid: 361adf72-0299-48c9-91aa-71d19ace467d
+langcode: en
+status: true
+dependencies:
+  module:
+    - focal_point
+name: '1_1_144'
+label: '1:1 (144x144)'
+effects:
+  35923b8a-f387-4953-8803-cfd927b793d4:
+    uuid: 35923b8a-f387-4953-8803-cfd927b793d4
+    id: focal_point_scale_and_crop
+    weight: 1
+    data:
+      width: 144
+      height: 144
+      crop_type: focal_point
+  8b6e9738-4a1d-4880-bf09-1babde4fd6c9:
+    uuid: 8b6e9738-4a1d-4880-bf09-1babde4fd6c9
+    id: image_convert_avif
+    weight: 2
+    data:
+      extension: webp

@@ -1,0 +1,21 @@
+uuid: b1e20fe0-ddc4-4647-b0b2-aab7820ee52f
+langcode: en
+status: true
+dependencies:
+  config:
+    - field.storage.media.field_verified
+    - media.type.image
+id: media.image.field_verified
+field_name: field_verified
+entity_type: media
+bundle: image
+label: Verified
+description: ''
+required: false
+translatable: true
+default_value: {  }
+default_value_callback: ''
+settings:
+  on_label: Verified
+  off_label: 'Not verified'
+field_type: boolean

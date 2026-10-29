@@ -1,0 +1,22 @@
+langcode: en
+status: true
+dependencies:
+  module:
+    - focal_point
+name: '3_2_1200'
+label: '3:2 (1200x800)'
+effects:
+  f7696fc2-0360-4d97-acf1-7bbb96666d46:
+    uuid: f7696fc2-0360-4d97-acf1-7bbb96666d46
+    id: focal_point_scale_and_crop
+    weight: 1
+    data:
+      width: 1200
+      height: 800
+      crop_type: focal_point
+  65ea6942-de1a-44c0-ac44-78f0b0cf3434:
+    uuid: 65ea6942-de1a-44c0-ac44-78f0b0cf3434
+    id: image_convert_avif
+    weight: 2
+    data:
+      extension: webp

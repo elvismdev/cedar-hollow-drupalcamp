@@ -1,0 +1,218 @@
+langcode: en
+status: true
+dependencies:
+  config:
+    - core.entity_view_mode.media.credits
+    - field.storage.media.field_creator
+    - field.storage.media.field_licence
+    - field.storage.media.field_licence_url
+    - field.storage.media.field_source_url
+    - media.type.image
+  module:
+    - link
+    - media
+    - options
+    - user
+id: credits
+label: Credits
+module: views
+description: 'The source, creator and licence of every shipped image.'
+tag: ''
+base_table: media_field_data
+base_field: mid
+display:
+  default:
+    id: default
+    display_title: Default
+    display_plugin: default
+    position: 0
+    display_options:
+      title: 'Image credits'
+      fields:
+        rendered_entity:
+          id: rendered_entity
+          table: media
+          field: rendered_entity
+          entity_type: media
+          plugin_id: rendered_entity
+          label: Image
+          exclude: false
+          view_mode: credits
+        name:
+          id: name
+          table: media_field_data
+          field: name
+          entity_type: media
+          plugin_id: field
+          label: Title
+          exclude: false
+          type: string
+          settings:
+            link_to_entity: false
+        field_creator:
+          id: field_creator
+          table: media__field_creator
+          field: field_creator
+          entity_type: media
+          plugin_id: field
+          label: Creator
+          exclude: false
+          type: string
+        field_licence_url:
+          id: field_licence_url
+          table: media__field_licence_url
+          field: field_licence_url
+          entity_type: media
+          plugin_id: field
+          label: ''
+          exclude: true
+          type: link
+          settings:
+            trim_length: null
+            url_only: true
+            url_plain: true
+            rel: ''
+            target: ''
+        field_licence:
+          id: field_licence
+          table: media__field_licence
+          field: field_licence
+          entity_type: media
+          plugin_id: field
+          label: Licence
+          exclude: false
+          alter:
+            alter_text: false
+            make_link: true
+            path: '{{ field_licence_url__uri }}'
+            external: true
+          type: list_default
+        field_source_url:
+          id: field_source_url
+          table: media__field_source_url
+          field: field_source_url
+          entity_type: media
+          plugin_id: field
+          label: Source
+          exclude: false
+          type: link
+          settings:
+            trim_length: 80
+            url_only: false
+            url_plain: false
+            rel: ''
+            target: ''
+      pager:
+        type: full
+        options:
+          offset: 0
+          items_per_page: 50
+      exposed_form:
+        type: basic
+        options: {  }
+      access:
+        type: perm
+        options:
+          perm: 'view media'
+      cache:
+        type: tag
+        options: {  }
+      sorts:
+        name:
+          id: name
+          table: media_field_data
+          field: name
+          entity_type: media
+          entity_field: name
+          plugin_id: standard
+          order: ASC
+      filters:
+        status:
+          id: status
+          table: media_field_data
+          field: status
+          entity_type: media
+          entity_field: status
+          plugin_id: boolean
+          value: '1'
+          group: 1
+          expose:
+            operator: ''
+        bundle:
+          id: bundle
+          table: media_field_data
+          field: bundle
+          entity_type: media
+          entity_field: bundle
+          plugin_id: bundle
+          value:
+            image: image
+          group: 1
+        field_verified_value:
+          id: field_verified_value
+          table: media__field_verified
+          field: field_verified_value
+          plugin_id: boolean
+          value: '1'
+          group: 1
+      style:
+        type: table
+        options:
+          grouping: {  }
+          row_class: ''
+          default_row_class: true
+          columns: {  }
+          default: ''
+          info: {  }
+          override: true
+          sticky: false
+          summary: ''
+          empty_table: false
+          caption: 'Image credits'
+      row:
+        type: fields
+        options: {  }
+      query:
+        type: views_query
+        options: {  }
+      header:
+        area_text_custom:
+          id: area_text_custom
+          table: views
+          field: area_text_custom
+          plugin_id: text_custom
+          empty: false
+          content: 'The photos on this site come from Wikimedia Commons. Each was cropped, resized and converted to AVIF from the original linked below.'
+      display_extenders: {  }
+    cache_metadata:
+      max-age: -1
+      contexts:
+        - 'languages:language_content'
+        - 'languages:language_interface'
+        - url.query_args
+        - user.permissions
+      tags:
+        - 'config:field.storage.media.field_creator'
+        - 'config:field.storage.media.field_licence'
+        - 'config:field.storage.media.field_licence_url'
+        - 'config:field.storage.media.field_source_url'
+  page_1:
+    id: page_1
+    display_title: Page
+    display_plugin: page
+    position: 1
+    display_options:
+      display_extenders: {  }
+      path: credits
+    cache_metadata:
+      max-age: -1
+      contexts:
+        - 'languages:language_content'
+        - 'languages:language_interface'
+        - url.query_args
+        - user.permissions
+      tags:
+        - 'config:field.storage.media.field_creator'
+        - 'config:field.storage.media.field_licence'
+        - 'config:field.storage.media.field_licence_url'
+        - 'config:field.storage.media.field_source_url'

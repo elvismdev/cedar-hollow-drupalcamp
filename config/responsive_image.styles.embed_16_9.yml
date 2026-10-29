@@ -1,0 +1,21 @@
+uuid: 39e2603f-a121-4854-804c-f16a69afab9c
+langcode: en
+status: true
+dependencies:
+  config:
+    - image.style.16_9_1280
+    - image.style.16_9_640
+id: embed_16_9
+label: 'Embed 16:9'
+image_style_mappings:
+  -
+    image_mapping_type: sizes
+    image_mapping:
+      sizes: 'auto, (min-width: 46rem) 44rem, calc(100vw - 2rem)'
+      sizes_image_styles:
+        - '16_9_640'
+        - '16_9_1280'
+    breakpoint_id: responsive_image.viewport_sizing
+    multiplier: 1x
+breakpoint_group: responsive_image
+fallback_image_style: '16_9_1280'

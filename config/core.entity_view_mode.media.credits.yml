@@ -1,0 +1,11 @@
+uuid: 935dc202-154e-4d87-bae0-c9c0e4c73c4a
+langcode: en
+status: true
+dependencies:
+  module:
+    - media
+id: media.credits
+label: Credits
+description: null
+targetEntityType: media
+cache: true

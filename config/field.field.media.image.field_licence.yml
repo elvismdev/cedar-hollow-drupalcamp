@@ -1,0 +1,21 @@
+uuid: b7fab862-6933-47d9-9a75-282189f3597a
+langcode: en
+status: true
+dependencies:
+  config:
+    - field.storage.media.field_licence
+    - media.type.image
+  module:
+    - options
+id: media.image.field_licence
+field_name: field_licence
+entity_type: media
+bundle: image
+label: Licence
+description: ''
+required: true
+translatable: true
+default_value: {  }
+default_value_callback: ''
+settings: {  }
+field_type: list_string

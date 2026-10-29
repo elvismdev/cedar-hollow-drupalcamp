@@ -1,0 +1,21 @@
+uuid: 20078e87-dbd6-4c79-b3d8-26ae13bc8e85
+langcode: en
+status: true
+dependencies:
+  config:
+    - image.style.1_1_144
+    - image.style.1_1_96
+id: avatar_1_1
+label: 'Avatar 1:1'
+image_style_mappings:
+  -
+    image_mapping_type: sizes
+    image_mapping:
+      sizes: 3rem
+      sizes_image_styles:
+        - '1_1_96'
+        - '1_1_144'
+    breakpoint_id: responsive_image.viewport_sizing
+    multiplier: 1x
+breakpoint_group: responsive_image
+fallback_image_style: '1_1_96'

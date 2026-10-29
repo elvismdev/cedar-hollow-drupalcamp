@@ -1,0 +1,82 @@
+name: 'Cedar Hollow media'
+description: 'One Image media type with licence fields, ratio-named image styles with Focal Point crops and AVIF, one-ratio responsive image styles, Media view modes, a hero block type and a credits page.'
+type: 'Site feature'
+recipes:
+  - core/recipes/image_media_type
+install:
+  - responsive_image
+  - breakpoint
+  - block_content
+  - crop
+  - focal_point
+  - views
+  - link
+  - options
+config:
+  strict: false
+  # A recipe-installed module creates only its simple config, so the crop type
+  # Focal Point's image effect needs must be imported explicitly.
+  import:
+    focal_point:
+      - crop.type.focal_point
+  actions:
+    field.field.media.image.field_media_image:
+      setSettings:
+        file_extensions: 'png jpg jpeg webp avif'
+        max_resolution: '2560x2560'
+        max_filesize: '5 MB'
+    core.entity_form_display.media.image.default:
+      setComponents:
+        -
+          name: field_media_image
+          options:
+            type: image_focal_point
+            weight: 0
+            region: content
+            settings:
+              progress_indicator: throbber
+              preview_image_style: crop_preview
+              preview_link: true
+              offsets: '50,50'
+        -
+          name: field_source_url
+          options: { type: link_default, weight: 1, region: content, settings: { placeholder_url: '', placeholder_title: '' } }
+        -
+          name: field_creator
+          options: { type: string_textfield, weight: 2, region: content, settings: { size: 60, placeholder: '' } }
+        -
+          name: field_licence
+          options: { type: options_select, weight: 3, region: content, settings: {} }
+        -
+          name: field_licence_url
+          options: { type: link_default, weight: 4, region: content, settings: { placeholder_url: '', placeholder_title: '' } }
+        -
+          name: field_verified
+          options: { type: boolean_checkbox, weight: 5, region: content, settings: { display_label: true } }
+    core.entity_form_display.media.image.media_library:
+      setComponents:
+        -
+          name: field_source_url
+          options: { type: link_default, weight: 1, region: content, settings: { placeholder_url: '', placeholder_title: '' } }
+        -
+          name: field_creator
+          options: { type: string_textfield, weight: 2, region: content, settings: { size: 60, placeholder: '' } }
+        -
+          name: field_licence
+          options: { type: options_select, weight: 3, region: content, settings: {} }
+        -
+          name: field_licence_url
+          options: { type: link_default, weight: 4, region: content, settings: { placeholder_url: '', placeholder_title: '' } }
+      hideComponents:
+        - field_verified
+    core.entity_view_display.media.image.default:
+      hideComponents:
+        - field_source_url
+        - field_creator
+        - field_licence
+        - field_licence_url
+        - field_verified
+    user.role.anonymous:
+      grantPermission: 'view media'
+    user.role.authenticated:
+      grantPermission: 'view media'

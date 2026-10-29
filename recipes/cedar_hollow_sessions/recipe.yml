@@ -1,6 +1,8 @@
 name: 'Cedar Hollow sessions'
 description: 'Session and speaker content types with Smart Date times, track and day filters, Entity Registration with a wait list and confirmation, and the sessions listing.'
 type: 'Site feature'
+recipes:
+  - cedar_hollow_media
 install:
   - filter
   - node

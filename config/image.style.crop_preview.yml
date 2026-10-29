@@ -1,0 +1,15 @@
+uuid: 46cec008-27d9-4ffb-933d-328b451822c8
+langcode: en
+status: true
+dependencies: {  }
+name: crop_preview
+label: 'Crop preview (scale 600)'
+effects:
+  8f77b4e7-b118-43a9-a20f-12795df8db5c:
+    uuid: 8f77b4e7-b118-43a9-a20f-12795df8db5c
+    id: image_scale
+    weight: 1
+    data:
+      width: 600
+      height: null
+      upscale: false

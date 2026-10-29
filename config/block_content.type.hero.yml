@@ -1,0 +1,8 @@
+uuid: dc14d007-8ef0-498e-9f1a-db008bc33d73
+langcode: en
+status: true
+dependencies: {  }
+id: hero
+label: Hero
+revision: false
+description: 'A front-page image above the page content.'

@@ -1,0 +1,22 @@
+langcode: en
+status: true
+dependencies:
+  config:
+    - image.style.3_2_1200
+    - image.style.3_2_400
+    - image.style.3_2_800
+id: embed_3_2
+label: 'Embed 3:2'
+image_style_mappings:
+  -
+    image_mapping_type: sizes
+    image_mapping:
+      sizes: 'auto, (min-width: 46rem) 44rem, calc(100vw - 2rem)'
+      sizes_image_styles:
+        - '3_2_400'
+        - '3_2_800'
+        - '3_2_1200'
+    breakpoint_id: responsive_image.viewport_sizing
+    multiplier: 1x
+breakpoint_group: responsive_image
+fallback_image_style: '3_2_800'

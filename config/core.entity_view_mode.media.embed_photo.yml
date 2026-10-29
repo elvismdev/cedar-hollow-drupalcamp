@@ -1,0 +1,11 @@
+uuid: eef62bbd-4003-4fd2-ba80-7358854b1105
+langcode: en
+status: true
+dependencies:
+  module:
+    - media
+id: media.embed_photo
+label: 'Photo 3:2'
+description: null
+targetEntityType: media
+cache: true
