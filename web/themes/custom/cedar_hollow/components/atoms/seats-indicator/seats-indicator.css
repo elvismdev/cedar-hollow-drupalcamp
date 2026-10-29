@@ -10,8 +10,7 @@
     display: inline-block;
     margin: 0;
     padding: var(--size-1) var(--size-2);
-    border-inline-start: var(--size-1) solid var(--color-accent);
-    background-color: var(--color-accent-soft);
+    border-inline-start: var(--border-size-4) solid;
     color: var(--color-text);
     font-size: var(--font-size-0);
     font-weight: var(--font-weight-700);

@@ -33,7 +33,7 @@
   .agenda-builder__notice {
     margin: 0;
     padding: var(--size-2) var(--size-3);
-    border-inline-start: var(--size-1) solid var(--color-warning);
+    border-inline-start: var(--border-size-4) solid var(--color-warning);
     background-color: var(--color-warning-soft);
   }
 
@@ -55,7 +55,7 @@
     gap: var(--size-3);
     padding: var(--size-4);
     border: var(--border-size-1) solid var(--color-border-soft);
-    border-inline-start-width: var(--size-105);
+    border-inline-start-width: var(--border-size-5);
     border-radius: var(--radius-2);
     background-color: var(--color-surface);
 
@@ -88,7 +88,6 @@
     gap: var(--size-2);
     align-items: center;
   }
-
 
   @container agenda-builder (inline-size >= 40rem) {
     .agenda-builder__session {

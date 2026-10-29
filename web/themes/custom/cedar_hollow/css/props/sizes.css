@@ -61,19 +61,5 @@
     --size-fluid-8: clamp(10rem, 20vw, 15rem);
     --size-fluid-9: clamp(15rem, 30vw, 20rem);
     --size-fluid-10: clamp(20rem, 40vw, 30rem);
-    --size-content-1: 20ch;
-    --size-content-2: 45ch;
-    --size-content-3: 60ch;
-    --size-header-1: 20ch;
-    --size-header-2: 25ch;
-    --size-header-3: 35ch;
-    --size-mobile: 640px;
-    --size-mobile-large: 720px;
-    --size-tablet: 768px;
-    --size-laptop: 1024px;
-    --size-desktop: 1280px;
-    --size-max-content-width: 1376px;
-    --size-container: 1440px;
-    --size-max-site-width: 1900px;
   }
 }

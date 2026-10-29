@@ -28,11 +28,11 @@
 
     :where(blockquote):not(:where([class~='not-prose'] *)) {
       border-inline-start-color: var(--color-accent);
-      border-inline-start-width: 1px;
+      border-inline-start-width: var(--border-size-1);
       color: var(--color-accent);
       font-style: italic;
       font-weight: var(--font-weight-400);
-      inline-size: 85ch;
+      inline-size: var(--measure);
       margin-block: var(--size-8);
       max-inline-size: 100%;
       padding-block: var(--size-4);
@@ -179,7 +179,7 @@
     :where(pre):not(:where([class~='not-prose'] *)) {
       background-color: var(--color-surface-code);
       border-radius: var(--radius-4);
-      color: var(--color-surface-alt);
+      color: var(--color-on-surface-code);
       font-weight: var(--font-weight-400);
       line-height: var(--leading-loose);
       margin-block: var(--size-9);
@@ -265,7 +265,7 @@
 
     :where(hr):not(:where([class~='not-prose'] *)) {
       border-block-start-color: var(--color-border-soft);
-      border-block-start-width: 1px;
+      border-block-start-width: var(--border-size-1);
       margin-block: var(--size-14);
     }
 
@@ -334,9 +334,10 @@
       flex-direction: column;
     }
 
+    /* list--highlight and list--link are editor content styles, not SDC blocks. */
     :where(ul[class~='list--highlight']):not(:where([class~='not-prose'] *)) {
       border-inline-start-color: var(--color-accent);
-      border-inline-start-width: var(--size-1);
+      border-inline-start-width: var(--border-size-4);
 
       > li {
         &::marker {
@@ -357,12 +358,12 @@
       /* Every link in this list sits in one of its items. */
       a {
         border-block-end-color: var(--color-accent);
-        border-block-end-width: 1px;
+        border-block-end-width: var(--border-size-1);
         display: flex;
         padding-block: var(--size-2);
         padding-inline: var(--size-2);
         transition-duration: var(--duration-fast);
-      transition-property: background-color, color;
+        transition-property: background-color, color;
 
         &:hover {
           background-color: var(--color-accent-strong);
@@ -419,10 +420,10 @@
       &::after {
         background-color: var(--color-accent);
         background-size: cover;
-        block-size: 18px;
+        block-size: var(--size-5);
         content: '';
         display: inline-block;
-        inline-size: 18px;
+        inline-size: var(--size-5);
         mask-position: center;
         mask-repeat: no-repeat;
         mask-size: contain;

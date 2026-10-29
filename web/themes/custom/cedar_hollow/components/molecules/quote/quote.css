@@ -60,7 +60,7 @@
     margin: 0;
     padding-block: var(--size-6);
     padding-inline-start: var(--size-6);
-    border-inline-start: var(--size-1) solid var(--quote-rule);
+    border-inline-start: var(--border-size-4) solid var(--quote-rule);
     font-size: var(--font-size-3);
     font-style: italic;
     font-weight: var(--font-weight-600);

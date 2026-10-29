@@ -9,7 +9,6 @@
 
 @layer collections {
   .card-grid {
-    --card-grid-columns: 3;
     --card-grid-min: 16rem;
     --card-grid-gap: var(--size-6);
 
