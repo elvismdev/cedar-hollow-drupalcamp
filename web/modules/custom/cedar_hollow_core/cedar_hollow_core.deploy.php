@@ -7,6 +7,7 @@
 
 declare(strict_types=1);
 
+use Drupal\cedar_hollow_core\SessionBody;
 use Drupal\registration\RegistrationSettingsStorage;
 
 /**
@@ -36,4 +37,27 @@ function cedar_hollow_core_deploy_full_session_capacity(): string {
   $settings->set('registration_waitlist_enable', TRUE);
   $settings->save();
   return 'Set "' . $node->label() . '" to capacity 1 with the wait list on.';
+}
+
+/**
+ * Converts session bodies stored in another text format to session_html.
+ *
+ * The session body field allows only session_html. A body in any other
+ * format makes the editor pick a format before saving, which reads the
+ * plain text as HTML and loses its paragraphs.
+ */
+function cedar_hollow_core_deploy_session_body_format(): string {
+  $storage = \Drupal::entityTypeManager()->getStorage('node');
+  $ids = $storage->getQuery()
+    ->accessCheck(FALSE)
+    ->condition('type', 'session')
+    ->condition('body.format', SessionBody::FORMAT, '<>')
+    ->execute();
+  foreach ($storage->loadMultiple($ids) as $node) {
+    $body = $node->get('body')->first()->getValue();
+    $body['value'] = SessionBody::fromPlainText($body['value']);
+    $body['format'] = SessionBody::FORMAT;
+    $node->set('body', $body)->save();
+  }
+  return sprintf('Converted %d session bodies to %s.', count($ids), SessionBody::FORMAT);
 }

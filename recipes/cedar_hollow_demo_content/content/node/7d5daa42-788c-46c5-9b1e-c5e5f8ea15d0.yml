@@ -36,8 +36,8 @@ default:
       langcode: en
   body:
     -
-      value: 'Move configuration from local to Dev, Test and Live with drush deploy.'
-      format: plain_text
+      value: '<p>Move configuration from local to Dev, Test and Live with drush deploy.</p>'
+      format: session_html
       summary: 'Move configuration from local to Dev, Test and Live with drush deploy.'
   field_day:
     -

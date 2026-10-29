@@ -36,8 +36,8 @@ default:
       langcode: en
   body:
     -
-      value: 'Labels, errors and focus in Form API, checked with a screen reader.'
-      format: plain_text
+      value: '<p>Labels, errors and focus in Form API, checked with a screen reader.</p>'
+      format: session_html
       summary: 'Labels, errors and focus in Form API, checked with a screen reader.'
   field_day:
     -

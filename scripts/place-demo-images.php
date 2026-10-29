@@ -21,6 +21,7 @@ declare(strict_types=1);
 
 use Drupal\block_content\Entity\BlockContent;
 use Drupal\cedar_hollow_core\DemoImages;
+use Drupal\cedar_hollow_core\SessionBody;
 use Drupal\Component\Utility\Html;
 use Drupal\file\Entity\File;
 use Drupal\media\Entity\Media;
@@ -112,14 +113,6 @@ $target_for = static function (array $entry) use ($etm): NodeInterface {
   return $node instanceof NodeInterface ? $node : throw new \RuntimeException("No node for {$entry['target']}.");
 };
 
-/**
- * Converts a plain-text body to session_html paragraphs.
- */
-$to_html = static function (string $text): string {
-  $paragraphs = preg_split('/\R{2,}/', trim($text));
-  return implode("\n", array_map(static fn($paragraph) => '<p>' . nl2br(Html::escape($paragraph), FALSE) . '</p>', $paragraphs));
-};
-
 $hero = NULL;
 foreach ($manifest as $entry) {
   $media = $media_for($entry);
@@ -141,9 +134,9 @@ foreach ($manifest as $entry) {
   if (str_contains($body['value'], $entry['uuid'])) {
     continue;
   }
-  if (($body['format'] ?? NULL) !== 'session_html') {
-    $body['value'] = $to_html($body['value']);
-    $body['format'] = 'session_html';
+  if (($body['format'] ?? NULL) !== SessionBody::FORMAT) {
+    $body['value'] = SessionBody::fromPlainText($body['value']);
+    $body['format'] = SessionBody::FORMAT;
   }
   $embed = sprintf(
     '<drupal-media data-entity-type="media" data-entity-uuid="%s" data-view-mode="%s" data-caption="%s"></drupal-media>',

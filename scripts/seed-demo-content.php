@@ -16,6 +16,7 @@
 
 use Drupal\canvas\Entity\Component;
 use Drupal\canvas\Entity\Page;
+use Drupal\cedar_hollow_core\SessionBody;
 use Drupal\menu_link_content\Entity\MenuLinkContent;
 use Drupal\node\Entity\Node;
 use Drupal\taxonomy\Entity\Term;
@@ -218,7 +219,7 @@ foreach ($sessions as $session) {
   $node = Node::create([
     'type' => 'session',
     'title' => $title,
-    'body' => ['value' => $summary, 'summary' => $summary, 'format' => 'plain_text'],
+    'body' => ['value' => SessionBody::fromPlainText($summary), 'summary' => $summary, 'format' => SessionBody::FORMAT],
     'field_day' => $day,
     'field_room' => $room,
     'field_track' => $tracks[$track],

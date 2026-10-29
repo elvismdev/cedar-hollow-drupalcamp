@@ -38,8 +38,8 @@ default:
       langcode: en
   body:
     -
-      value: 'What the camp learned, and what to build next.'
-      format: plain_text
+      value: '<p>What the camp learned, and what to build next.</p>'
+      format: session_html
       summary: 'What the camp learned, and what to build next.'
   field_day:
     -

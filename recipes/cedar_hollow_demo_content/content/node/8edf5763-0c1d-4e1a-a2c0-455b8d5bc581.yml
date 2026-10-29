@@ -36,8 +36,8 @@ default:
       langcode: en
   body:
     -
-      value: 'Assemble landing pages from theme components in Drupal Canvas.'
-      format: plain_text
+      value: '<p>Assemble landing pages from theme components in Drupal Canvas.</p>'
+      format: session_html
       summary: 'Assemble landing pages from theme components in Drupal Canvas.'
   field_day:
     -

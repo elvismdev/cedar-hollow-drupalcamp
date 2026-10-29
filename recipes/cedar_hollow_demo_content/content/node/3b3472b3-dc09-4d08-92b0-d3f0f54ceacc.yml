@@ -36,8 +36,8 @@ default:
       langcode: en
   body:
     -
-      value: 'Build filtered listings with Views and Better Exposed Filters.'
-      format: plain_text
+      value: '<p>Build filtered listings with Views and Better Exposed Filters.</p>'
+      format: session_html
       summary: 'Build filtered listings with Views and Better Exposed Filters.'
   field_day:
     -

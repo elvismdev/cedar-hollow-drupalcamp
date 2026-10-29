@@ -36,8 +36,8 @@ default:
       langcode: en
   body:
     -
-      value: 'Cache tags, contexts and max-age, and how to see them in response headers.'
-      format: plain_text
+      value: '<p>Cache tags, contexts and max-age, and how to see them in response headers.</p>'
+      format: session_html
       summary: 'Cache tags, contexts and max-age, and how to see them in response headers.'
   field_day:
     -

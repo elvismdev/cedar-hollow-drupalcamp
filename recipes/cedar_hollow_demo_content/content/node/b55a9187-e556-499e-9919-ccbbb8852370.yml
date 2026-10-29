@@ -37,8 +37,8 @@ default:
       langcode: en
   body:
     -
-      value: 'Keep templates thin by preparing values in object-oriented hooks.'
-      format: plain_text
+      value: '<p>Keep templates thin by preparing values in object-oriented hooks.</p>'
+      format: session_html
       summary: 'Keep templates thin by preparing values in object-oriented hooks.'
   field_day:
     -

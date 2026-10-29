@@ -36,8 +36,8 @@ default:
       langcode: en
   body:
     -
-      value: 'Capacity, wait lists and confirmation messages with Entity Registration.'
-      format: plain_text
+      value: '<p>Capacity, wait lists and confirmation messages with Entity Registration.</p>'
+      format: session_html
       summary: 'Capacity, wait lists and confirmation messages with Entity Registration.'
   field_day:
     -

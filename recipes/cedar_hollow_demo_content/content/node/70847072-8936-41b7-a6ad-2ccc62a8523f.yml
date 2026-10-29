@@ -36,8 +36,8 @@ default:
       langcode: en
   body:
     -
-      value: 'Order theme CSS with cascade layers instead of specificity.'
-      format: plain_text
+      value: '<p>Order theme CSS with cascade layers instead of specificity.</p>'
+      format: session_html
       summary: 'Order theme CSS with cascade layers instead of specificity.'
   field_day:
     -
