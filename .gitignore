@@ -109,6 +109,7 @@
 
 # Planning and review notes kept out of the public repository.
 /research/
+/.claude/rules/
 /concepts_brief.md
 /design_draft.md
 /*_report.md
