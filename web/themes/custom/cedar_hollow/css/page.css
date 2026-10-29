@@ -14,13 +14,12 @@
   }
 
   .page__main {
+    display: flex;
     flex: 1;
+    flex-direction: column;
+    gap: var(--size-4);
     inline-size: var(--page-inline-size);
     margin-inline: auto;
     padding-block: var(--size-6) var(--size-10);
-  }
-
-  .page__main > * + * {
-    margin-block-start: var(--size-4);
   }
 }

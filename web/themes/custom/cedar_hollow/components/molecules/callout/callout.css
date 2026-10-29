@@ -35,14 +35,6 @@
   .callout__teaser {
     max-inline-size: var(--measure);
     font-size: clamp(var(--font-size-2), 1rem + 0.4cqi, var(--font-size-3));
-
-    > :first-child {
-      margin-block-start: 0;
-    }
-
-    > :last-child {
-      margin-block-end: 0;
-    }
   }
 
   .callout--quote .callout__body {

@@ -56,7 +56,11 @@
     inline-size: 100%;
   }
 
+  /* The quote is rich text from a Canvas format, with no classes on its paragraphs. */
   .quote__body {
+    display: flex;
+    flex-direction: column;
+    gap: var(--size-4);
     margin: 0;
     padding-block: var(--size-6);
     padding-inline-start: var(--size-6);
@@ -67,15 +71,11 @@
     text-wrap: pretty;
     quotes: "\201C" "\201D" "\2018" "\2019";
 
-    > * + * {
-      margin-block-start: var(--size-4);
-    }
-
-    > :where(p):first-of-type::before {
+    > :first-child::before {
       content: open-quote;
     }
 
-    > :where(p):first-of-type::after {
+    > :last-child::after {
       content: close-quote;
     }
   }
