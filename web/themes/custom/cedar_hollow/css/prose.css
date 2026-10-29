@@ -334,45 +334,6 @@
       flex-direction: column;
     }
 
-    /* list--highlight and list--link are editor content styles, not SDC blocks. */
-    :where(ul[class~='list--highlight']):not(:where([class~='not-prose'] *)) {
-      border-inline-start-color: var(--color-accent);
-      border-inline-start-width: var(--border-size-4);
-
-      > li {
-        &::marker {
-          color: var(--color-accent);
-        }
-      }
-    }
-
-    :where(ul[class~='list--link']):not(:where([class~='not-prose'] *)) {
-      list-style-type: none;
-      padding-inline-end: var(--size-6);
-
-      > li {
-        margin-block: 0;
-        padding-inline-start: 0;
-      }
-
-      /* Every link in this list sits in one of its items. */
-      a {
-        border-block-end-color: var(--color-accent);
-        border-block-end-width: var(--border-size-1);
-        display: flex;
-        padding-block: var(--size-2);
-        padding-inline: var(--size-2);
-        transition-duration: var(--duration-fast);
-        transition-property: background-color, color;
-
-        &:hover {
-          background-color: var(--color-accent-strong);
-          border-block-end-color: var(--color-accent-strong);
-          color: var(--color-on-accent);
-        }
-      }
-    }
-
     :where(ol[class~='lower-roman']):not(:where([class~='not-prose'] *)) {
       list-style-type: lower-roman;
 
