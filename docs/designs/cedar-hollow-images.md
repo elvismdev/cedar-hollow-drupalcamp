@@ -639,14 +639,14 @@ Paths are relative to the repository root. Configuration follows the workflow in
 #### 19. `web/themes/custom/cedar_hollow/templates/block/block--block-content--type--hero.html.twig` (Create)
 
 *   **Type / Scope**: Block template (core suggestion `block__block_content__type__hero`).
-*   **Proposed Changes**: Includes `cedar_hollow:hero` with `image: content.field_media`.
+*   **Proposed Changes**: Includes `cedar_hollow:hero` with `image: content`. Block content builds its fields in a `#pre_render` callback (`EntityViewBuilder::view()`), after the block template's variables are prepared, so `content.field_media` does not exist there; the hero view display shows only the image, so passing `content` renders just that.
 
 #### 20. `web/themes/custom/cedar_hollow/src/Hook/ThemeHooks.php` (Modify)
 
 *   **Type / Scope**: Theme hooks.
 *   **Proposed Changes**:
     *   `preprocess_media` (Image bundle): merges `#cedar_hollow_img_attributes` from the media's render array into each `field_media_image` item's `#attributes`, keeping the `loading` value the formatter already set unless the consumer sets its own.
-    *   `preprocess_block`, acting only when `$variables['elements']['content']['#block_content']?->bundle()` is `hero`, `preprocess_node__session` (full and teaser) and `preprocess_node__speaker` (teaser): set `#cedar_hollow_img_attributes` on each `content.field_*` child with the classes and attributes in the Technical Plan. `preprocessNodeSpeaker` no longer adds the `speaker-byline__img` class to the image formatter's `#attributes`; the speaker teaser sets `#cedar_hollow_img_attributes` instead.
+    *   `preprocess_field` sets `#cedar_hollow_img_attributes` on each item's media render array, using a constant map keyed by entity type, bundle, field and view mode (`block_content.hero.field_media.full`, `node.session.field_image.full`, `node.session.field_image.teaser`, `node.speaker.field_image.teaser`) with the classes and attributes in the Technical Plan. A field is the first point where block content fields are built (see item 19), so one hook serves the hero and the nodes. `preprocessNodeSpeaker` no longer adds the `speaker-byline__img` class to the image formatter's `#attributes`; the speaker teaser sets `#cedar_hollow_img_attributes` instead.
 
 #### 21. `web/themes/custom/cedar_hollow/templates/content/node--session--full.html.twig`, `node--session--teaser.html.twig`, `node--speaker--teaser.html.twig` (Modify)
 
