@@ -16,8 +16,6 @@ import '../css/props/sizes.css';
 import '../css/props/fonts.css';
 import '../css/props/borders.css';
 import '../css/props/shadows.css';
-import '../css/props/animations.css';
-import '../css/props/easing.css';
 import '../css/props/zindex.css';
 import '../css/props/brand.css';
 import '../css/tokens.css';
@@ -25,7 +23,6 @@ import '../css/base.css';
 import '../css/prose.css';
 import '../css/forms.css';
 import '../css/page.css';
-import '../css/block.css';
 
 // Each component's CSS, which Drupal attaches per component.
 import.meta.glob('../components/**/*.css', { eager: true });
@@ -42,8 +39,6 @@ const coreHidden = document.createElement('style');
 coreHidden.textContent = coreHiddenCss;
 document.head.prepend(coreHidden);
 
-// Surface's theme variant, as Drupal sets it in preprocess_html.
-document.documentElement.dataset.theme = 'surface';
 
 export const decorators = [
   (storyFn) => {

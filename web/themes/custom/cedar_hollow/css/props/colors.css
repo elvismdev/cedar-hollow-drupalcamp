@@ -36,16 +36,6 @@
     --yellow-700: hsl(28deg 80% 31%);
     --yellow-800: hsl(25deg 71% 26%);
     --yellow-900: hsl(23deg 69% 23%);
-    --green-50: hsl(154deg 41% 97%);
-    --green-100: hsl(154deg 61% 92%);
-    --green-200: hsl(155deg 63% 84%);
-    --green-300: hsl(156deg 61% 70%);
-    --green-400: hsl(158deg 60% 48%);
-    --green-500: hsl(160deg 84% 34%);
-    --green-600: hsl(161deg 92% 25%);
-    --green-700: hsl(163deg 93% 22%);
-    --green-800: hsl(164deg 93% 17%);
-    --green-900: hsl(166deg 97% 14%);
     --blue-50: hsl(210deg 100% 96%);
     --blue-100: hsl(211deg 94% 94%);
     --blue-200: hsl(213deg 94% 88%);
@@ -56,15 +46,5 @@
     --blue-700: hsl(221deg 79% 48%);
     --blue-800: hsl(223deg 68% 37%);
     --blue-900: hsl(225deg 54% 30%);
-    --sky-50: hsl(204deg 100% 97%);
-    --sky-100: hsl(204deg 94% 94%);
-    --sky-200: hsl(201deg 94% 86%);
-    --sky-300: hsl(199deg 95% 74%);
-    --sky-400: hsl(198deg 93% 60%);
-    --sky-500: hsl(199deg 89% 48%);
-    --sky-600: hsl(200deg 98% 39%);
-    --sky-700: hsl(201deg 96% 32%);
-    --sky-800: hsl(201deg 90% 27%);
-    --sky-900: hsl(202deg 80% 24%);
   }
 }

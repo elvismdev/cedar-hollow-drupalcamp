@@ -30,8 +30,6 @@
     /* Surfaces. */
     --color-surface: var(--white);
     --color-surface-alt: var(--gray-100);
-    --color-surface-code: var(--gray-800);
-    --color-on-surface-code: var(--gray-100);
 
     /* Brand accent: links, primary actions, emphasis. */
     --color-accent: var(--brand-primary);

@@ -33,11 +33,6 @@ final class ThemeHooks {
   private const REGISTER_FORM_ID = 'registration_attendee_register_form';
 
   /**
-   * The Surface theme variant, matched by data-theme selectors in its CSS.
-   */
-  private const SURFACE_THEME = 'surface';
-
-  /**
    * The view whose radio filters render as filter-group components.
    */
   private const SESSIONS_VIEW = 'sessions';
@@ -117,19 +112,6 @@ final class ThemeHooks {
     foreach (Element::children($variables['content']['field_photo']) as $delta) {
       $variables['content']['field_photo'][$delta]['#attributes']['class'][] = self::SPEAKER_PHOTO_CLASS;
     }
-  }
-
-  /**
-   * Implements hook_preprocess_HOOK() for html.
-   *
-   * Surface selects its theme variables with a data-theme attribute on html.
-   *
-   * @param array<mixed> $variables
-   *   The template variables.
-   */
-  #[Hook('preprocess_html')]
-  public function preprocessHtml(array &$variables): void {
-    $variables['html_attributes']->setAttribute('data-theme', self::SURFACE_THEME);
   }
 
   /**

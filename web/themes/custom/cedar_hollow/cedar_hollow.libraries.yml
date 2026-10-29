@@ -10,8 +10,6 @@ base:
       css/props/fonts.css: { weight: -80 }
       css/props/borders.css: { weight: -80 }
       css/props/shadows.css: { weight: -80 }
-      css/props/animations.css: { weight: -80 }
-      css/props/easing.css: { weight: -80 }
       css/props/zindex.css: { weight: -80 }
       css/props/brand.css: { weight: -79 }
       css/tokens.css: { weight: -78 }
@@ -20,7 +18,6 @@ base:
       css/forms.css: { weight: -68 }
     layout:
       css/page.css: {}
-      css/block.css: {}
     component:
       css/local-tasks.css: {}
   # Global because markup outside SDC uses their classes: core's form buttons

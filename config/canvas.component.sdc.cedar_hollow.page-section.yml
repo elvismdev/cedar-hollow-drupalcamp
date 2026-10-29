@@ -6,9 +6,40 @@ dependencies:
     - options
   theme:
     - cedar_hollow
-active_version: a26f02d97185815b
+active_version: 31d334f39428a1c7
 versioned_properties:
   active:
+    settings:
+      prop_field_definitions:
+        heading:
+          required: false
+          field_type: string
+          field_storage_settings: {  }
+          field_instance_settings: {  }
+          field_widget: string_textfield
+          default_value:
+            -
+              value: 'Featured sessions'
+          expression: ℹ︎string␟value
+          derived_schema_metadata:
+            string_shape: {  }
+        width:
+          required: false
+          field_type: list_string
+          field_storage_settings:
+            allowed_values_function: canvas_load_allowed_values_for_component_prop
+          field_instance_settings: {  }
+          field_widget: options_select
+          default_value:
+            -
+              value: wide
+          expression: ℹ︎list_string␟value
+          derived_schema_metadata: {  }
+    fallback_metadata:
+      slot_definitions:
+        content:
+          title: Content
+  a26f02d97185815b:
     settings:
       prop_field_definitions:
         heading:

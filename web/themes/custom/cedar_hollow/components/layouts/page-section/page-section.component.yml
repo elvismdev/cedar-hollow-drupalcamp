@@ -13,7 +13,7 @@ props:
     width:
       type: string
       title: Width
-      enum: ["narrow", "wide", "full"]
+      enum: ["narrow", "wide"]
       examples: ["wide"]
 slots:
   content:

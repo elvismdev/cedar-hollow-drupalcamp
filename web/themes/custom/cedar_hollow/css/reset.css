@@ -13,15 +13,14 @@
   }
 
   html {
-    accent-color: var(--accent-color, var(--color-accent));
-    background-color: var(--bg-color, var(--color-surface));
-    caret-color: var(--caret-color, var(--color-accent));
-    color: var(--color, var(--color-text));
+    accent-color: var(--color-accent);
+    background-color: var(--color-surface);
+    caret-color: var(--color-accent);
+    color: var(--color-text);
     font-family: var(--font-body);
     font-size: 100%;
     line-height: var(--leading-normal);
-    scroll-padding-top: var(--scroll-padding-top, 150px);
-    scrollbar-color: var(--scrollbar-color, var(--color-accent)) transparent;
+    scrollbar-color: var(--color-accent) transparent;
     text-size-adjust: 100%;
 
     &:has(dialog[open]) {
@@ -206,13 +205,13 @@
 
   input::placeholder,
   textarea::placeholder {
-    color: var(--placeholder-color, var(--color-border));
+    color: var(--color-border);
     opacity: 1;
   }
 
   ::selection {
-    background-color: var(--selection-bg-color, var(--blue-900));
-    color: var(--selection-color, var(--color-on-accent));
+    background-color: var(--color-accent-deep);
+    color: var(--color-on-accent);
   }
 
   button,
