@@ -40,7 +40,7 @@
   @container quote (inline-size >= 48rem) {
     .quote:has(.quote__image) .quote__content {
       display: grid;
-      grid-template-columns: repeat(2, 1fr);
+      grid-template-columns: repeat(2, minmax(0, 1fr));
       gap: var(--size-10);
       padding-block: var(--size-8);
     }

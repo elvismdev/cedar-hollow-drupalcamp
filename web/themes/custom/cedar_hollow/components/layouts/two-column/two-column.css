@@ -25,15 +25,15 @@
 
   @container two-column (inline-size >= 48rem) {
     .two-column--50-50 .two-column__layout {
-      grid-template-columns: 1fr 1fr;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
     }
 
     .two-column--60-40 .two-column__layout {
-      grid-template-columns: 3fr 2fr;
+      grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
     }
 
     .two-column--40-60 .two-column__layout {
-      grid-template-columns: 2fr 3fr;
+      grid-template-columns: minmax(0, 2fr) minmax(0, 3fr);
     }
   }
 }
