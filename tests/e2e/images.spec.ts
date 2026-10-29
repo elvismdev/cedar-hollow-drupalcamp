@@ -2,6 +2,9 @@ import { test, expect } from '../fixtures';
 
 // The image a page shows first is fetched first and eagerly; every other
 // image is lazy, and each responsive image tells the browser its size.
+// Card and speaker-byline photos are decorative (the heading or name beside
+// them carries the meaning), so their alt is empty; the others describe the
+// photo.
 
 test('the home page hero loads first', async ({ page }) => {
   await page.goto('/');
@@ -10,6 +13,7 @@ test('the home page hero loads first', async ({ page }) => {
   await expect(hero).toHaveAttribute('loading', 'eager');
   await expect(hero).toHaveAttribute('fetchpriority', 'high');
   await expect(hero).toHaveAttribute('sizes', /.+/);
+  await expect(hero).toHaveAttribute('alt', /\S/);
 });
 
 test('session cards load eagerly with sizes', async ({ page }) => {
@@ -19,6 +23,7 @@ test('session cards load eagerly with sizes', async ({ page }) => {
   for (const card of await cards.all()) {
     await expect(card).toHaveAttribute('loading', 'eager');
     await expect(card).toHaveAttribute('sizes', /.+/);
+    await expect(card).toHaveAttribute('alt', '');
   }
 });
 
@@ -28,6 +33,9 @@ test('a session page loads its image first and the rest lazily', async ({ page }
   await expect(image).toHaveAttribute('loading', 'eager');
   await expect(image).toHaveAttribute('fetchpriority', 'high');
   await expect(image).toHaveAttribute('sizes', /.+/);
+  await expect(image).toHaveAttribute('alt', /\S/);
+  await expect(page.locator('img.speaker-byline__img')).toHaveAttribute('alt', '');
+  await expect(page.locator('figure img')).toHaveAttribute('alt', /\S/);
 
   const lazy = page.locator('img.speaker-byline__img, figure img');
   await expect(lazy).toHaveCount(2);

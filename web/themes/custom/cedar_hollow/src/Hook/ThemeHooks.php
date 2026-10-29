@@ -48,13 +48,14 @@ final class ThemeHooks {
    * Media is render-cached per media view mode, so the attributes are keyed
    * by it: whichever page renders a media item first, the cached image
    * carries the same attributes. Each of these view modes is used by one
-   * component.
+   * component. Card and speaker-byline photos are decorative, since the
+   * heading or name beside them carries the meaning, so their alt is empty.
    */
   private const IMAGE_ATTRIBUTES = [
     'hero' => ['class' => ['hero__img'], 'fetchpriority' => 'high'],
     'page' => ['class' => ['session__img'], 'fetchpriority' => 'high'],
-    'card' => ['class' => ['card__img']],
-    'avatar' => ['class' => ['speaker-byline__img']],
+    'card' => ['class' => ['card__img'], 'alt' => ''],
+    'avatar' => ['class' => ['speaker-byline__img'], 'alt' => ''],
   ];
 
   public function __construct(

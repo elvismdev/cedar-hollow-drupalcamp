@@ -75,7 +75,7 @@ Every goal must ship. Each names the check that shows it was met.
 *   **Other media types.** No video, audio, document or remote media types.
 *   **Image optimisation services or modules.** No CDN image service, no Image Optimize pipelines and no module that pre-generates derivatives; a warm-up step covers deploys and measurement.
 *   **Images under CC BY-SA or any licence other than CC0, public domain and CC BY.**
-*   **Generated alt text.** Alt text is written and reviewed by hand. No image is treated as decorative.
+*   **Generated alt text.** Alt text is written and reviewed by hand. Two roles are decorative and render an empty alt: session-card and speaker-byline photos, because the heading or name beside them carries the meaning and a description of a stock photo next to a speaker's name can read as a portrait of that person. The hero, the session page image, embedded figures and the credits thumbnails keep their descriptions.
 *   **Edge caching.** The main design keeps page max-age at 0; the server response time this costs is recorded next to LCP rather than tuned away.
 
 ## Open Questions
