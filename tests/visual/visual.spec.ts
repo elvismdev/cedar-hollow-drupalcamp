@@ -11,6 +11,9 @@ const PORT = 6008;
 
 const STORIES = [
   'components-card--session-card',
+  'components-card--session-card-with-image',
+  'components-hero--default',
+  'components-speaker-byline--with-photo',
   'components-callout--stacked',
   'components-callout--horizontal',
   'components-featured-card--event',
@@ -25,7 +28,7 @@ const STORIES = [
   'agenda-builder-agenda-builder--default',
 ];
 
-const TYPES: Record<string, string> = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.json': 'application/json', '.svg': 'image/svg+xml', '.woff2': 'font/woff2' };
+const TYPES: Record<string, string> = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.json': 'application/json', '.svg': 'image/svg+xml', '.woff2': 'font/woff2', '.avif': 'image/avif' };
 // Stories use an external placeholder image; serve a fixed local one instead.
 const PLACEHOLDER = '<svg xmlns="http://www.w3.org/2000/svg" width="768" height="512"><rect width="768" height="512" fill="#d9dee3"/></svg>';
 
@@ -59,6 +62,7 @@ for (const id of STORIES) {
     const root = page.locator('#storybook-root');
     await expect(root.locator(':scope > *').first()).toBeVisible();
     await page.evaluate(() => document.fonts.ready);
+    await page.waitForFunction(() => [...document.images].every((image) => image.complete && image.naturalWidth > 0));
     await expect(root).toHaveScreenshot(`${id}.png`, {
       animations: 'disabled',
       // The agenda builder prints the time its data was loaded.
