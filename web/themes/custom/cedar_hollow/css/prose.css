@@ -18,17 +18,6 @@
       text-wrap: pretty;
     }
 
-    :where(a) {
-      border-block-end: var(--border-size-1) solid transparent;
-      color: var(--color-accent);
-      font-weight: var(--font-weight-400);
-
-      &:hover {
-        border-block-end: var(--border-size-1) solid var(--color-accent-strong);
-        color: var(--color-accent-strong);
-      }
-    }
-
     :where(ol) {
       list-style-type: decimal;
       margin-block: var(--size-6);
