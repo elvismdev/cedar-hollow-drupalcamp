@@ -94,6 +94,12 @@ foreach ($manifest as $entry) {
     $refused[] = "$id: the hero must be landscape and at least " . DemoImages::HERO_WIDTH . ' px wide';
     continue;
   }
+  // A new revision may carry a different licence or photo, so it is not
+  // downloaded until the manifest is updated after reading it again.
+  if ($entry['revision_timestamp'] !== $image['timestamp']) {
+    $refused[] = "$id: Commons revision {$image['timestamp']} differs from the manifest's {$entry['revision_timestamp']}; read the licence again";
+    continue;
+  }
 
   // Museum uploads name the required attribution in Attribution, not Artist.
   $creator = trim(html_entity_decode(strip_tags($meta['Artist']['value'] ?? $meta['Attribution']['value'] ?? ''), ENT_QUOTES | ENT_HTML5));
@@ -142,10 +148,6 @@ foreach ($manifest as $entry) {
   $extension = $image['mime'] === 'image/png' ? 'png' : 'jpg';
   file_put_contents(DemoImages::FETCHED_DIR . "/$id.$extension", $body);
   $total += strlen($body);
-
-  if ($entry['revision_timestamp'] !== $image['timestamp']) {
-    $refused[] = "$id: Commons revision {$image['timestamp']} differs from the manifest's {$entry['revision_timestamp']}; read the licence again";
-  }
   $fetched[$id] = [
     'file' => "$id.$extension",
     'source_url' => $page['fullurl'],
