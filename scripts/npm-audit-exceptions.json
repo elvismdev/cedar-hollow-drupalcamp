@@ -18,5 +18,30 @@
     "package": "locutus",
     "reason": "Same dependency path and reasoning as GHSA-fp25-p6mj-qqg6.",
     "review_by": "2027-01-31"
+  },
+  "GHSA-c475-qrg2-pj4r": {
+    "package": "basic-ftp",
+    "reason": "Reached only through @lhci/cli 0.15.1, the newest release, in the tests package, which runs `lhci autorun` in CI and locally against this project's own site. basic-ftp is loaded by proxy-agent to fetch ftp:// proxy auto-config files; no proxy is configured, so no FTP listing is parsed.",
+    "review_by": "2027-01-31"
+  },
+  "GHSA-jmr9-qjv8-65gv": {
+    "package": "extract-zip",
+    "reason": "Reached only through @lhci/cli 0.15.1, the newest release, in the tests package, which runs `lhci autorun` in CI and locally against this project's own site. extract-zip unpacks browser downloads in @puppeteer/browsers; Lighthouse CI launches the installed Chrome and downloads no archive. No patched extract-zip release exists.",
+    "review_by": "2027-01-31"
+  },
+  "GHSA-7pqw-9j4j-h8q3": {
+    "package": "extract-zip",
+    "reason": "Same dependency path and reasoning as GHSA-jmr9-qjv8-65gv.",
+    "review_by": "2027-01-31"
+  },
+  "GHSA-ph9p-34f9-6g65": {
+    "package": "tmp",
+    "reason": "Reached only through @lhci/cli 0.15.1, the newest release, in the tests package, which runs `lhci autorun` in CI and locally against this project's own site. The advisory needs an attacker-controlled prefix or postfix; Lighthouse CI passes its own fixed values, and the inquirer copy serves only the interactive `lhci wizard`, which is not run.",
+    "review_by": "2027-01-31"
+  },
+  "GHSA-mrhx-c7xc-m3w5": {
+    "package": "zod",
+    "reason": "Reached only through @lhci/cli 0.15.1, the newest release, in the tests package, which runs `lhci autorun` in CI and locally against this project's own site. zod 3 is used by chromium-bidi to validate messages from the browser Lighthouse launched itself; no outside input reaches it. Lighthouse 12.6.1 pins this chromium-bidi line.",
+    "review_by": "2027-01-31"
   }
 }

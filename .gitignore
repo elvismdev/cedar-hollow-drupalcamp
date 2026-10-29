@@ -104,6 +104,8 @@
 /tests/test-results/
 /tests/playwright-report/
 /tests/a11y-results/
+/tests/perf/reports/
+/tests/.lighthouseci/
 /.ddev/config.local.yaml
 /web/sites/default/local.services.yml
 
