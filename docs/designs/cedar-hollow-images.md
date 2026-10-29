@@ -55,7 +55,7 @@ Every goal must ship. Each names the check that shows it was met.
 
 1.  **One image pipeline on the formatter path, with ratio-named styles.** Image styles exist for three aspect ratios, 16:9 (hero, session images and wide embeds), 3:2 (cards and photo embeds) and 1:1 (speakers and credits), named by ratio and width (for example `16_9_1280` and `3_2_800`). Widths come from each slot's rendered size at the device pixel ratios phones and desktops use. Each style applies Focal Point's scale and crop, then core's Convert to AVIF. Check: the rebuild check generates a `16_9_640` derivative and asserts it is AVIF at 640x360.
 2.  **One aspect ratio per responsive image style.** Every responsive image style maps only image styles of a single ratio, and its fallback style is one of them, so the reserved space is right whichever style core takes `width` and `height` from. Check: a unit test fails if any responsive image style mixes ratios or maps a style that does not crop.
-3.  **The image a page shows first is fetched first.** The home page hero and the session page image render with `loading="eager"` and `fetchpriority="high"`; session cards render eager; every other image is lazy. Check: Playwright asserts these attributes, and the Lighthouse check fails if the LCP element on `/` is not `img.hero__img` or if any measured page's LCP image is lazy.
+3.  **The image a page shows first is fetched first.** The home page hero and the session page image render with `loading="eager"` and `fetchpriority="high"`; the first row of session cards (three) renders eager with `fetchpriority="high"`; every other image is lazy. Check: Playwright asserts these attributes, and the Lighthouse check fails if the LCP element on `/` is not `img.hero__img` or if any measured page's LCP image is lazy.
 4.  **Every shipped image has a recorded open licence and a complete attribution.** One Image media type stores the source URL, creator, licence and licence URL for each photo; all four are required, and only CC0, public domain and CC BY pass validation. The credits page lists every shipped image with its title, creator, licence (linked) and source, and states that the images were cropped, resized and converted to AVIF. Check: a functional test asserts validation violations for a missing licence field or another licence, on the entity and on the Media Library add form; Playwright asserts the modification notice and titles; the credits page passes axe.
 5.  **No identifiable person appears in any shipped image.** The fetch script refuses Commons files marked with the personality-rights template, speaker images show workspaces, laptops, hands or silhouettes, and every shipped image is reviewed by hand, with the date recorded in the manifest, before the image script will mark it verified. Alt text describes what the image shows. Check: the fetch script's refusal (shown refusing a marked file), and the manual review of every image and its alt text recorded in `docs/checks.md`.
 6.  **Sessions and speakers have images.** Session cards show a 3:2 image, session pages show a 16:9 image, and speaker bylines show a 1:1 image, each with `sizes` derived from its layout. Check: Playwright asserts the image and its attributes on the listing, a session page and a speaker byline.
@@ -130,7 +130,7 @@ Every goal must ship. Each names the check that shows it was met.
              |                                                          |
    hero block (eager, fetchpriority high)                     featured-card, quote
    session page image (eager, fetchpriority high)             (editors pick from the Media
-   session cards (eager)                                       library; scaled, not cropped)
+   session cards (first row eager, rest lazy)                  library; scaled, not cropped)
    speaker byline image, credits thumbnails (lazy)
    media embedded in session bodies (lazy, 16:9 or 3:2)
 ```
@@ -202,13 +202,13 @@ Every mode uses core's responsive image formatter on `field_media_image` and not
 | --- | --- | --- | --- |
 | `hero` | `wide_16_9` | eager | The hero block |
 | `page` | `page_16_9` | eager | The session page image |
-| `card` | `card_3_2` | eager | Session cards |
+| `card` | `card_3_2` | lazy (first row eager) | Session cards |
 | `avatar` | `avatar_1_1` | lazy | Speaker bylines |
 | `credits` | `avatar_1_1` | lazy | Credits thumbnails |
 | `embed_wide` ("Wide 16:9") | `embed_16_9` | lazy | Embeds in session bodies (default) |
 | `embed_photo` ("Photo 3:2") | `embed_3_2` | lazy | Embeds in session bodies |
 
-Session cards are eager because the sessions view shows all twelve sessions on one page with no pager (`items_per_page: 0`), and an eager view mode stays correct under render caching, which caches each card by entity and view mode, not by its position in the list. If the Lighthouse check shows twelve eager card images delaying LCP on `/sessions`, the next step is position-dependent loading with the row position added to the cache keys.
+Session cards were first all eager, because the sessions view shows all twelve sessions on one page with no pager (`items_per_page: 0`) and an eager view mode stays correct under render caching, which caches each card by entity and view mode, not by its position in the list. On Pantheon the twelve eager images (350 KB) shared the simulated mobile bandwidth and put the median LCP on `/sessions` at 2623 ms, over the 2500 ms limit. The card view mode is now lazy, and the first row is eager with high fetch priority: a `views_view_unformatted` preprocess marks the sessions view's first three rows (the grid's widest row), the session teaser passes the mark to its card image, and `preprocess_media` adds the attributes. Each marked node and media render array gains a `first_row` cache key, so a card's eager copy is cached apart from its lazy one and a filtered listing gets its own first row.
 
 ### Classes and loading attributes come from the media view mode
 
@@ -472,7 +472,7 @@ Every later deploy needs only the backup, `drush deploy` and the warm-up; the ma
 | Rollback is restore-only | Configuration is reverted after media and crops exist | The media bundle cannot be removed and Focal Point cannot be uninstalled while crops exist | Roll back by restoring the backup | Backup before every deploy |
 | Cold derivatives | A deploy saves an image style, or a new deploy | First visitors wait 0.8 to 1.6 s per derivative (I6) | Warm-up after every deploy | Rollout step 5 |
 | Noisy performance check | Shared CI runners | Intermittent failures | Median of five, one retry, a warning band below the limit | CI history |
-| Eager cards delay LCP | Twelve eager card images on `/sessions` | LCP on the listing rises | The Lighthouse check measures it; the fallback is position-dependent loading with the position in the cache keys | Item 39 |
+| Eager cards delay LCP | Twelve eager card images on `/sessions` | LCP on the listing rises | Happened on Pantheon (2623 ms); resolved with first-row loading and a `first_row` cache key | Item 39 |
 
 ### Security and privacy
 
@@ -483,7 +483,7 @@ Every later deploy needs only the backup, `drush deploy` and the warm-up; the ma
 ### Performance
 
 *   Targets (Goal 10): LCP under 2.5 s and CLS under 0.1, Lighthouse's mobile configuration, median of five runs, on `/`, `/sessions` and `/sessions/caching-render-arrays`, on DDEV.
-*   The hero and the session page image are eager with high fetch priority, session cards are eager, and every other image is lazy.
+*   The hero, the session page image and the first row of session cards are eager with high fetch priority, and every other image is lazy.
 *   Originals are stored at no more than 2560 pixels on the long side and within the size budget.
 
 ### Rollout and rollback
@@ -743,7 +743,7 @@ Paths are relative to the repository root. Configuration follows the workflow in
 #### 35. `tests/e2e/images.spec.ts` (Create)
 
 *   **Type / Scope**: Playwright, DDEV.
-*   **Proposed Changes**: `loading="eager"` and `fetchpriority="high"` on `img.hero__img` on the front page and the session page; `loading="eager"` on `img.card__img`; `loading="lazy"` on byline and embed images; a `sizes` attribute on card, session, byline and embed images; `/credits` lists titles and licence links and shows the header notice. Run first against the site before item 34's content, where it fails; the failure is recorded in item 34's commit message.
+*   **Proposed Changes**: `loading="eager"` and `fetchpriority="high"` on `img.hero__img` on the front page and the session page; `loading="eager"` and `fetchpriority="high"` on the first three `img.card__img` and `loading="lazy"` on the rest, also in a filtered listing; `loading="lazy"` on byline and embed images; a `sizes` attribute on card, session, byline and embed images; `/credits` lists titles and licence links and shows the header notice. Run first against the site before item 34's content, where it fails; the failure is recorded in item 34's commit message.
 
 #### 36. `tests/smoke/smoke.spec.ts` (Modify)
 

@@ -61,6 +61,25 @@ final class ThemeHooks {
     'credits' => ['class' => ['credits-view__img']],
   ];
 
+  /**
+   * Render property marking a session card in the listing's first row.
+   */
+  private const FIRST_ROW = '#cedar_hollow_first_row';
+
+  /**
+   * Cards in the first row of the session list at its widest.
+   *
+   * The list's grid fits at most three 18rem columns in the 72rem page.
+   */
+  private const FIRST_ROW_CARDS = 3;
+
+  /**
+   * Image attributes for a first-row card, which is above the fold.
+   *
+   * Every other card image keeps the card formatter's lazy loading.
+   */
+  private const FIRST_ROW_IMAGE_ATTRIBUTES = ['loading' => 'eager', 'fetchpriority' => 'high'];
+
   public function __construct(
     private readonly SeatsSummary $seatsSummary,
     private readonly DateFormatterInterface $dateFormatter,
@@ -107,6 +126,44 @@ final class ThemeHooks {
 
     $variables['seats'] = $this->seatsSummary->summarize($node, $cacheability);
     $cacheability->applyTo($variables);
+
+    // Hands the first-row mark to the card image, with a cache key so the
+    // eager image is cached apart from the lazy one.
+    if (!empty($variables['elements'][self::FIRST_ROW]) && isset($variables['content']['field_image'][0])) {
+      self::markFirstRow($variables['content']['field_image'][0]);
+    }
+  }
+
+  /**
+   * Implements hook_preprocess_HOOK() for views_view_unformatted.
+   *
+   * Marks the session listing's first-row cards, whose images are above the
+   * fold and load eagerly.
+   *
+   * @param array<mixed> $variables
+   *   The template variables.
+   */
+  #[Hook('preprocess_views_view_unformatted')]
+  public function preprocessViewsViewUnformatted(array &$variables): void {
+    if ($variables['view']->id() !== 'sessions') {
+      return;
+    }
+    foreach (array_slice(array_keys($variables['rows']), 0, self::FIRST_ROW_CARDS) as $index) {
+      self::markFirstRow($variables['rows'][$index]['content']);
+    }
+  }
+
+  /**
+   * Marks a render array as a first-row card and caches it separately.
+   *
+   * @param array<mixed> $build
+   *   An entity render array that has not been rendered yet.
+   */
+  private static function markFirstRow(array &$build): void {
+    $build[self::FIRST_ROW] = TRUE;
+    if (isset($build['#cache']['keys'])) {
+      $build['#cache']['keys'][] = 'first_row';
+    }
   }
 
   /**
@@ -124,6 +181,9 @@ final class ThemeHooks {
     $extra = self::IMAGE_ATTRIBUTES[$variables['view_mode']] ?? NULL;
     if (!$extra || !isset($variables['content']['field_media_image'])) {
       return;
+    }
+    if (!empty($variables['elements'][self::FIRST_ROW])) {
+      $extra = self::FIRST_ROW_IMAGE_ATTRIBUTES + $extra;
     }
     foreach (Element::children($variables['content']['field_media_image']) as $delta) {
       $current = $variables['content']['field_media_image'][$delta]['#attributes'] ?? [];

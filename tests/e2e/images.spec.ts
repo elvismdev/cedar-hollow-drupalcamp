@@ -16,14 +16,33 @@ test('the home page hero loads first', async ({ page }) => {
   await expect(hero).toHaveAttribute('alt', /\S/);
 });
 
-test('session cards load eagerly with sizes', async ({ page }) => {
+test('the first row of session cards loads first and the rest lazily', async ({ page }) => {
   await page.goto('/sessions');
   const cards = page.locator('img.card__img');
   await expect(cards).toHaveCount(12);
-  for (const card of await cards.all()) {
-    await expect(card).toHaveAttribute('loading', 'eager');
+  for (const [index, card] of (await cards.all()).entries()) {
+    if (index < 3) {
+      await expect(card).toHaveAttribute('loading', 'eager');
+      await expect(card).toHaveAttribute('fetchpriority', 'high');
+    }
+    else {
+      await expect(card).toHaveAttribute('loading', 'lazy');
+      await expect(card).not.toHaveAttribute('fetchpriority', /.*/);
+    }
     await expect(card).toHaveAttribute('sizes', /.+/);
     await expect(card).toHaveAttribute('alt', '');
+  }
+});
+
+test('a filtered listing loads its own first row first', async ({ page }) => {
+  // These cards sit after the first row of the full listing, so they are
+  // rendered lazily there; the eager copies are cached apart.
+  await page.goto('/sessions');
+  await page.goto('/sessions?day=sat');
+  const cards = page.locator('img.card__img');
+  await expect(cards).toHaveCount(6);
+  for (const [index, card] of (await cards.all()).entries()) {
+    await expect(card).toHaveAttribute('loading', index < 3 ? 'eager' : 'lazy');
   }
 });
 
