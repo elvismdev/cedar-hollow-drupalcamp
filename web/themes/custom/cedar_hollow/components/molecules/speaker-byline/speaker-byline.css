@@ -15,7 +15,7 @@
   .speaker-byline__img {
     inline-size: var(--size-12);
     block-size: var(--size-12);
-    border-radius: 50%;
+    border-radius: var(--radius-round);
     object-fit: cover;
   }
 
