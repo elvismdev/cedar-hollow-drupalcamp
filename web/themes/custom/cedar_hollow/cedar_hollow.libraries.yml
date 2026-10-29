@@ -12,7 +12,6 @@ base:
       css/props/shadows.css: { weight: -80 }
       css/props/animations.css: { weight: -80 }
       css/props/easing.css: { weight: -80 }
-      css/props/aspects.css: { weight: -80 }
       css/props/zindex.css: { weight: -80 }
       css/props/brand.css: { weight: -79 }
       css/tokens.css: { weight: -78 }

@@ -18,7 +18,6 @@ import '../css/props/borders.css';
 import '../css/props/shadows.css';
 import '../css/props/animations.css';
 import '../css/props/easing.css';
-import '../css/props/aspects.css';
 import '../css/props/zindex.css';
 import '../css/props/brand.css';
 import '../css/tokens.css';
