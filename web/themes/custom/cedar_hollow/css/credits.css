@@ -13,7 +13,11 @@
     gap: var(--size-4);
   }
 
+  /* Positioned so the source links' visually hidden text, which is
+   * absolutely positioned, is clipped by this region instead of widening
+   * the page. */
   .credits-view__table {
+    position: relative;
     overflow-x: auto;
   }
 }

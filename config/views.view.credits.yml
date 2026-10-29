@@ -98,7 +98,7 @@ display:
           exclude: false
           alter:
             alter_text: true
-            text: 'Wikimedia Commons'
+            text: 'Wikimedia Commons<span class="visually-hidden"> page for {{ name }}</span>'
             make_link: true
             path: '{{ field_source_url }}'
             external: true

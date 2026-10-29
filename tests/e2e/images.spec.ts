@@ -53,4 +53,10 @@ test('the credits page lists each photo with its licence', async ({ page }) => {
   await expect(rows).toHaveCount(24);
   await expect(rows.filter({ hasText: 'Coniferous Forest - Green Valley 2014-05-08 1606' })).toHaveCount(1);
   await expect(page.getByRole('link', { name: 'CC BY' }).first()).toHaveAttribute('href', /creativecommons\.org\/licenses\/by\//);
+  // Each source link names its photo, since the links go to different pages
+  // (WCAG 2.4.4), and the name starts with the visible text (2.5.3).
+  const sources = page.getByRole('link', { name: /^Wikimedia Commons page for \S/ });
+  await expect(sources).toHaveCount(24);
+  const names = await sources.evaluateAll((links) => links.map((link) => link.textContent));
+  expect(new Set(names).size).toBe(24);
 });
