@@ -3,6 +3,7 @@
 *   **Author:** Elvis Morales
 *   **Status:** Approved
 *   **Date:** 2026-10-28
+*   **Revised:** 2026-10-29: images added (contract C4, the Speaker content model, contributed modules, the deploy flow, the browser floor, the CI non-goal, Goal 8's pages and the write-up budget), per `docs/designs/cedar-hollow-images.md`.
 
 --------------------------------------------------------------------------------
 
@@ -46,7 +47,7 @@ Every goal below must ship; there is no stretch tier. Each goal names the check 
 5.  **Seat counts are near-live.** After a registration is saved, the agenda builder shows the new seat count for that session within one poll interval (30 seconds), without a manual cache clear. Check: in DDEV, a PHPUnit test registers and requests `/api/agenda` again; on Pantheon, a read-only check confirms the response carries the session's Registration cache tag and a `Cache-Control` header that stops the edge from storing it.
 6.  **A full session sends the next sign-up to the wait list.** When a session is full, the next sign-up is wait-listed and the page says so in text. Check: a PHPUnit functional test.
 7.  **The agenda builder is accessible and works without storage.** It can be operated with the keyboard alone, announces time conflicts in text, and still works for the length of the visit when browser storage is blocked. Check: Playwright tests for the keyboard path and for a page where `localStorage` throws, plus the manual screen-reader check.
-8.  **Automated accessibility scans pass.** axe-core with the `wcag2a`, `wcag2aa`, `wcag21a`, `wcag21aa` and `wcag22aa` tags reports zero violations on the home, agenda, about, session listing, session, sign-up, site map and login pages. A manual keyboard, screen-reader and 400 percent zoom check is recorded.
+8.  **Automated accessibility scans pass.** axe-core with the `wcag2a`, `wcag2aa`, `wcag21a`, `wcag21aa` and `wcag22aa` tags reports zero violations on the home, agenda, about, session listing, session, sign-up, site map, login and credits pages. A manual keyboard, screen-reader and 400 percent zoom check is recorded.
 9.  **Critical flows are tested.** PHPUnit tests cover sign-up, capacity and the wait list, the seats endpoint's response and cache tags, and the session page's seat cache tag. Playwright tests cover filtering the session list, adding sessions to the agenda and seeing a conflict, and reaching the sign-up form. Check: all pass in DDEV.
 10. **The site rebuilds from the repository.** `drush site:install --existing-config`, then the `cedar_hollow_demo_content` recipe (which includes the Canvas pages), then `drush cr`, produces the demo site. Check: `drush config:status` reports no differences.
 11. **The repository is documented and committed in small units.** A README explains how to run it in DDEV, where to look for each skill area, and what was verified and how. Check: the README has each of these sections, and each commit message describes one change.
@@ -60,8 +61,8 @@ Every goal below must ship; there is no stretch tier. Each goal names the check 
 *   **The Features module.** Configuration management and recipes cover packaging; the write-up explains why Features is not used.
 *   **A production CSS bundle.** Each component ships its own CSS file and Drupal aggregates CSS per page.
 *   **Claiming WCAG or Section 508 conformance.** The site is tested against WCAG 2.2 AA, which also covers the WCAG 2.0 AA criteria Section 508 references, and the results are reported. No conformance claim is made.
-*   **Supporting browsers without modern CSS.** Browsers without native CSS nesting, cascade layers and container queries are not targeted.
-*   **Continuous integration and deployment.** Tests run in DDEV and deploys are run by hand with Git and Terminus. A CI workflow is listed under Future Improvements.
+*   **Older browsers.** Browsers older than Chrome and Edge 121, Safari 17 and Firefox 117 are not targeted: the site needs CSS nesting, cascade layers and container queries, AVIF decoding and the `scripting` media feature (raised from the CSS-only floor by the images design).
+*   **Continuous deployment.** Deploys are run by hand with Git and Terminus. Continuous integration exists: a GitHub Actions workflow lints, runs PHPUnit, Playwright, visual regression and a Lighthouse performance check on a site rebuilt from the repository.
 *   **Edge caching.** Drupal's page cache max-age stays 0, so Pantheon's edge does not store anonymous pages. A demo with a handful of visitors does not need it, and it would make seat counts harder to keep fresh.
 
 ## Open Questions
@@ -153,7 +154,7 @@ Kept out of the public repository through the root `.gitignore`, checked before 
 ### Content model
 
 *   **Session** (node type `session`): title, body, `field_session_time` (Smart Date range), `field_track` (term reference), `field_room` (plain text), `field_day` (list: `fri`, `sat`; used by the listing's day filter), `field_speakers` (reference to Speaker nodes), `field_registration` (Registration field, registration type `attendee`), `field_forward` (Forward field shown as a "send to a colleague" link).
-*   **Speaker** (node type `speaker`): name as title, short bio, optional photo (core image field, rendered through a responsive image style that uses core's viewport-sizing breakpoint group, so it does not depend on the theme). The demo content seeds no photos.
+*   **Speaker** (node type `speaker`): name as title, short bio, and an image (`field_image`, a reference to Image media) showing the speaker's workspace rather than a face, rendered through the `avatar` view mode (contract C4).
 *   **Track** (vocabulary `track`): Front end, Back end and Site building.
 *   **Landing pages**: Canvas page entities (home, agenda, about the demo, try Canvas here).
 
@@ -169,6 +170,7 @@ Registration settings per session (capacity, open and close dates, wait list) ar
 | `better_exposed_filters` 7.2 (BEF) | The session listing's filters (track and day) rendered as accessible radio and checkbox groups instead of select lists. |
 | `sitemap` 8.x-2.6 | A site map page, which gives a second way to find pages (WCAG 2.4.5 Multiple Ways). |
 | `forward` 4.0 | "Send this session to a colleague" on session pages. Mail is logged, and the write-up shows the log entry. |
+| `focal_point` 2.1 with `crop` 2.6 | Crops every formatter-rendered image around the point the editor chooses (contract C4). |
 
 Not used because the site has no need for them: Key (no secrets to store once mail is logged), Image Style Generate (a bulk admin tool with nothing to show here), Twig Attributes (SDC already passes and merges `attributes`), Features (replaced by configuration management and recipes), Pantheon Advanced Page Cache (the edge does not cache pages; see Non-Goals), maillog (a short custom mail plugin does the same with no extra module).
 
@@ -234,7 +236,7 @@ A `demo_editor` role may create, edit and publish Canvas pages. It cannot edit p
 *   **Local.** DDEV with PHP 8.3 and MariaDB 10.6 to match Pantheon, Node 22 for the theme.
 *   **Repository setup.** The Pantheon sandbox is created first from the `drupal-11-composer-managed` upstream and its repository cloned; GitHub is added as the public `origin`, and Pantheon's Git stays as a second remote, so no force push is needed.
 *   **Pantheon.** `pantheon.yml` sets the PHP and database versions and a `frontend_build` entry for the theme path with `node_version: 22`, whose build command builds the static Storybook into the theme folder. Ignore rules for the theme's `node_modules/` and build output live in the repository root `.gitignore`, because the upstream ignores `.gitignore` files under `web/`. After the first build, the Storybook URL and its `iframe.html` and `index.json` are requested to confirm they are served. If the platform build cannot build Storybook, the fallback is building it locally, removing its ignore rule and committing the static output.
-*   **Flow.** Deploys are `git push pantheon main:master`, then `terminus workflow:wait <site>.dev` until the platform build finishes, then `terminus drush <site>.dev -- deploy -y`.
+*   **Flow.** Deploys start with `terminus backup:create <site>.dev`, then `git push pantheon main:master`, `terminus workflow:wait <site>.dev` until the platform build finishes, `terminus drush <site>.dev -- deploy -y`, and finally the image warm-up (`npm run warm` in `tests/`) so the first visitors do not wait for image derivatives to be generated.
 *   **Content.** Content is copied to Pantheon once, from DDEV, by database and files sync. Before the export, local test registrations are deleted; after the import, the admin password is reset to a strong value or user 1 is blocked.
 *   **Before sharing.** The sandbox is woken, the read-only smoke and accessibility suite runs against it with the `Deterrence-Bypass: 1` header (which skips the sandbox warning page), a Pantheon backup is taken with the restore command written in the README, and the shared commit is tagged. The editor account is blocked when the review period ends.
 
@@ -376,7 +378,7 @@ A Pantheon backup is taken before sharing and the restore command is in the READ
 
 ### Future Improvements
 
-*   **Continuous integration**: A GitHub Actions workflow that lints CSS, builds Storybook and runs PHP lint and PHPCS with the Drupal standard, without deploying. It must pass `act --dryrun` before it is pushed.
+*   **Continuous deployment**: CI now exists (see Non-Goals); deploying from it to Pantheon remains a future step.
 
 ### Additional Resources
 
@@ -464,7 +466,16 @@ One rule, implemented twice (PHP in item 22, JavaScript in item 29): `unlimited`
 *   Agenda storage key `cedarHollow.agenda.v1`, value `{"picks":[<node id>, ...]}`. Storage notice: "Your agenda is kept only until you leave this page." Fetch failure notice: "Seat counts could not be updated. Showing counts from {time}." Freshness line: "Updated at {time}", the client time of the last successful fetch. `{time}` is `toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })`.
 *   Conflict text next to each session in a conflict: "Overlaps with {other session title}." Status region: "{n} time conflicts in your agenda." ("1 time conflict in your agenda." for one) or "No time conflicts."
 *   Registration confirmation: subject "Your Cedar Hollow sign-up"; body "You are signed up for [registration:entity:title]. This is a demo; no mail is sent."
-*   Speaker photo image styles (used only if a photo is added): `speaker_small` 192px and `speaker_large` 384px wide.
+
+#### C4. Images
+
+Defined in full in `docs/designs/cedar-hollow-images.md`. The values other files depend on:
+
+*   One Image media type (`media.type.image`, from core's `image_media_type` recipe) with required licence fields `field_source_url`, `field_creator`, `field_licence` (`cc0`, `public_domain`, `cc_by`) and `field_licence_url`, and the boolean `field_verified`; only verified images appear on `/credits`.
+*   Image styles named by ratio and width, each Focal point scale and crop then Convert to AVIF: `16_9_640`, `16_9_1280`, `16_9_2304`, `3_2_400`, `3_2_800`, `3_2_1200`, `1_1_96`, `1_1_144`; plus `crop_preview` (scale only).
+*   One aspect ratio per responsive image style: `wide_16_9`, `page_16_9`, `embed_16_9`, `card_3_2`, `embed_3_2`, `avatar_1_1`.
+*   Two render paths: the formatter path (Media view modes `hero`, `page`, `card`, `avatar`, `credits`, `embed_wide`, `embed_photo`) for theme-rendered images, and Canvas's own scale-only path for Canvas image props (featured card, quote).
+*   Loading: the hero and the session page image are eager with `fetchpriority="high"`, session cards are eager, every other image is lazy.
 
 ### Phase 0: Repository, environment and spikes
 
@@ -550,7 +561,7 @@ One rule, implemented twice (PHP in item 22, JavaScript in item 29): `unlimited`
     *   **Modules** (`core.extension`; this list is complete and `config:status` must match it): node, text, options, file, image, link, taxonomy, views, path, block, toolbar, menu_ui, menu_link_content, breakpoint, responsive_image, page_cache, dynamic_page_cache, dblog, canvas, registration, registration_waitlist, registration_confirmation, smart_date, better_exposed_filters, sitemap, forward. Admin theme `claro` (`system.theme` `admin: claro`).
     *   **Site**: `system.site` name "Cedar Hollow DrupalCamp", `page.front: /home`; `system.date` default time zone `America/New_York`; `system.performance` `cache.page.max_age: 0`, CSS and JS aggregation on.
     *   **Content types and fields**: `session` with `body`, `field_session_time` (Smart Date range, required), `field_day` (list string `fri|Friday`, `sat|Saturday`, required, cardinality 1), `field_track` (term reference to `track`, required, cardinality 1), `field_room` (`string`, required), `field_speakers` (node reference to `speaker`, unlimited), `field_registration` (Registration, type `attendee`), `field_forward` (Forward); `speaker` with `body` and `field_photo` (image, optional). Vocabulary `track`.
-    *   **Displays**: session `full` (`field_registration` as `registration_link`, `field_forward` as `forward_link`, `field_speakers` as rendered entity in `teaser` view mode) and `teaser`; speaker `teaser` (`field_photo` as responsive image `speaker_photo`); image styles `speaker_small` and `speaker_large`; responsive image style `speaker_photo` with breakpoint group `responsive_image` (core's viewport sizing, `sizes: (min-width: 48em) 12rem, 6rem`), so it has no theme dependency; the registration form display for `attendee` includes the anonymous email field.
+    *   **Displays**: session `full` (`field_registration` as `registration_link`, `field_forward` as `forward_link`, `field_speakers` as rendered entity in `teaser` view mode) and `teaser`; speaker `teaser` (`field_image` in the `avatar` Media view mode, contract C4); image styles and responsive image styles as in contract C4; the registration form display for `attendee` includes the anonymous email field.
     *   **Registration**: `registration.type.attendee` with workflow `registration`, `defaultState: complete`, third-party `registration_confirmation` settings `enable: true`, `subject` and `message` (`value` and `format`) from C3; `field_registration` default value: `status` enabled, capacity 40, maximum spaces 1, multiple registrations off, wait list enabled, wait-list capacity 0 (unlimited), autofill off, wait-list message enabled with the text in C3; `workflows.workflow.registration` including the `waitlist` state added by `registration_waitlist`.
     *   **View** `sessions`: page display `/sessions`, teaser view mode, sort by `field_session_time` start, then title; exposed filters `field_track` (BEF radios, "Any track") and `field_day` (BEF radios, "Both days").
     *   **Mail**: `system.mail` `interface.default: cedar_hollow_logger` (exported after item 12 exists, at the end of Phase 2); `forward.settings` defaults, so Forward also mails through the logger.
@@ -558,7 +569,7 @@ One rule, implemented twice (PHP in item 22, JavaScript in item 29): `unlimited`
     *   **Roles and permissions**: anonymous and authenticated: `access content`, `create attendee registration self`, `access sitemap`, `access forward`. `demo_editor`: the Canvas page permissions from spike (j), `access toolbar`, `view the administration theme`; no other administration, code component, page template, report, user or registration permission.
 #### 8a. `recipes/cedar_hollow_sessions/recipe.yml` and `config/*.yml` (Create, modelled on `camp_tracks`)
 
-*   **Proposed Changes**: `name: Cedar Hollow sessions`, `type: Site feature`; `install:` node, text, options, file, image, link, taxonomy, views, path, breakpoint, responsive_image, registration, registration_waitlist, registration_confirmation, smart_date, better_exposed_filters, forward; `config: { strict: false }` (as in `camp_tracks`, so the recipe applies on a site where Registration's workflow already exists); `config/` holds, copied from this phase's export with `uuid` and `_core` removed: the session and speaker types, fields, displays, the `speaker_small`, `speaker_large` and `speaker_photo` styles, the `track` vocabulary, the `attendee` registration type and `workflows.workflow.registration` with its `waitlist` state and transitions, and the `sessions` View. No `config.import` entry: when a recipe installs `registration`, its workflow is not created from `config/install`, so the recipe ships the exported workflow itself.
+*   **Proposed Changes**: `name: Cedar Hollow sessions`, `type: Site feature`; `install:` node, text, options, file, image, link, taxonomy, views, path, breakpoint, responsive_image, registration, registration_waitlist, registration_confirmation, smart_date, better_exposed_filters, forward; `config: { strict: false }` (as in `camp_tracks`, so the recipe applies on a site where Registration's workflow already exists); `config/` holds, copied from this phase's export with `uuid` and `_core` removed: the session and speaker types, fields, displays, the image styles and responsive image styles of contract C4 (through the `cedar_hollow_media` recipe it composes), the `track` vocabulary, the `attendee` registration type and `workflows.workflow.registration` with its `waitlist` state and transitions, and the `sessions` View. No `config.import` entry: when a recipe installs `registration`, its workflow is not created from `config/install`, so the recipe ships the exported workflow itself.
 
 *   **Phase 1 check**: `ddev drush config:status` reports no differences; `/sessions` lists sessions created by hand and filters by track and day.
 
@@ -785,7 +796,7 @@ One rule, implemented twice (PHP in item 22, JavaScript in item 29): `unlimited`
 
 #### 40. `docs/how-this-was-built.md` (Create)
 
-*   **Proposed Changes**: Under 1,500 words: the plan and decisions; what AI tools did and what was checked by hand or by tests; each theme-layer file by name; the WordPress to Drupal mapping (WP-CFM to configuration management, Features to recipes, blocks to SDC, Elementor and the block editor to Canvas); when Layout Builder or Paragraphs, and when a decoupled front end, would be the better choice; the logged Forward mail entry as evidence that mail is logged, not sent.
+*   **Proposed Changes**: Under 1,900 words (raised from 1,500 for the images section): the plan and decisions; what AI tools did and what was checked by hand or by tests; each theme-layer file by name; the WordPress to Drupal mapping (WP-CFM to configuration management, Features to recipes, blocks to SDC, Elementor and the block editor to Canvas); when Layout Builder or Paragraphs, and when a decoupled front end, would be the better choice; the logged Forward mail entry as evidence that mail is logged, not sent.
 
 #### 41. Pantheon deploy (no files)
 
