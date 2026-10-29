@@ -7,6 +7,8 @@ namespace Drupal\Tests\cedar_hollow_core\Functional;
 use Drupal\canvas\Entity\Page;
 use Drupal\Component\Serialization\Yaml;
 use Drupal\Core\Session\AccountInterface;
+use Drupal\file\Entity\File;
+use Drupal\media\Entity\Media;
 use Drupal\user\Entity\Role;
 use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\Attributes\RunTestsInSeparateProcesses;
@@ -54,12 +56,29 @@ final class DemoEditorAccessTest extends SessionTestBase {
       'administer themes',
       'create canvas_page',
       'edit canvas_page',
+      'access media overview',
+      'administer media',
+      'administer media types',
     ]);
+    $image = $this->getTestFiles('image')[0];
+    $file = File::create(['uri' => $image->uri, 'status' => 1]);
+    $file->save();
+    $media = Media::create([
+      'bundle' => 'image',
+      'name' => 'Someone else\'s image',
+      'uid' => $admin->id(),
+      'field_media_image' => ['target_id' => $file->id(), 'alt' => 'A test image'],
+    ]);
+    $media->save();
 
     $refused = [
       '/admin/reports/dblog',
       '/node/' . $session->id() . '/registrations',
       '/admin/appearance/component/status',
+      '/admin/content/media',
+      '/media/' . $media->id() . '/edit',
+      '/media/' . $media->id() . '/delete',
+      '/admin/structure/media',
     ];
 
     $this->drupalLogin($admin);
@@ -77,6 +96,9 @@ final class DemoEditorAccessTest extends SessionTestBase {
     $this->assertFalse($this->mayCreateCodeComponent($editor), 'A demo editor may not create code components.');
 
     $this->drupalGet('/canvas/editor/canvas_page/' . $page->id());
+    $this->assertSession()->statusCodeEquals(200);
+    // Canvas's media picker uploads through Media Library's add form.
+    $this->drupalGet('/media/add/image');
     $this->assertSession()->statusCodeEquals(200);
   }
 
