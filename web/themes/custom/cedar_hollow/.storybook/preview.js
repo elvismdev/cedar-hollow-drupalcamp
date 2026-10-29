@@ -52,7 +52,8 @@ const preview = {
     options: {
       storySort: { order: ['Atoms', 'Components', 'Collections', 'Layouts', 'Agenda builder', '*'] },
     },
-    a11y: { test: 'todo' },
+    // Storybook Test fails a story on any axe violation.
+    a11y: { test: 'error' },
   },
 };
 
