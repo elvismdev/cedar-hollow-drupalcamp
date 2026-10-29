@@ -12,6 +12,7 @@
     "@drupal/once": "1.0.1",
     "@storybook/addon-a11y": "10.6.5",
     "@storybook/addon-docs": "10.6.5",
+    "@storybook/addon-mcp": "10.6.5",
     "@storybook/html-vite": "10.6.5",
     "esbuild": "0.28.2",
     "preact": "10.29.8",
