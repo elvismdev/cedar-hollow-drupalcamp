@@ -124,13 +124,18 @@ foreach ($manifest as $entry) {
   $body = (string) $client->get($hero ? $image['url'] : $image['thumburl'], $options)->getBody();
   if ($hero && ($image['width'] > DemoImages::HERO_WIDTH || strlen($body) > $cap)) {
     $original = DemoImages::FETCHED_DIR . "/$id.original";
-    $scaled_path = DemoImages::FETCHED_DIR . "/$id.scaled.jpg";
+    // The toolkit keeps the original's type, so the copy has no extension.
+    $scaled_path = DemoImages::FETCHED_DIR . "/$id.scaled";
     file_put_contents($original, $body);
     $scaled = \Drupal::service('image.factory')->get($original);
     $scaled->scale(DemoImages::HERO_WIDTH);
-    $scaled->save($scaled_path);
-    $body = file_get_contents($scaled_path);
+    $saved = $scaled->save($scaled_path);
     unlink($original);
+    if (!$saved) {
+      $refused[] = "$id: the image toolkit could not scale the hero";
+      continue;
+    }
+    $body = file_get_contents($scaled_path);
     unlink($scaled_path);
   }
   foreach ($hero ? [] : [1920, 1280] as $step) {
