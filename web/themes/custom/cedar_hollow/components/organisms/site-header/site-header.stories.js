@@ -13,4 +13,4 @@ export default {
   render: (args) => site_header(args),
 };
 
-export const Default = { args: {"branding": "<a class=\"site-header__brand-link\" href=\"/\" rel=\"home\">Cedar Hollow DrupalCamp</a>", "navigation": "<nav aria-label=\"Main\"><ul class=\"menu\"><li class=\"menu__item\"><a class=\"menu__link\" href=\"/sessions\">Sessions</a></li><li class=\"menu__item\"><a class=\"menu__link\" href=\"/agenda\">Agenda</a></li></ul></nav>"} };
+export const Default = { args: {"branding": "<a class=\"site-header__brand-link\" href=\"/\" rel=\"home\">Cedar Hollow DrupalCamp</a>", "navigation": "<nav class=\"main-menu\" aria-label=\"Main\"><button class=\"main-menu__toggle\" type=\"button\" aria-expanded=\"false\" aria-controls=\"main-menu\" data-menu-toggle hidden>Menu</button><ul class=\"main-menu__list\" id=\"main-menu\"><li class=\"main-menu__item\"><a class=\"main-menu__link\" href=\"/sessions\">Sessions</a></li><li class=\"main-menu__item\"><a class=\"main-menu__link\" href=\"/agenda\">Agenda</a></li></ul></nav>"} };

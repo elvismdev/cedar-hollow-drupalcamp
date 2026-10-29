@@ -27,7 +27,8 @@ import '../css/page.css';
 // Each component's CSS, which Drupal attaches per component.
 import.meta.glob('../components/**/*.css', { eager: true });
 
-// Theme behaviors, so stories exercise the same scripts as Drupal.
+// Theme behaviors with their stylesheets, as the libraries attach them in Drupal.
+import '../css/main-menu.css';
 import '../js/menu-toggle.js';
 
 // Every story's "Source on GitHub" link starts with this.
