@@ -15,10 +15,12 @@
     justify-content: center;
     gap: var(--size-2);
     inline-size: fit-content;
+    max-inline-size: 100%;
+    text-align: center;
     min-block-size: var(--target-size);
     padding-block: var(--size-4);
     padding-inline: var(--size-6);
-    border: 1px solid var(--color-neutral);
+    border: var(--border-size-1) solid var(--color-neutral);
     border-radius: 0;
     background-color: var(--color-neutral);
     color: var(--color-text-strong);
@@ -27,7 +29,6 @@
     font-weight: var(--font-weight-700);
     line-height: var(--leading-none);
     text-decoration: none;
-    white-space: nowrap;
     cursor: pointer;
     appearance: none;
     transition-duration: var(--duration-fast);
@@ -42,11 +43,6 @@
       color: var(--color-text-subtle);
       cursor: not-allowed;
     }
-  }
-
-  .button__icon {
-    inline-size: 1em;
-    block-size: 1em;
   }
 
   .button--primary {
@@ -98,5 +94,20 @@
       background-color: transparent;
       color: var(--color-accent);
     }
+  }
+
+  /*
+   * A toggle button that is on: filled, with a check mark, not colour alone.
+   * Last in the file so it holds over every variant, hovered or not.
+   */
+  .button[aria-pressed="true"],
+  .button[aria-pressed="true"]:hover {
+    border-color: var(--color-accent);
+    background-color: var(--color-accent);
+    color: var(--color-on-accent);
+  }
+
+  .button[aria-pressed="true"]::before {
+    content: "\2713";
   }
 }
