@@ -114,7 +114,7 @@ jobs:
   e2e:
     name: Playwright end-to-end, accessibility and smoke on a site rebuilt from code
     runs-on: ubuntu-24.04
-    timeout-minutes: 40
+    timeout-minutes: 60
     env:
       BASE_URL: https://cedar-hollow.ddev.site
     steps:
@@ -131,6 +131,20 @@ jobs:
         working-directory: tests
       - run: npx playwright test --project=e2e --project=a11y --project=smoke
         working-directory: tests
+      # Actions has no step retry, so the shell runs the check once more only
+      # if the first run fails. Node trusts DDEV's certificate through mkcert.
+      - name: Warm image derivatives, then check LCP and CLS with Lighthouse CI
+        timeout-minutes: 20
+        working-directory: tests
+        run: |
+          export NODE_EXTRA_CA_CERTS="$(mkcert -CAROOT)/rootCA.pem"
+          npm run warm -- "$BASE_URL" && (npm run test:perf || npm run test:perf)
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lighthouse-reports
+          path: tests/perf/reports
+          retention-days: 7
       - if: failure()
         uses: actions/upload-artifact@v4
         with:
