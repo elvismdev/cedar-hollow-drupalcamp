@@ -4,25 +4,21 @@ dependencies:
   config:
     - core.entity_view_mode.node.teaser
     - field.field.node.speaker.body
-    - field.field.node.speaker.field_photo
+    - field.field.node.speaker.field_image
     - node.type.speaker
-    - responsive_image.styles.speaker_photo
   module:
-    - responsive_image
     - user
 id: node.speaker.teaser
 targetEntityType: node
 bundle: speaker
 mode: teaser
 content:
-  field_photo:
-    type: responsive_image
+  field_image:
+    type: entity_reference_entity_view
     label: hidden
     settings:
-      responsive_image_style: speaker_photo
-      image_link: ''
-      image_loading:
-        attribute: lazy
+      view_mode: avatar
+      link: false
     third_party_settings: {  }
     weight: 0
     region: content

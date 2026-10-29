@@ -4,11 +4,10 @@ status: true
 dependencies:
   config:
     - field.field.node.speaker.body
-    - field.field.node.speaker.field_photo
-    - image.style.thumbnail
+    - field.field.node.speaker.field_image
     - node.type.speaker
   module:
-    - image
+    - media_library
     - path
 id: node.speaker.default
 targetEntityType: node
@@ -21,13 +20,12 @@ content:
     region: content
     settings: {  }
     third_party_settings: {  }
-  field_photo:
-    type: image_image
+  field_image:
+    type: media_library_widget
     weight: 5
     region: content
     settings:
-      progress_indicator: throbber
-      preview_image_style: thumbnail
+      media_types: {  }
     third_party_settings: {  }
   path:
     type: path
