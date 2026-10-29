@@ -3,7 +3,7 @@ import AxeBuilder from '@axe-core/playwright';
 import { test, expect } from '../fixtures';
 
 // The pages named in the design's accessibility goal.
-const PAGES = ['/', '/agenda', '/about', '/sessions', '/sessions/caching-render-arrays', '/sitemap', '/user/login'];
+const PAGES = ['/', '/agenda', '/about', '/sessions', '/sessions/caching-render-arrays', '/sitemap', '/user/login', '/credits'];
 const TAGS = ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa'];
 
 mkdirSync('a11y-results', { recursive: true });
