@@ -84,7 +84,7 @@ display:
           alter:
             alter_text: false
             make_link: true
-            path: '{{ field_licence_url__uri }}'
+            path: '{{ field_licence_url }}'
             external: true
           type: list_default
         field_source_url:
