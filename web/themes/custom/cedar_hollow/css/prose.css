@@ -52,23 +52,23 @@
       }
     }
 
-    :where(> ul > li p) {
+    :is(& > ul > li) :where(p) {
       margin-block: var(--size-4);
     }
 
-    :where(> ul > li > *:first-child) {
+    :is(& > ul > li) > :where(:first-child) {
       margin-block-start: var(--size-4);
     }
 
-    :where(> ul > li > *:last-child) {
+    :is(& > ul > li) > :where(:last-child) {
       margin-block-end: var(--size-4);
     }
 
-    :where(> ol > li > *:first-child) {
+    :is(& > ol > li) > :where(:first-child) {
       margin-block-start: var(--size-4);
     }
 
-    :where(> ol > li > *:last-child) {
+    :is(& > ol > li) > :where(:last-child) {
       margin-block-end: var(--size-4);
     }
 
