@@ -210,15 +210,15 @@ Every mode uses core's responsive image formatter on `field_media_image` and not
 
 Session cards are eager because the sessions view shows all twelve sessions on one page with no pager (`items_per_page: 0`), and an eager view mode stays correct under render caching, which caches each card by entity and view mode, not by its position in the list. If the Lighthouse check shows twelve eager card images delaying LCP on `/sessions`, the next step is position-dependent loading with the row position added to the cache keys.
 
-### Classes and loading attributes come from the consumer
+### Classes and loading attributes come from the media view mode
 
-The media layer does not know which component renders it, so it never chooses a component class. The template or preprocess hook that renders a media field (the consumer) sets a `#cedar_hollow_img_attributes` array on each referenced media's render array; a `preprocess_media` hook copies it into the image formatter item's `#attributes`, which core 11.4 merges into the `<img>` (I4; `#item_attributes` is deprecated in 11.4). Core has no `fetchpriority` formatter setting (issue #3366828), and this one mechanism carries it as well. Each view mode has one consumer, so the attributes are stable under the media render cache:
+Each component that shows an image has its own Image media view mode, so the theme sets the component's image attributes by media view mode: a `preprocess_media` hook copies them into the image formatter item's `#attributes`, which core 11.4 merges into the `<img>` (I4; `#item_attributes` is deprecated in 11.4). Core has no `fetchpriority` formatter setting (issue #3366828), and this one mechanism carries it as well. Media is render-cached per media view mode, so attributes keyed by it are the same whichever page renders a media item first. (An earlier version set them per field in `preprocess_field`; a session rendered in its RSS view mode first cached its `page` image without them, which `ImageAttributesTest` now covers.)
 
-*   the hero block sets `class: hero__img` and `fetchpriority: high`;
-*   the full session page sets `class: session__img` and `fetchpriority: high`;
-*   the session teaser sets `class: card__img`;
-*   the speaker teaser sets `class: speaker-byline__img`, replacing the attribute `preprocessNodeSpeaker` sets on the formatter today;
-*   the credits View and embeds set no class.
+*   `hero` sets `class: hero__img` and `fetchpriority: high`;
+*   `page` sets `class: session__img` and `fetchpriority: high`;
+*   `card` sets `class: card__img`;
+*   `avatar` sets `class: speaker-byline__img`, replacing the attribute `preprocessNodeSpeaker` sets on the formatter today;
+*   `credits` and the embed view modes set no class.
 
 ### Where images appear
 
@@ -645,8 +645,8 @@ Paths are relative to the repository root. Configuration follows the workflow in
 
 *   **Type / Scope**: Theme hooks.
 *   **Proposed Changes**:
-    *   `preprocess_media` (Image bundle): merges `#cedar_hollow_img_attributes` from the media's render array into each `field_media_image` item's `#attributes`, keeping the `loading` value the formatter already set unless the consumer sets its own.
-    *   `preprocess_field` sets `#cedar_hollow_img_attributes` on each item's media render array, using a constant map keyed by entity type, bundle, field and view mode (`block_content.hero.field_media.full`, `node.session.field_image.full`, `node.session.field_image.teaser`, `node.speaker.field_image.teaser`) with the classes and attributes in the Technical Plan. A field is the first point where block content fields are built (see item 19), so one hook serves the hero and the nodes. `preprocessNodeSpeaker` no longer adds the `speaker-byline__img` class to the image formatter's `#attributes`; the speaker teaser sets `#cedar_hollow_img_attributes` instead.
+    *   `preprocess_media` (Image bundle): merges the attributes for the media view mode (a constant map: `hero`, `page`, `card`, `avatar`, with the classes and attributes in the Technical Plan) into each `field_media_image` item's `#attributes`, keeping the `loading` value the formatter already set unless the map sets its own.
+    *   `preprocessNodeSpeaker` no longer adds the `speaker-byline__img` class to the image formatter's `#attributes`; the `avatar` view mode carries it.
 
 #### 21. `web/themes/custom/cedar_hollow/templates/content/node--session--full.html.twig`, `node--session--teaser.html.twig`, `node--speaker--teaser.html.twig` (Modify)
 

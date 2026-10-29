@@ -43,21 +43,18 @@ final class ThemeHooks {
   private const FILTER_GROUP = '#cedar_hollow_filter_group';
 
   /**
-   * Render property carrying a consumer's attributes for a media image.
-   */
-  private const IMG_ATTRIBUTES = '#cedar_hollow_img_attributes';
-
-  /**
-   * Image attributes by entity type, bundle, field and view mode.
+   * Image attributes by Image media view mode.
    *
-   * Each media view mode has one consumer here, so the attributes are stable
-   * under the media render cache.
+   * Media is render-cached per media view mode, so the attributes are keyed
+   * by it: whichever page renders a media item first, the cached image
+   * carries the same attributes. Each of these view modes is used by one
+   * component.
    */
-  private const IMAGE_CONSUMERS = [
-    'block_content.hero.field_media.full' => ['class' => ['hero__img'], 'fetchpriority' => 'high'],
-    'node.session.field_image.full' => ['class' => ['session__img'], 'fetchpriority' => 'high'],
-    'node.session.field_image.teaser' => ['class' => ['card__img']],
-    'node.speaker.field_image.teaser' => ['class' => ['speaker-byline__img']],
+  private const IMAGE_ATTRIBUTES = [
+    'hero' => ['class' => ['hero__img'], 'fetchpriority' => 'high'],
+    'page' => ['class' => ['session__img'], 'fetchpriority' => 'high'],
+    'card' => ['class' => ['card__img']],
+    'avatar' => ['class' => ['speaker-byline__img']],
   ];
 
   public function __construct(
@@ -109,47 +106,25 @@ final class ThemeHooks {
   }
 
   /**
-   * Implements hook_preprocess_HOOK() for field.
-   *
-   * Hands each referenced media item the attributes its consumer gives the
-   * image. This is the first point where block content fields are built,
-   * so the hero block and the nodes share it.
-   *
-   * @param array<mixed> $variables
-   *   The template variables.
-   */
-  #[Hook('preprocess_field')]
-  public function preprocessField(array &$variables): void {
-    $element = $variables['element'];
-    $key = implode('.', [$element['#entity_type'], $element['#bundle'], $element['#field_name'], $element['#view_mode']]);
-    if (!isset(self::IMAGE_CONSUMERS[$key])) {
-      return;
-    }
-    foreach (array_keys($variables['items']) as $delta) {
-      $variables['items'][$delta]['content'][self::IMG_ATTRIBUTES] = self::IMAGE_CONSUMERS[$key];
-    }
-  }
-
-  /**
    * Implements hook_preprocess_HOOK() for media.
    *
-   * Merges a consumer's attributes into the image formatter's #attributes,
-   * which core puts on the img. The consumer's values win, so the formatter's
-   * loading value stays unless the consumer sets its own.
+   * Merges the attributes for the media view mode into the image formatter's
+   * #attributes, which core puts on the img. These values win, so the
+   * formatter's loading value stays unless they set their own.
    *
    * @param array<mixed> $variables
    *   The template variables.
    */
   #[Hook('preprocess_media')]
   public function preprocessMedia(array &$variables): void {
-    $extra = $variables['elements'][self::IMG_ATTRIBUTES] ?? NULL;
+    $extra = self::IMAGE_ATTRIBUTES[$variables['view_mode']] ?? NULL;
     if (!$extra || !isset($variables['content']['field_media_image'])) {
       return;
     }
     foreach (Element::children($variables['content']['field_media_image']) as $delta) {
       $current = $variables['content']['field_media_image'][$delta]['#attributes'] ?? [];
       $merged = $extra + $current;
-      $merged['class'] = array_merge($current['class'] ?? [], $extra['class'] ?? []);
+      $merged['class'] = array_merge($current['class'] ?? [], $extra['class']);
       $variables['content']['field_media_image'][$delta]['#attributes'] = $merged;
     }
   }
