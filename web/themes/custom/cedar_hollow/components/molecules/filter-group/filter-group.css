@@ -18,6 +18,21 @@
     font-weight: var(--font-weight-700);
   }
 
+  .filter-group__required,
+  .filter-group__errors {
+    color: var(--color-danger);
+  }
+
+  .filter-group__errors {
+    margin-block-end: var(--size-2);
+  }
+
+  .filter-group__description {
+    margin-block-start: var(--size-2);
+    color: var(--color-text-muted);
+    font-size: var(--font-size-0);
+  }
+
   .filter-group__options {
     display: flex;
     flex-wrap: wrap;

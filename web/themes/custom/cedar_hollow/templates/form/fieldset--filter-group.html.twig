@@ -1,11 +1,18 @@
 {#
 /**
  * @file
- * A radio filter of the sessions listing, rendered as a filter-group.
+ * A radio filter of the sessions listing, rendered as a filter-group. Core's
+ * prefix and suffix stay around the options, and the description keeps the id
+ * the fieldset's aria-describedby points at.
  */
 #}
-{{ include('cedar_hollow:filter-group', {
+{% set options %}{{ prefix }}{{ children }}{{ suffix }}{% endset %}
+{% include 'cedar_hollow:filter-group' with {
   attributes: attributes,
   legend: legend.title,
-  options: children,
-}, with_context = false) }}
+  required: required|default(false),
+  errors: errors,
+  options: options,
+  description: description.content,
+  description_id: description.attributes.id ~ '',
+} only %}

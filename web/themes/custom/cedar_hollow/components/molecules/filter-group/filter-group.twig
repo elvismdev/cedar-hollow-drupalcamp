@@ -1,5 +1,14 @@
 {% set attributes = attributes ?: create_attribute() %}
 <fieldset{{ attributes.addClass('filter-group') }}>
-  <legend class="filter-group__legend">{{ legend }}</legend>
+  <legend class="filter-group__legend">
+    {{- legend -}}
+    {%- if required %}<span class="filter-group__required" aria-hidden="true"> *</span>{% endif -%}
+  </legend>
+  {% if errors|render|trim %}
+    <div class="filter-group__errors">{{ errors }}</div>
+  {% endif %}
   <div class="filter-group__options">{{ options }}</div>
+  {% if description|render|trim %}
+    <div class="filter-group__description"{% if description_id %} id="{{ description_id }}"{% endif %}>{{ description }}</div>
+  {% endif %}
 </fieldset>

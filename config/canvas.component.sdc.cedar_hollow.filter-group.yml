@@ -4,9 +4,55 @@ status: true
 dependencies:
   theme:
     - cedar_hollow
-active_version: c64fbc41707f34b7
+active_version: 7ce3714c9048dbaa
 versioned_properties:
   active:
+    settings:
+      prop_field_definitions:
+        legend:
+          required: true
+          field_type: string
+          field_storage_settings: {  }
+          field_instance_settings: {  }
+          field_widget: string_textfield
+          default_value:
+            -
+              value: Track
+          expression: ℹ︎string␟value
+          derived_schema_metadata:
+            string_shape: {  }
+        required:
+          required: false
+          field_type: boolean
+          field_storage_settings: {  }
+          field_instance_settings: {  }
+          field_widget: boolean_checkbox
+          default_value:
+            -
+              value: false
+          expression: ℹ︎boolean␟value
+          derived_schema_metadata: {  }
+        description_id:
+          required: false
+          field_type: string
+          field_storage_settings: {  }
+          field_instance_settings: {  }
+          field_widget: string_textfield
+          default_value:
+            -
+              value: edit-track--wrapper--description
+          expression: ℹ︎string␟value
+          derived_schema_metadata:
+            string_shape: {  }
+    fallback_metadata:
+      slot_definitions:
+        options:
+          title: Options
+        errors:
+          title: Errors
+        description:
+          title: Description
+  c64fbc41707f34b7:
     settings:
       prop_field_definitions:
         legend:

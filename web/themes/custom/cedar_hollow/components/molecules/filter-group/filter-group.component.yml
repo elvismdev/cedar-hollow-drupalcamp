@@ -11,6 +11,19 @@ props:
       type: string
       title: Legend
       examples: ["Track"]
+    required:
+      type: boolean
+      title: Required
+      examples: [false]
+    description_id:
+      type: string
+      title: Description ID
+      description: "The id the fieldset's aria-describedby points at."
+      examples: ["edit-track--wrapper--description"]
 slots:
   options:
     title: Options
+  errors:
+    title: Errors
+  description:
+    title: Description
