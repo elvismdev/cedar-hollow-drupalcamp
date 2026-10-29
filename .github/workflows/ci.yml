@@ -129,18 +129,24 @@ jobs:
           node-version: '22'
       - run: npm ci && npx playwright install --with-deps chromium
         working-directory: tests
+      # Core answers 503 to a second request for a derivative another request
+      # is still generating, which parallel test workers hit on a cold site, so
+      # the derivatives are generated one at a time first. Node trusts DDEV's
+      # certificate through mkcert.
+      - name: Warm image derivatives
+        working-directory: tests
+        run: NODE_EXTRA_CA_CERTS="$(mkcert -CAROOT)/rootCA.pem" npm run warm -- "$BASE_URL"
       - run: npx playwright test --project=e2e --project=a11y --project=smoke
         working-directory: tests
       # Actions has no step retry, so the shell runs the check once more only
-      # if the first run fails. Node trusts DDEV's certificate through mkcert.
-      - name: Warm image derivatives, then check LCP and CLS with Lighthouse CI
+      # if the first run fails.
+      - name: Check LCP and CLS with Lighthouse CI
         timeout-minutes: 20
         working-directory: tests
         run: |
           # Ubuntu 24.04 blocks the user namespaces Chrome's sandbox needs.
           sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
-          export NODE_EXTRA_CA_CERTS="$(mkcert -CAROOT)/rootCA.pem"
-          npm run warm -- "$BASE_URL" && (npm run test:perf || npm run test:perf)
+          npm run test:perf || npm run test:perf
       - if: always()
         uses: actions/upload-artifact@v4
         with:
