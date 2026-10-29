@@ -54,7 +54,10 @@ final class ImageAttributesTest extends SessionTestBase {
     // The RSS display falls back to the default display, which shows the
     // image in the page media view mode and so fills its render cache.
     $build = $this->container->get('entity_type.manager')->getViewBuilder('node')->view($session, 'rss');
-    $this->container->get('renderer')->renderInIsolation($build);
+    $rss = (string) $this->container->get('renderer')->renderInIsolation($build);
+    // The setup only tests something if the RSS item rendered the media in
+    // the page view mode, whose 16:9 styles the session page uses too.
+    $this->assertStringContainsString('16_9_', $rss);
 
     $this->drupalGet($session->toUrl());
     $this->assertSession()->elementAttributeContains('css', 'img[srcset*="16_9_"]', 'class', 'hero__img');
