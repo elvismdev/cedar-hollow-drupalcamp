@@ -56,6 +56,7 @@ final class ThemeHooks {
     'page' => ['class' => ['session__img'], 'fetchpriority' => 'high'],
     'card' => ['class' => ['card__img'], 'alt' => ''],
     'avatar' => ['class' => ['speaker-byline__img'], 'alt' => ''],
+    'credits' => ['class' => ['credits-view__img']],
   ];
 
   public function __construct(

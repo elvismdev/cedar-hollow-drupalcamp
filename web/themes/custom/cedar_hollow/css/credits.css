@@ -19,5 +19,13 @@
   .credits-view__table {
     position: relative;
     overflow-x: auto;
+
+  }
+
+  /* The thumbnail's sizes attribute says 3rem, so it renders at 3rem. */
+  .credits-view__img {
+    inline-size: var(--size-12);
+    max-inline-size: none;
+    block-size: var(--size-12);
   }
 }

@@ -218,7 +218,8 @@ Each component that shows an image has its own Image media view mode, so the the
 *   `page` sets `class: session__img` and `fetchpriority: high`;
 *   `card` sets `class: card__img`;
 *   `avatar` sets `class: speaker-byline__img`, replacing the attribute `preprocessNodeSpeaker` sets on the formatter today;
-*   `credits` and the embed view modes set no class.
+*   `credits` sets `class: credits-view__img`, which sizes the thumbnail to the 3rem its `sizes` attribute declares;
+*   the embed view modes set no class.
 
 ### Where images appear
 
