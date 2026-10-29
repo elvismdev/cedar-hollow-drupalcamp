@@ -1,0 +1,25 @@
+uuid: 47602527-2a3e-4d4e-93ac-fb4300afd406
+langcode: en
+status: false
+dependencies:
+  content:
+    - 'block_content:hero:6f0b1a52-2c47-4c1e-9d0a-3b8f6a1c7e21'
+  module:
+    - block_content
+active_version: 3d393730806fb862
+versioned_properties:
+  active:
+    settings:
+      default_settings:
+        id: 'block_content:6f0b1a52-2c47-4c1e-9d0a-3b8f6a1c7e21'
+        label: 'Front page hero'
+        label_display: '0'
+        provider: block_content
+        view_mode: full
+    fallback_metadata:
+      slot_definitions: null
+label: 'Front page hero'
+id: block.block_content.6f0b1a52-2c47-4c1e-9d0a-3b8f6a1c7e21
+provider: block_content
+source: block
+source_local_id: 'block_content:6f0b1a52-2c47-4c1e-9d0a-3b8f6a1c7e21'

@@ -1,0 +1,11 @@
+uuid: f1bdb277-d7bd-4be1-98b9-bff7b87a1650
+langcode: en
+status: true
+dependencies:
+  config:
+    - canvas.component.block.block_content.6f0b1a52-2c47-4c1e-9d0a-3b8f6a1c7e21
+name: 'Content block'
+configEntityTypeId: component
+weight: 0
+items:
+  - block.block_content.6f0b1a52-2c47-4c1e-9d0a-3b8f6a1c7e21
