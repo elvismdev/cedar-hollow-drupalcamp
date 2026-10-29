@@ -36,6 +36,8 @@ Pantheon shows a warning page on sandbox sites before the first visit; continue 
 | Custom module | `web/modules/custom/cedar_hollow_core/` (agenda endpoint, seat states, logged mail) |
 | Recipes | `recipes/cedar_hollow_sessions/`, `recipes/cedar_hollow_demo_content/` |
 | Tests | `web/modules/custom/cedar_hollow_core/tests/`, `tests/` |
+| Images: media, image styles, responsive images, Focal Point, AVIF | `recipes/cedar_hollow_media/`, the ratio test `web/modules/custom/cedar_hollow_core/tests/src/Unit/ResponsiveImageRatioTest.php`, `ThemeHooks::preprocessField()` and `::preprocessMedia()`, the image scripts `scripts/*-demo-images.php` and `scripts/demo-images.json`, `/credits` |
+| Performance | `tests/lighthouserc.cjs`, `tests/perf/` |
 | Accessibility | `docs/accessibility.md` |
 
 ## Run it locally
@@ -70,6 +72,8 @@ After changing the agenda builder's JSX or CSS, run `scripts/build-agenda-builde
 | PHPUnit | `ddev exec vendor/bin/phpunit -c web/core/phpunit.xml.dist web/modules/custom/cedar_hollow_core` | Wait list and confirmation mail, the agenda endpoint's contract and cache invalidation, themed seat counts, the demo editor's access, logged mail. Functional tests build their site by applying the sessions recipe. |
 | Playwright e2e and a11y | `cd tests && npm ci && npx playwright install chromium && npx playwright test --project=e2e --project=a11y` | Filtering, the agenda builder with mouse and keyboard, the agenda without storage, signing up, BEM parity between Drupal and Storybook, axe WCAG 2.2 AA scans, reflow at 320 pixels |
 | Smoke (read-only) | `BASE_URL=https://dev-cedar-hollow-demo.pantheonsite.io npx playwright test --project=smoke --project=a11y` | Pages, the sign-up page and the agenda endpoint's headers |
+| Images | part of the e2e run (`tests/e2e/images.spec.ts`) and `ddev drush php:script scripts/check-demo-images.php` | The hero and session images load eagerly with high fetch priority, cards eagerly, the rest lazily, all with `sizes`; the credits page; crops, files and size caps after a rebuild |
+| Performance | `cd tests && NODE_EXTRA_CA_CERTS="$(mkcert -CAROOT)/rootCA.pem" npm run warm -- "$BASE_URL" && npm run test:perf` | Lighthouse mobile, median of five runs on the home page, the listing and a session: LCP under 2.5 s, CLS under 0.1, the hero as the home page's LCP element |
 | Coding standards | `ddev exec vendor/bin/phpcs --standard=Drupal,DrupalPractice web/modules/custom web/themes/custom/cedar_hollow/src` | |
 
 Locally `BASE_URL` defaults to `https://cedar-hollow.ddev.site:30001`; set it to your DDEV URL if it differs.
@@ -77,11 +81,24 @@ Locally `BASE_URL` defaults to `https://cedar-hollow.ddev.site:30001`; set it to
 ## Deploy to Pantheon
 
 ```bash
+terminus backup:create cedar-hollow-demo.dev
 git push origin main
 git push pantheon main:master
 terminus workflow:wait cedar-hollow-demo.dev
 terminus drush cedar-hollow-demo.dev -- deploy -y
+cd tests && npm run warm -- https://dev-cedar-hollow-demo.pantheonsite.io
 ```
+
+The warm-up requests every image derivative the main pages use, so the first visitors do not wait for Drupal to generate them.
+
+The first deploy with images also imports them once, since content reached Pantheon by database copy and the recipe imports only what does not exist yet. Between `deploy` and the warm-up:
+
+```bash
+terminus drush cedar-hollow-demo.dev -- recipe ../recipes/cedar_hollow_demo_content
+terminus drush cedar-hollow-demo.dev -- php:script ../scripts/place-demo-images.php
+```
+
+Then run the smoke and accessibility suites against Pantheon, which include a check that a session page shows its AVIF image.
 
 Pantheon's build runs `composer install` and builds Storybook (`frontend_build` in `pantheon.yml`). Content reached Pantheon once, by database copy from DDEV.
 
