@@ -6,7 +6,7 @@
 #}
 {% include 'cedar_hollow:speaker-byline' with {
   name: label|render|striptags|trim,
-  image: content.field_photo,
+  image: content.field_image,
   attributes: attributes,
 } only %}
-{{ content|without('field_photo') }}
+{{ content|without('field_image') }}

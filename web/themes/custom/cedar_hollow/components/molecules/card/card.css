@@ -23,6 +23,12 @@
     position: relative;
   }
 
+  .card__img {
+    display: block;
+    inline-size: 100%;
+    block-size: auto;
+  }
+
   .card__badge {
     position: absolute;
     inset-block-start: 0;

@@ -2,8 +2,8 @@
 /**
  * @file
  * Session teaser, rendered by Surface's card: the track as the event type,
- * the time as the date, the room as the location, and the seats in the
- * footer slot Cedar Hollow adds.
+ * the time as the date, the room as the location, the session image in the
+ * image slot, and the seats in the footer slot Cedar Hollow adds.
  */
 #}
 {% set footer %}
@@ -12,6 +12,7 @@
   {% endif %}
 {% endset %}
 {% include 'cedar_hollow:card' with {
+  image: content.field_image,
   eyebrow: track_label,
   heading: label|render|striptags|trim,
   heading_level: '2',

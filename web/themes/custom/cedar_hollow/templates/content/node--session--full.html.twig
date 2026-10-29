@@ -7,6 +7,9 @@
 #}
 {{ attach_library('cedar_hollow/sessions') }}
 {% set body %}
+  {% if content.field_image|render|trim %}
+    <div class="session__image">{{ content.field_image }}</div>
+  {% endif %}
   <div class="session__summary">
     {% if date_badge %}
       {% include 'cedar_hollow:date-badge' with date_badge only %}
@@ -17,10 +20,12 @@
     {% endif %}
   </div>
   {{ content.field_speakers }}
-  {{ content.body }}
+  {% if content.body|render|trim %}
+    <div class="prose">{{ content.body }}</div>
+  {% endif %}
   {{ content.field_registration }}
   {{ content.field_forward }}
-  {{ content|without('body', 'field_registration', 'field_forward', 'field_session_time', 'field_room', 'field_track', 'field_speakers', 'field_day') }}
+  {{ content|without('body', 'field_registration', 'field_forward', 'field_session_time', 'field_room', 'field_track', 'field_speakers', 'field_day', 'field_image') }}
 {% endset %}
 <article{{ attributes.addClass('session') }}>
   {% include 'cedar_hollow:page-section' with {width: 'narrow', content: body} only %}
