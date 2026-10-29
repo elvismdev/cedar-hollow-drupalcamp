@@ -31,7 +31,8 @@ Each automated check was first shown to catch a known defect: axe reported `imag
 
 * The Forward link printed its icon with alt text equal to the link text, so screen readers heard the name twice. The link is now text only.
 * The agenda builder's labels lost a space inside the flex button; the accessible name now comes from `aria-label`, starting with the visible text.
+* On the sessions listing, session titles were level 3 headings directly under the level 1 page title, so a screen reader's heading list skipped level 2. The card's `heading_level` prop now gives them level 2.
 
 ## Open findings
 
-* On the sessions listing, session titles are level 3 headings directly under the level 1 page title, so a screen reader's heading list skips level 2.
+None.
