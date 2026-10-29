@@ -137,6 +137,8 @@ jobs:
         timeout-minutes: 20
         working-directory: tests
         run: |
+          # Ubuntu 24.04 blocks the user namespaces Chrome's sandbox needs.
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
           export NODE_EXTRA_CA_CERTS="$(mkcert -CAROOT)/rootCA.pem"
           npm run warm -- "$BASE_URL" && (npm run test:perf || npm run test:perf)
       - if: always()
