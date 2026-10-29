@@ -25,7 +25,10 @@ final class ResponsiveImageRatioTest extends UnitTestCase {
    * Tests that the site's configuration has no violations.
    */
   public function testSiteConfig(): void {
-    $this->assertSame([], $this->violations($this->root . '/../config'));
+    $directory = $this->root . '/../config';
+    // An empty glob would report no violations, so the styles must be found.
+    $this->assertNotEmpty(glob($directory . '/responsive_image.styles.*.yml'), "No responsive image styles in $directory");
+    $this->assertSame([], $this->violations($directory));
   }
 
   /**
