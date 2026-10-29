@@ -29,7 +29,7 @@ jobs:
       - name: Known vulnerabilities in PHP dependencies, Drupal advisories included
         run: composer audit
       - name: Drupal coding standards
-        run: vendor/bin/phpcs --standard=Drupal,DrupalPractice --extensions=php,module,inc,install,theme web/modules/custom web/themes/custom/cedar_hollow/src scripts/sync-agenda-builder.php scripts/seed-demo-content.php
+        run: vendor/bin/phpcs --standard=Drupal,DrupalPractice --extensions=php,module,inc,install,theme web/modules/custom web/themes/custom/cedar_hollow/src scripts/sync-agenda-builder.php scripts/seed-demo-content.php scripts/fetch-demo-images.php scripts/place-demo-images.php scripts/check-demo-images.php
       - name: PHPStan
         run: vendor/bin/phpstan analyse --no-progress --memory-limit=1G
 
