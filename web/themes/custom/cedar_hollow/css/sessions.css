@@ -1,7 +1,6 @@
 /**
  * @file
- * Session page image and summary row, and the sessions listing's filter
- * form.
+ * Session page summary row, and the sessions listing's filter form.
  */
 
 @layer reset, tokens, base, atoms, components, collections, layouts, utilities;
@@ -18,16 +17,6 @@
   .session__seats {
     grid-column: 1 / -1;
     justify-self: start;
-  }
-
-  /* The session image sits above the summary row at the column's width. */
-  .session__image {
-    overflow: hidden;
-    border-radius: var(--radius-2);
-  }
-
-  .session__img {
-    inline-size: 100%;
   }
 
   /* The listing's parts and the filter groups stack with gaps, not margins. */

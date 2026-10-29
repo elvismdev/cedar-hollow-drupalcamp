@@ -215,7 +215,7 @@ Session cards are eager because the sessions view shows all twelve sessions on o
 Each component that shows an image has its own Image media view mode, so the theme sets the component's image attributes by media view mode: a `preprocess_media` hook copies them into the image formatter item's `#attributes`, which core 11.4 merges into the `<img>` (I4; `#item_attributes` is deprecated in 11.4). Core has no `fetchpriority` formatter setting (issue #3366828), and this one mechanism carries it as well. Media is render-cached per media view mode, so attributes keyed by it are the same whichever page renders a media item first. (An earlier version set them per field in `preprocess_field`; a session rendered in its RSS view mode first cached its `page` image without them, which `ImageAttributesTest` now covers.)
 
 *   `hero` sets `class: hero__img` and `fetchpriority: high`;
-*   `page` sets `class: session__img` and `fetchpriority: high`;
+*   `page` sets `class: hero__img` and `fetchpriority: high`, because the session page shows its image through the hero component;
 *   `card` sets `class: card__img`;
 *   `avatar` sets `class: speaker-byline__img`, replacing the attribute `preprocessNodeSpeaker` sets on the formatter today;
 *   `credits` sets `class: credits-view__img`, which sizes the thumbnail to the 3rem its `sizes` attribute declares;
@@ -224,7 +224,7 @@ Each component that shows an image has its own Image media view mode, so the the
 ### Where images appear
 
 *   **Hero.** Core's `block_content` module provides a `hero` block type with one required Media reference, `field_media` (Image bundle, `hero` view mode); the page's own content carries the heading. One hero block is placed in the theme's existing `highlighted` region, which `page.html.twig` renders first inside `<main>`, with front-page visibility only. Its template, `block--block-content--type--hero.html.twig`, includes a new `hero` component with the rendered image. The component is in the `Components` group and marked `noUi: true`, so Canvas does not offer it in its component library.
-*   **Sessions.** A new `field_image` on the session node type references Image media. The full display shows it in the `page` view mode, above the session summary, in a wrapper with the extra class `session__image`. The teaser display uses the `card` view mode, and `node--session--teaser.html.twig` passes the rendered field into the card component's existing image slot. Cards placed in Canvas stay without images, because Canvas cannot fill a slot with an image.
+*   **Sessions.** A new `field_image` on the session node type references Image media. The full display shows it in the `page` view mode, above the session summary, through the hero component (its single 16:9 image is the same pattern as the front page hero). The teaser display uses the `card` view mode, and `node--session--teaser.html.twig` passes the rendered field into the card component's existing image slot. Cards placed in Canvas stay without images, because Canvas cannot fill a slot with an image.
 *   **Speakers.** `field_photo` (a plain image field, empty for every speaker) is replaced by `field_image`, a Media reference. The speaker teaser renders it in the `avatar` view mode into the speaker-byline slot.
 *   **Embeds.** Session bodies embed Image media in the `embed_wide` or `embed_photo` view mode, rendered inside a `figure` with its caption.
 *   **Credits.** A View at `/credits` lists published Image media with `field_verified` set, 50 per page with a pager: a thumbnail in the `credits` view mode, the media name (the Commons file title), creator, licence linked to its licence URL, and the source link. A line above the list states that the images were cropped, resized and converted to AVIF from the linked originals. The footer menu links to it.
@@ -253,7 +253,7 @@ The menu started expanded and collapsed when its script ran, which moved the hom
 ### Theme and CSS
 
 *   `components/molecules/hero`: an image slot only. The image fills the region's width at its intrinsic ratio, from its `width` and `height` attributes. No text is placed over the photo, so contrast never depends on the image, and the page's title stays its only top-level heading.
-*   `hero__img`, `card__img`, `session__img` and `speaker-byline__img` are each sized by their block (`inline-size: 100%`, `block-size: auto`) and keep the shape their image style cropped them to.
+*   `hero__img`, `card__img` and `speaker-byline__img` are each sized by their block (`inline-size: 100%`, `block-size: auto`) and keep the shape their image style cropped them to.
 *   The `--ratio-*` tokens are not restored. The brief recorded a decision to bring them back for these consumers; it is revised here because every image arrives cropped to its ratio, with `width` and `height`, so no CSS needs an aspect-ratio value.
 
 ### Configuration and recipes
@@ -653,12 +653,12 @@ Paths are relative to the repository root. Configuration follows the workflow in
 #### 21. `web/themes/custom/cedar_hollow/templates/content/node--session--full.html.twig`, `node--session--teaser.html.twig`, `node--speaker--teaser.html.twig` (Modify)
 
 *   **Type / Scope**: Node templates.
-*   **Proposed Changes**: The full page renders `content.field_image` above `.session__summary` in a wrapper with the extra class `session__image`, adds `'field_image'` to its `content|without(...)` list, and wraps the body in `prose`. The teaser passes `content.field_image` into the card's `image` slot. The speaker teaser passes `content.field_image` instead of `content.field_photo` and changes `content|without('field_photo')` to `content|without('field_image')`.
+*   **Proposed Changes**: The full page renders `content.field_image` above `.session__summary` by including `cedar_hollow:hero` with the field as its `image` slot, adds `'field_image'` to its `content|without(...)` list, and wraps the body in `prose`. The teaser passes `content.field_image` into the card's `image` slot. The speaker teaser passes `content.field_image` instead of `content.field_photo` and changes `content|without('field_photo')` to `content|without('field_image')`.
 
 #### 22. `web/themes/custom/cedar_hollow/css/sessions.css` (Modify)
 
 *   **Type / Scope**: Session page CSS.
-*   **Proposed Changes**: `.session__image` sits above `.session__summary` in the session layout; `.session__img` takes `inline-size: 100%` and `block-size: auto`.
+*   **Proposed Changes**: The session image needs no rules here: the hero component clips and rounds it, and `hero__img` fills the column.
 
 #### 23. `web/themes/custom/cedar_hollow/components/molecules/card/` (Modify: `card.css`, `card.stories.js`)
 
@@ -743,12 +743,12 @@ Paths are relative to the repository root. Configuration follows the workflow in
 #### 35. `tests/e2e/images.spec.ts` (Create)
 
 *   **Type / Scope**: Playwright, DDEV.
-*   **Proposed Changes**: `loading="eager"` and `fetchpriority="high"` on `img.hero__img` and `img.session__img`; `loading="eager"` on `img.card__img`; `loading="lazy"` on byline and embed images; a `sizes` attribute on card, session, byline and embed images; `/credits` lists titles and licence links and shows the header notice. Run first against the site before item 34's content, where it fails; the failure is recorded in item 34's commit message.
+*   **Proposed Changes**: `loading="eager"` and `fetchpriority="high"` on `img.hero__img` on the front page and the session page; `loading="eager"` on `img.card__img`; `loading="lazy"` on byline and embed images; a `sizes` attribute on card, session, byline and embed images; `/credits` lists titles and licence links and shows the header notice. Run first against the site before item 34's content, where it fails; the failure is recorded in item 34's commit message.
 
 #### 36. `tests/smoke/smoke.spec.ts` (Modify)
 
 *   **Type / Scope**: Playwright, read-only, runs against DDEV and Pantheon.
-*   **Proposed Changes**: `/sessions/caching-render-arrays` has `img.session__img` with an `.avif` URL in its `srcset`, and its `src` answers 200.
+*   **Proposed Changes**: `/sessions/caching-render-arrays` has `.session img.hero__img` with an `.avif` URL in its `srcset`, and its `src` answers 200.
 
 #### 37. `tests/a11y/a11y.spec.ts` (Modify)
 

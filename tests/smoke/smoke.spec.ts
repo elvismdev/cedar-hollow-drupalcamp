@@ -28,7 +28,7 @@ test('the agenda data is uncached at the edge and tagged per session', async ({ 
 
 test('a session page shows its image as AVIF', async ({ page, request }) => {
   await page.goto('/sessions/caching-render-arrays');
-  const image = page.locator('img.session__img');
+  const image = page.locator('.session img.hero__img');
   await expect(image).toHaveAttribute('srcset', /\.avif/);
   const src = await image.getAttribute('src');
   expect(src, 'session image src').toBeTruthy();

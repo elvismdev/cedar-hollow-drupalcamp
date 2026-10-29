@@ -57,7 +57,7 @@ final class ImageAttributesTest extends SessionTestBase {
     $this->container->get('renderer')->renderInIsolation($build);
 
     $this->drupalGet($session->toUrl());
-    $this->assertSession()->elementAttributeContains('css', 'img[srcset*="16_9_"]', 'class', 'session__img');
+    $this->assertSession()->elementAttributeContains('css', 'img[srcset*="16_9_"]', 'class', 'hero__img');
     $this->assertSession()->elementAttributeContains('css', 'img[srcset*="16_9_"]', 'fetchpriority', 'high');
   }
 

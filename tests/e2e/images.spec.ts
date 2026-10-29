@@ -29,7 +29,7 @@ test('session cards load eagerly with sizes', async ({ page }) => {
 
 test('a session page loads its image first and the rest lazily', async ({ page }) => {
   await page.goto('/sessions/theming-with-sdc');
-  const image = page.locator('img.session__img');
+  const image = page.locator('.session img.hero__img');
   await expect(image).toHaveAttribute('loading', 'eager');
   await expect(image).toHaveAttribute('fetchpriority', 'high');
   await expect(image).toHaveAttribute('sizes', /.+/);
