@@ -12,6 +12,16 @@ on:
         default: dev
         type: choice
         options: [dev, test, live]
+  # deploy-dev.yml runs these suites against Dev after each deploy, from the
+  # deployed commit (ref).
+  workflow_call:
+    inputs:
+      environment:
+        type: string
+        default: dev
+      ref:
+        type: string
+        default: ''
 
 permissions:
   contents: read
@@ -24,6 +34,8 @@ jobs:
       BASE_URL: https://${{ inputs.environment || 'dev' }}-cedar-hollow-demo.pantheonsite.io
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
