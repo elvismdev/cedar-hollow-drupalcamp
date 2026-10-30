@@ -164,11 +164,14 @@ jobs:
       - name: drush deploy
         run: terminus drush "$SITE.dev" -- deploy -y
 
-      # config:status exits 0 even when configuration differs, so stdout decides.
+      # config:status exits 0 even when configuration differs, so the output
+      # decides. terminus drush returns Drush's log lines ([notice], [success])
+      # on stdout with the JSON, so they are dropped before comparing.
       - name: Check configuration and database updates
         run: |
-          config=$(terminus drush "$SITE.dev" -- config:status --format=json)
-          updates=$(terminus drush "$SITE.dev" -- updatedb:status --format=json)
+          drush_json() { terminus drush "$SITE.dev" -- "$@" --format=json | { grep -vE '^\s*\[(notice|warning|success|info|ok|error)\]' || true; }; }
+          config=$(drush_json config:status)
+          updates=$(drush_json updatedb:status)
           {
             echo "- config:status: \`$(echo "$config" | tr -d '[:space:]')\`"
             echo "- updatedb:status: \`$(echo "$updates" | tr -d '[:space:]')\`"
