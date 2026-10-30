@@ -1,0 +1,211 @@
+name: Deploy to Pantheon Dev
+
+# Runs after the workflow named "CI" in ci.yml completes. Renaming that
+# workflow stops deploys without an error. A commit reaches Dev only when its
+# CI run succeeded on a push to main in this repository.
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+
+# Only runs that will deploy share the pantheon-dev group, so a skipped run
+# (failed or cancelled CI, a fork's branch named main) never replaces a deploy
+# that is waiting. A running deploy is never cancelled.
+concurrency:
+  group: ${{ (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push' && github.event.workflow_run.head_branch == 'main' && github.event.workflow_run.head_repository.full_name == github.repository) && 'pantheon-dev' || format('deploy-dev-skip-{0}', github.run_id) }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    if: github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push' && github.event.workflow_run.head_branch == 'main' && github.event.workflow_run.head_repository.full_name == github.repository
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    environment:
+      name: pantheon-dev
+      url: https://dev-cedar-hollow-demo.pantheonsite.io
+    env:
+      SITE: cedar-hollow-demo
+      SHA: ${{ github.event.workflow_run.head_sha }}
+      BUILD_NAME: Sync code on "dev"
+    steps:
+      # Third-party actions in this job are pinned by commit because the job
+      # holds the deploy secrets.
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Record the commit
+        run: |
+          echo "- Commit: \`$SHA\`" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: SSH key and pinned codeserver host key
+        env:
+          SSH_KEY: ${{ secrets.PANTHEON_SSH_KEY }}
+          KNOWN_HOSTS: ${{ vars.PANTHEON_KNOWN_HOSTS }}
+        run: |
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
+
+      - uses: shivammathur/setup-php@eb7c497e18156a6bbabfef1d3a82760b9eda3962 # v2
+        with:
+          php-version: '8.3'
+          coverage: none
+
+      # TERMINUS_TOKEN is a Pantheon Personal Access Token, which expires 90 days
+      # after creation. disable-cache: GitHub Actions caches written on main can
+      # be restored by pull request runs, so the Terminus session is never cached.
+      - uses: pantheon-systems/terminus-github-actions@34305c662bb28fb2935aa5556cab46643a0c5170 # v1.2.11
+        with:
+          pantheon-machine-token: ${{ secrets.TERMINUS_TOKEN }}
+          terminus-version: 4.3.3
+          disable-cache: true
+
+      - name: Wake Dev
+        run: terminus env:wake "$SITE.dev"
+
+      - name: Back up Dev
+        id: backup
+        run: |
+          keys() { terminus backup:list "$SITE.dev" --format=json | jq -r 'keys[]' | sort; }
+          keys > before.txt
+          terminus backup:create "$SITE.dev"
+          keys > after.txt
+          new_key=$(comm -13 before.txt after.txt | grep '_backup_database$' | tail -n 1 || true)
+          if [ -z "$new_key" ]; then
+            echo "- Backup: **backup not found**" >> "$GITHUB_STEP_SUMMARY"
+            echo "::error::backup not found"
+            exit 1
+          fi
+          file=$(terminus backup:list "$SITE.dev" --format=json | jq -r --arg k "$new_key" '.[$k].file')
+          echo "- Backup file: \`$file\`" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Push to Pantheon
+        id: push
+        run: |
+          head=$(terminus env:code-log "$SITE.dev" --format=json | jq -r '.[0].hash')
+          if [ "$head" = "$SHA" ]; then
+            echo "pushed=false" >> "$GITHUB_OUTPUT"
+            echo "- Push: already deployed, push skipped" >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          mode=$(terminus env:info "$SITE.dev" --field=connection_mode)
+          if [ "$mode" != "git" ]; then
+            msg="Dev is in SFTP mode; run \`terminus connection:set cedar-hollow-demo.dev git\` and re-run."
+            echo "- Push: $msg" >> "$GITHUB_STEP_SUMMARY"
+            echo "::error::Dev is in $mode mode"
+            exit 1
+          fi
+          last=$(terminus workflow:list "$SITE" --format=json \
+            | jq -r --arg n "$BUILD_NAME" '[.[] | select(.workflow == $n and .env == "dev") | .started_at] | max // 0')
+          echo "last_build_started=$last" >> "$GITHUB_OUTPUT"
+          url=$(terminus connection:info "$SITE.dev" --field=git_url)
+          if GIT_SSH_COMMAND='ssh -o BatchMode=yes -o StrictHostKeyChecking=yes' \
+              git push "$url" "$SHA:refs/heads/master" 2> push.err; then
+            echo "pushed=true" >> "$GITHUB_OUTPUT"
+            echo "- Push: pushed to Pantheon master" >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          cat push.err >&2
+          if grep -Eq '\[rejected\].*\((non-fast-forward|fetch first)\)' push.err; then
+            msg="Pantheon refused the push: its master is not an ancestor of this commit. Either Pantheon master holds a commit that is not on main (follow the divergence recovery in the README), or an older CI run was re-run by hand after a newer commit deployed (nothing to do)."
+          else
+            msg="the push failed: $(head -n 5 push.err | tr '\n' ' ')"
+          fi
+          echo "- Push: $msg" >> "$GITHUB_STEP_SUMMARY"
+          echo "::error::push to Pantheon failed"
+          exit 1
+
+      - name: Wait for the Pantheon build
+        env:
+          PUSHED: ${{ steps.push.outputs.pushed }}
+          LAST_BUILD_STARTED: ${{ steps.push.outputs.last_build_started }}
+        run: |
+          select_build() {
+            terminus workflow:list "$SITE" --format=json | jq -c --arg n "$BUILD_NAME" --arg pushed "$PUSHED" \
+              --argjson last "${LAST_BUILD_STARTED:-0}" '
+                [.[]
+                 | select(.workflow == $n and .env == "dev")
+                 | select($pushed != "true" or (.started_at > $last))]
+                | max_by(.started_at) // empty'
+          }
+          deadline=$((SECONDS + 900))
+          while :; do
+            build=$(select_build)
+            finished=$(jq -r 'if . == null then "" else (.finished_at // "") end' <<< "${build:-null}")
+            if [ -n "$build" ] && [ -n "$finished" ] && [ "$finished" != "null" ]; then
+              break
+            fi
+            if [ "$SECONDS" -ge "$deadline" ]; then
+              if [ -z "$build" ]; then reason="no Pantheon build started"; else reason="Pantheon build still running after 900 seconds"; fi
+              echo "- Build: **$reason**" >> "$GITHUB_STEP_SUMMARY"
+              echo "::error::$reason"
+              exit 1
+            fi
+            sleep 15
+          done
+          id=$(jq -r '.id' <<< "$build")
+          status=$(jq -r '.status' <<< "$build")
+          dev_head=$(terminus env:code-log "$SITE.dev" --format=json | jq -r '.[0].hash')
+          echo "- Build: \`$id\`, status \`$status\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Dev head: \`$dev_head\`" >> "$GITHUB_STEP_SUMMARY"
+          if [ "$status" != "succeeded" ]; then
+            echo "::error::Pantheon build $id ended with status $status"
+            exit 1
+          fi
+
+      - name: drush deploy
+        run: terminus drush "$SITE.dev" -- deploy -y
+
+      # config:status exits 0 even when configuration differs, so stdout decides.
+      - name: Check configuration and database updates
+        run: |
+          config=$(terminus drush "$SITE.dev" -- config:status --format=json)
+          updates=$(terminus drush "$SITE.dev" -- updatedb:status --format=json)
+          {
+            echo "- config:status: \`$(echo "$config" | tr -d '[:space:]')\`"
+            echo "- updatedb:status: \`$(echo "$updates" | tr -d '[:space:]')\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+          if [ "$(echo "$config" | tr -d '[:space:]')" != "[]" ]; then
+            echo "::error::configuration differs from config/"
+            exit 1
+          fi
+          if [ -n "$(echo "$updates" | tr -d '[:space:]')" ]; then
+            echo "::error::database updates are pending"
+            exit 1
+          fi
+
+  # No secrets here: npm ci runs dependency install scripts.
+  warm:
+    needs: deploy
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: tests/package-lock.json
+      - run: npm ci
+        working-directory: tests
+      - run: npm run warm -- https://dev-cedar-hollow-demo.pantheonsite.io
+        working-directory: tests
+
+  # Waits for warm: parallel requests for cold image derivatives can answer 503.
+  smoke:
+    needs: [deploy, warm]
+    uses: ./.github/workflows/pantheon-nightly.yml
+    with:
+      environment: dev
+      ref: ${{ github.event.workflow_run.head_sha }}
