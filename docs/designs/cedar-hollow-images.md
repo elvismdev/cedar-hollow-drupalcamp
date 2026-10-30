@@ -284,6 +284,8 @@ It then creates the hero block content and the footer menu link to `/credits` wi
 
 Content on Pantheon came from a one-time database copy, and the live site now holds a reviewer account and reviewer activity that a new copy would erase. Applying the content recipe there imports only entities that do not exist yet (core imports default content with `Existing::Skip`), so it creates the new media, files and crops and skips every existing session, speaker, Canvas page and menu link. The one-time image rollout is:
 
+(historical: the one-time rollout as run before `deploy-dev.yml` existed; on a freshly created Dev, follow the fresh-Dev order in the README)
+
 1.  `terminus backup:create cedar-hollow-demo.dev`.
 2.  Push the code to Pantheon's `master`, then `terminus drush cedar-hollow-demo.dev -- deploy -y`. The hero block placement is imported here, before its block content exists, and renders nothing until step 3.
 3.  `terminus drush cedar-hollow-demo.dev -- recipe ../recipes/cedar_hollow_demo_content`, which creates the media, files, crops and the hero block content.
@@ -291,7 +293,7 @@ Content on Pantheon came from a one-time database copy, and the live site now ho
 5.  The warm-up against the Pantheon URL, so the first visitors do not pay for derivative generation (I6).
 6.  The smoke and accessibility suites against Pantheon; the smoke suite includes a check that a session page shows its AVIF image.
 
-Every later deploy needs only the backup, `drush deploy` and the warm-up; the main design's standing runbook gains those two additions.
+Every later deploy is run by `deploy-dev.yml`, which takes the backup, runs the warm-up and runs the smoke and accessibility suites.
 
 ### Measurement
 
@@ -488,8 +490,8 @@ Every later deploy needs only the backup, `drush deploy` and the warm-up; the ma
 
 ### Rollout and rollback
 
-*   The one-time Pantheon image rollout is the six steps in the Technical Plan; later deploys add only the backup and the warm-up.
-*   Rollback is restoring the backup taken in step 1 and redeploying the previous commit; configuration cannot simply be reverted once media and crops exist.
+*   The one-time Pantheon image rollout is the six steps in the Technical Plan; later deploys are run by `deploy-dev.yml`.
+*   Rollback is restoring the database from the deploy run's backup file and reverting on `main`; configuration cannot simply be reverted once media and crops exist.
 
 ### Future Improvements
 
@@ -801,7 +803,7 @@ Paths are relative to the repository root. Configuration follows the workflow in
 *   **Browser**: Playwright `e2e`, `a11y`, `smoke` and `visual` projects on DDEV; every changed page viewed at 412 and 1280 CSS pixels wide with no console errors.
 *   **Performance**: `npm run warm` then `npm run test:perf` on DDEV; one warmed run against Pantheon Dev recorded in `docs/checks.md`.
 *   **CI**: every job green on the final commit.
-*   **Deploy**: the six rollout steps, then `config:status` with no differences on Pantheon.
+*   **Deploy**: the six rollout steps, then `config:status` with no differences on Pantheon. (historical; later deploys run through `deploy-dev.yml`)
 *   **Coverage**: Goal 1 item 32; Goal 2 item 16; Goal 3 items 35 and 39; Goal 4 items 9 and 35; Goal 5 items 30 and 41; Goal 6 item 35; Goal 7 item 14; Goal 8 item 32; Goal 9 item 26; Goal 10 items 39 and 41; Goal 11 item 37; Goal 12 items 2 and 42. CUJ 1 items 26, 35 and 39; CUJ 2 item 35; CUJ 3 items 9 and 10; CUJ 4 item 32; CUJ 5 item 35.
 
 --------------------------------------------------------------------------------

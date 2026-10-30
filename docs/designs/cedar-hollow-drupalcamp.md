@@ -62,7 +62,7 @@ Every goal below must ship; there is no stretch tier. Each goal names the check 
 *   **A production CSS bundle.** Each component ships its own CSS file and Drupal aggregates CSS per page.
 *   **Claiming WCAG or Section 508 conformance.** The site is tested against WCAG 2.2 AA, which also covers the WCAG 2.0 AA criteria Section 508 references, and the results are reported. No conformance claim is made.
 *   **Older browsers.** Browsers older than Chrome and Edge 121, Safari 17 and Firefox 117 are not targeted: the site needs CSS nesting, cascade layers and container queries, AVIF decoding and the `scripting` media feature (raised from the CSS-only floor by the images design).
-*   **Continuous deployment.** Deploys are run by hand with Git and Terminus. Continuous integration exists: a GitHub Actions workflow lints, runs PHPUnit, Playwright, visual regression and a Lighthouse performance check on a site rebuilt from the repository.
+*   **Continuous deployment to Test and Live.** Dev is deployed by `deploy-dev.yml` after CI passes; promotion to Test and Live stays manual. Continuous integration exists: a GitHub Actions workflow lints, runs PHPUnit, Playwright, visual regression and a Lighthouse performance check on a site rebuilt from the repository.
 *   **Edge caching.** Drupal's page cache max-age stays 0, so Pantheon's edge does not store anonymous pages. A demo with a handful of visitors does not need it, and it would make seat counts harder to keep fresh.
 
 ## Open Questions
@@ -234,9 +234,9 @@ A `demo_editor` role may create, edit and publish Canvas pages. It cannot edit p
 ### Deployment
 
 *   **Local.** DDEV with PHP 8.3 and MariaDB 10.6 to match Pantheon, Node 22 for the theme.
-*   **Repository setup.** The Pantheon sandbox is created first from the `drupal-11-composer-managed` upstream and its repository cloned; GitHub is added as the public `origin`, and Pantheon's Git stays as a second remote, so no force push is needed.
+*   **Repository setup.** The Pantheon sandbox is created first from the `drupal-11-composer-managed` upstream and its repository cloned; GitHub is added as the public `origin`, and only `deploy-dev.yml` pushes to Pantheon's Git repository, without force, so no local `pantheon` remote exists.
 *   **Pantheon.** `pantheon.yml` sets the PHP and database versions and a `frontend_build` entry for the theme path with `node_version: 22`, whose build command builds the static Storybook into the theme folder. Ignore rules for the theme's `node_modules/` and build output live in the repository root `.gitignore`, because the upstream ignores `.gitignore` files under `web/`. After the first build, the Storybook URL and its `iframe.html` and `index.json` are requested to confirm they are served. If the platform build cannot build Storybook, the fallback is building it locally, removing its ignore rule and committing the static output.
-*   **Flow.** Deploys start with `terminus backup:create <site>.dev`, then `git push pantheon main:master`, `terminus workflow:wait <site>.dev` until the platform build finishes, `terminus drush <site>.dev -- deploy -y`, and finally the image warm-up (`npm run warm` in `tests/`) so the first visitors do not wait for image derivatives to be generated.
+*   **Flow.** `.github/workflows/deploy-dev.yml` deploys a commit on `main` to Dev only after every CI job passed on it. Deploys run one at a time and never move Dev to an older commit. Each deploy backs up Dev, pushes without `--force`, waits for Pantheon's build to succeed, runs `drush deploy`, and goes red unless `config:status` and `updatedb:status` are clean, the image warm-up returns 200 everywhere, and the smoke and accessibility suites pass. Code is corrected through `main`; a restore uses the backup file named in the run summary.
 *   **Content.** Content is copied to Pantheon once, from DDEV, by database and files sync. Before the export, local test registrations are deleted; after the import, the admin password is reset to a strong value or user 1 is blocked.
 *   **Before sharing.** The sandbox is woken, the read-only smoke and accessibility suite runs against it with the `Deterrence-Bypass: 1` header (which skips the sandbox warning page), a Pantheon backup is taken with the restore command written in the README, and the shared commit is tagged. The editor account is blocked when the review period ends.
 
@@ -376,10 +376,6 @@ The agenda route returns one cached JSON document for all sessions; polling happ
 
 A Pantheon backup is taken before sharing and the restore command is in the README. The shared commit is tagged. Configuration changes go through `drush deploy`.
 
-### Future Improvements
-
-*   **Continuous deployment**: CI now exists (see Non-Goals); deploying from it to Pantheon remains a future step.
-
 ### Additional Resources
 
 *   Surface theme: https://github.com/uclahs/surface
@@ -484,8 +480,8 @@ Defined in full in `docs/designs/cedar-hollow-images.md`. The values other files
 *   **Proposed Changes**:
     1.  `terminus site:create <site> "Cedar Hollow DrupalCamp" drupal-11-composer-managed`, using the first free machine name of `cedar-hollow-demo`, `cedar-hollow-demo-2`, `cedar-hollow-demo-3`.
     2.  `terminus connection:set <site>.dev git`, then `git clone` the Dev repository URL from `terminus connection:info <site>.dev --field=git_url`.
-    3.  `git remote rename origin pantheon`; `gh repo create elvismdev/cedar-hollow-drupalcamp --public`; `git remote add origin git@github.com:elvismdev/cedar-hollow-drupalcamp.git`. `REPO_URL` (items 23 and 26) is `https://github.com/elvismdev/cedar-hollow-drupalcamp`.
-    4.  `git branch -m master main`; `git push -u origin main`. Pantheon's branch stays `master`, pushed with `git push pantheon main:master`.
+    3.  `git remote rename origin pantheon`; `gh repo create elvismdev/cedar-hollow-drupalcamp --public`; `git remote add origin git@github.com:elvismdev/cedar-hollow-drupalcamp.git`. `REPO_URL` (items 23 and 26) is `https://github.com/elvismdev/cedar-hollow-drupalcamp`. (historical: the `pantheon` remote; superseded by `deploy-dev.yml`)
+    4.  `git branch -m master main`; `git push -u origin main`. Pantheon's branch stays `master`, pushed with `git push pantheon main:master`. (historical: the `pantheon` remote; superseded by `deploy-dev.yml`)
 
 #### 1. `composer.json`, `composer.lock` (Modify the upstream's)
 
@@ -802,14 +798,14 @@ Defined in full in `docs/designs/cedar-hollow-images.md`. The values other files
 
 *   **Proposed Changes**, in order:
     1.  `git ls-files | grep -E 'research|_report|concepts_brief|design_draft'` prints nothing.
-    2.  `git push origin main`; `git push pantheon main:master`; `terminus workflow:wait <site>.dev`; confirm in the dashboard Workflow Logs that the frontend build ran.
+    2.  `git push origin main`; `git push pantheon main:master`; `terminus workflow:wait <site>.dev`; confirm in the dashboard Workflow Logs that the frontend build ran. (historical; superseded by `deploy-dev.yml`)
     3.  Locally: `ddev drush entity:delete registration -y`; `ddev export-db --file=db.sql.gz`; `gunzip -c db.sql.gz | $(terminus connection:info <site>.dev --field=mysql_command)`. The demo content has no managed files, so no file sync is needed.
     4.  `terminus drush <site>.dev -- deploy -y`; `terminus drush <site>.dev -- cr`.
     5.  `terminus drush <site>.dev -- user:password admin "$(openssl rand -base64 24)"`; `terminus drush <site>.dev -- user:information admin` shows the account; `terminus drush <site>.dev -- user:create demo-editor --password="$(openssl rand -base64 18)"` (record the password for step 10); `terminus drush <site>.dev -- user:role:add demo_editor demo-editor`; a page on Pantheon contains no `<!-- THEME DEBUG -->` comment.
     6.  Request the Storybook URL, `iframe.html` and `index.json`; if any is missing, build Storybook locally, remove its `.gitignore` rule, commit the output and push again.
     7.  `curl -sI -H 'Deterrence-Bypass: 1' https://dev-<site>.pantheonsite.io/api/agenda` shows `Cache-Control` with `no-cache` and a `registration_list.host_entity:node:` cache tag.
     8.  `terminus env:wake <site>.dev`; `BASE_URL=https://dev-<site>.pantheonsite.io npx playwright test --project=smoke --project=a11y`.
-    9.  `terminus backup:create <site>.dev`; run `terminus backup:restore <site>.dev --element=all -y` once and re-run the smoke project; record the restore command in the README; `git tag shared-<YYYY-MM-DD>` with the sharing date and `git push origin --tags`.
+    9.  `terminus backup:create <site>.dev`; run `terminus backup:restore <site>.dev --element=all -y` once and re-run the smoke project; record the restore command in the README; `git tag shared-<YYYY-MM-DD>` with the sharing date and `git push origin --tags`. (historical; restores now use `--file=` with the backup file named in the deploy run summary)
     10. Share the editor password separately from the email; block the `demo-editor` account with `terminus drush <site>.dev -- user:block demo-editor` once the hiring process for which the demo was shared has ended.
 
 ### Verification Plan
