@@ -53,7 +53,7 @@ The route that would remove the site's Pantheon repository, Pantheon's GitHub Ap
 *   Automatic rollback. Restoring a backup stays a manual Terminus step.
 *   Syncing databases or uploaded files. The one-time recipe and image import has already run on the current Dev (24 image media entities, checked 2026-10-30) and is needed again only on a freshly created Dev, in the order given under Failure modes and recovery.
 *   Running Lighthouse against Pantheon.
-*   Automated rotation of the SSH key and machine token.
+*   Automated rotation of the SSH key and the Personal Access Token. The token expires 90 days after creation, so its rotation is a manual, dated step in the README.
 *   Blocking pushes to Pantheon made outside CI. Pantheon has no branch protection on this plan, so "CI only" is a convention. Detection is partial: a push of a commit that is not on `main` is caught at the next deploy, and a push of a commit already on `main` is not caught at all.
 *   Shortening the time between a merge to `main` and Dev updating. It follows from waiting for every CI job and is accepted.
 *   An emergency manual deploy path, and a manual approval step on each deploy.
@@ -179,9 +179,9 @@ It polls every 15 seconds until that workflow has a `finished_at` value, for at 
 
 ### Credentials
 
-*   **Pantheon account**: the owner's own Pantheon account, the only member of the site's team. A machine token and an SSH key both carry that account's access to every site it can reach. This is accepted and listed under Risks.
-*   **SSH key**: a new ed25519 key generated for CI only. The private half is the GitHub Environment secret `PANTHEON_SSH_KEY`, written to `~/.ssh/id_ed25519` with mode 600.
-*   **Machine token**: a new machine token on the same account, GitHub Environment secret `PANTHEON_MACHINE_TOKEN`, passed to the Terminus action as `pantheon-machine-token`.
+*   **Pantheon account**: the owner's own Pantheon account, the only member of the site's team. A Personal Access Token and an SSH key both carry that account's access to every site it can reach. This is accepted and listed under Risks.
+*   **SSH key**: a new RSA 4096 key generated for CI only (Pantheon rejects ed25519: `terminus ssh-key:add` reports "SSH keys of type 'ed25519' are not yet supported"). The private half is the GitHub Environment secret `PANTHEON_SSH_KEY`, written to `~/.ssh/id_rsa` with mode 600.
+*   **Personal Access Token**: a new Personal Access Token on the same account, GitHub Environment secret `TERMINUS_TOKEN` (the name Pantheon's GitHub Actions guide uses), passed to the Terminus action as `pantheon-machine-token`, which runs `terminus auth:login --machine-token`; that flag accepts Personal Access Tokens. Pantheon no longer creates new Machine Tokens. A Personal Access Token expires 90 days after creation (docs.pantheon.io personal-access-tokens, reviewed 2026-09-21).
 *   **Git URL**: read at run time with `terminus connection:info cedar-hollow-demo.dev --field=git_url` and pushed to directly, so CI creates no remote named `pantheon` and nothing hard-codes the site UUID.
 *   **Codeserver host key**: the GitHub Environment variable `PANTHEON_KNOWN_HOSTS` (read as `vars.PANTHEON_KNOWN_HOSTS`) holds the `[codeserver.dev.<site uuid>.drush.in]:2222 ssh-rsa ...` line, written to `~/.ssh/known_hosts`. Its trusted source is the entry already in the owner's `~/.ssh/known_hosts` from the manual pushes. The `git push` therefore checks the host key.
 *   **Appserver host keys**: `terminus drush` builds its own SSH command, and Terminus 4.3.3 passes `-o "StrictHostKeyChecking=no"` (`SSHBaseCommand.php` line 388). Steps 7 and 8 therefore run without host key checking. This is an accepted risk, listed under Risks.
@@ -208,7 +208,7 @@ Each step of the `deploy` job appends what it learned to that job's step summary
 
 | Fails at | Dev is left | Recovery |
 |---|---|---|
-| steps 1 to 3 (checkout, SSH, Terminus login, wake) | unchanged | re-run `deploy-dev.yml` |
+| steps 1 to 3 (checkout, SSH, Terminus login, wake) | unchanged | re-run `deploy-dev.yml`; a login failure usually means the Personal Access Token expired: rotate `TERMINUS_TOKEN`, then re-run |
 | step 4 backup | unchanged | re-run `deploy-dev.yml` |
 | step 5: Dev is in SFTP mode | unchanged | `terminus connection:set cedar-hollow-demo.dev git`, then re-run |
 | step 5: push refused (`fetch first` or `non-fast-forward`) | unchanged | divergence recovery, or nothing if an older CI run was re-run by hand |
@@ -232,7 +232,8 @@ Each step of the `deploy` job appends what it learned to that job's step summary
 | A push to Pantheon of a commit already on `main` | Dev runs a commit CI may not have finished testing, until the next deploy | AGENTS.md rule; no local remote; the README documents no push | undetected |
 | A push of a commit not on `main`, a dashboard upstream update, or an SFTP-mode commit | every deploy is refused until recovered | CUJ 6, divergence recovery | found only at the next deploy |
 | `terminus drush` without host key checking | a network attacker between the runner and the appserver could impersonate it during steps 7 and 8 | the codeserver push is pinned; the key is intended only for this site, though it reaches every site on the owner's account | accepted |
-| The SSH key and machine token on the owner's account | a leaked credential reaches every site the owner can access | GitHub Environment secrets, read only by the guarded job; Terminus session cache off; rotation recorded | accepted |
+| The SSH key and Personal Access Token on the owner's account | a leaked credential reaches every site the owner can access | GitHub Environment secrets, read only by the guarded job; Terminus session cache off; rotation recorded | accepted |
+| The Personal Access Token expires after 90 days | every deploy fails at the Terminus login | expiry date recorded in the README with the rotation steps | depends on rotating before the date |
 | A dependency install script in `tests/` | could read secrets if run beside them | check 2 runs in a job with no secrets | none known |
 | A GitHub cancel or timeout after the push | Pantheon's build keeps running while GitHub stops | the deploy group never cancels in progress; a re-run waits for that build | a manual cancel still interrupts |
 | The scheduled nightly overlaps a deploy | a false nightly failure | the nightly runs at 06:30 UTC; overlap accepted rather than shared locking | occasional false failure |
@@ -353,7 +354,7 @@ Item 8 (settings) is done before the pull request is merged, because the merge s
         *   Env: `SITE: cedar-hollow-demo`, `SHA: ${{ github.event.workflow_run.head_sha }}`. No job outputs.
         *   Steps (each appends its fact to `$GITHUB_STEP_SUMMARY` as soon as it has it):
             1.  `actions/checkout` with `ref: ${{ github.event.workflow_run.head_sha }}` and `fetch-depth: 0`; write `$SHA` to the summary.
-            2.  Write `PANTHEON_SSH_KEY` to `~/.ssh/id_ed25519` (mode 600) and `vars.PANTHEON_KNOWN_HOSTS` to `~/.ssh/known_hosts`; `shivammathur/setup-php` with PHP 8.3; `pantheon-systems/terminus-github-actions` with `pantheon-machine-token: ${{ secrets.PANTHEON_MACHINE_TOKEN }}`, `terminus-version: 4.3.3`, `disable-cache: true`.
+            2.  Write `PANTHEON_SSH_KEY` to `~/.ssh/id_rsa` (mode 600) and `vars.PANTHEON_KNOWN_HOSTS` to `~/.ssh/known_hosts`; `shivammathur/setup-php` with PHP 8.3; `pantheon-systems/terminus-github-actions` with `pantheon-machine-token: ${{ secrets.TERMINUS_TOKEN }}`, `terminus-version: 4.3.3`, `disable-cache: true`.
             3.  `terminus env:wake "$SITE.dev"`.
             4.  Save the keys of `terminus backup:list "$SITE.dev" --format=json`; run `terminus backup:create "$SITE.dev"`; list again and take the one `_backup_database` key that was not there before, recording its `file`. If there is no new key, fail with "backup not found". No clock is compared.
             5.  Read the first `hash` from `terminus env:code-log "$SITE.dev" --format=json`. If it equals `$SHA`, record "already deployed, push skipped" and set `PUSHED=false`. Otherwise:
@@ -386,7 +387,7 @@ Item 8 (settings) is done before the pull request is merged, because the merge s
     4.  The fresh-Dev order, with the two import commands.
     5.  Restore: "Restore Dev from the deploy run's backup file (a full restore was tested on 2026-10-28: every page returned 200, configuration matched the code and the reviewer account was intact):" followed by `terminus backup:restore cedar-hollow-demo.dev --file=<database backup file from the run summary> -y`, together with a revert on `main`.
     6.  Divergence recovery, with its commands.
-    7.  "Deploy credentials": the site owner's own Pantheon account (identity not recorded here); `PANTHEON_SSH_KEY`, `PANTHEON_MACHINE_TOKEN` and `PANTHEON_KNOWN_HOSTS` in the `pantheon-dev` GitHub Environment; their creation date; rotation: generate a new key pair, `terminus ssh-key:add` the new public key, replace the secret, `terminus ssh-key:remove` the old key; create a new machine token in the Pantheon dashboard, replace the secret, revoke the old token.
+    7.  "Deploy credentials": the site owner's own Pantheon account (identity not recorded here); `PANTHEON_SSH_KEY`, `TERMINUS_TOKEN` and `PANTHEON_KNOWN_HOSTS` in the `pantheon-dev` GitHub Environment; their creation date and the token's expiry date; rotation: generate a new key pair, `terminus ssh-key:add` the new public key, replace the secret, `terminus ssh-key:remove` the old key; before the token expires, add a new Personal Access Token in the Pantheon dashboard, replace `TERMINUS_TOKEN`, revoke the old token.
 *   **Why**: The README keeps only operator facts, and no instruction may recreate the remote.
 
 #### 5. `docs/designs/cedar-hollow-drupalcamp.md` (Modify)
@@ -422,11 +423,11 @@ Item 8 (settings) is done before the pull request is merged, because the merge s
 
 #### 8. Settings, before the pull request is merged (no files)
 
-*   **Key pair** (owner's machine): `ssh-keygen -t ed25519 -N '' -C 'cedar-hollow-drupalcamp deploy-dev' -f <scratch path>`.
-*   **Pantheon** (owner's account): `terminus ssh-key:add <scratch path>.pub`; create a machine token named `cedar-hollow-drupalcamp deploy-dev` in the dashboard.
+*   **Key pair** (owner's machine): `ssh-keygen -t rsa -b 4096 -N '' -C 'cedar-hollow-drupalcamp deploy-dev' -f <scratch path>`.
+*   **Pantheon** (owner's account): `terminus ssh-key:add <scratch path>.pub`; create a Personal Access Token named `cedar-hollow-drupalcamp deploy-dev` (Personal Settings, Personal Access Tokens) and note its 90-day expiry date in the dashboard.
 *   **GitHub**:
     *   Create the GitHub Environment `pantheon-dev`: deployment branches `main` only, no required reviewers.
-    *   Add GitHub Environment secrets: `PANTHEON_SSH_KEY` (contents of `<scratch path>`) and `PANTHEON_MACHINE_TOKEN`.
+    *   Add GitHub Environment secrets: `PANTHEON_SSH_KEY` (contents of `<scratch path>`) and `TERMINUS_TOKEN`.
     *   Add the GitHub Environment variable `PANTHEON_KNOWN_HOSTS`: every key line printed by `ssh-keygen -F "[codeserver.dev.<site uuid>.drush.in]:2222"`, without the `# Host ... found` comments. `<site uuid>` is `terminus site:info cedar-hollow-demo --field=id`.
 *   **Clean up**: delete `<scratch path>` and `<scratch path>.pub`.
 
