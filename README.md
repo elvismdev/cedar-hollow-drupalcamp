@@ -128,6 +128,17 @@ rm <scratch path> <scratch path>.pub
 
 The Personal Access Token expires 90 days after it is created, and a deploy then fails at the Terminus login step, so rotate it before then: in the Pantheon dashboard, Personal Settings, Personal Access Tokens, click Add token, store it with `gh secret set TERMINUS_TOKEN --env pantheon-dev`, then revoke the old token there.
 
+The warm-up and the smoke and accessibility suites send a Pantheon bot-bypass token in the `x-pantheon-bot-bypass` header, so the edge's bot protection does not challenge them; it does not lift Pantheon's rate limits. It is the repository secret `PANTHEON_BOT_BYPASS_TOKEN`, sent only to `*.pantheonsite.io`. The current token expires on 2027-04-01 and the next one is valid from 2027-01-01, so replace the secret between those dates. Run the command below with `"current"` changed to `"next"` if it still lists the old token as current; the plugin's notice says which to send:
+
+```bash
+terminus self:plugin:install pantheon-systems/terminus-gcdn-plugin   # once
+terminus gcdn:bot-bypass cedar-hollow-demo --format=json --fields=role,token \
+  | jq -er '.[] | select(.role=="current") | .token' | tr -d '\n' \
+  | gh secret set PANTHEON_BOT_BYPASS_TOKEN --repo elvismdev/cedar-hollow-drupalcamp
+```
+
+If the warm-up exits with code 75, the host rate-limited it rather than a page failing; its log lists the 429 response headers. Wait before re-running the failed jobs.
+
 Clear test sign-ups so every session has its seats again:
 
 ```bash
