@@ -293,7 +293,7 @@ Content on Pantheon came from a one-time database copy, and the live site now ho
 5.  The warm-up against the Pantheon URL, so the first visitors do not pay for derivative generation (I6).
 6.  The smoke and accessibility suites against Pantheon; the smoke suite includes a check that a session page shows its AVIF image.
 
-Every later deploy is run by `deploy-dev.yml`, which takes the backup, runs the warm-up and runs the smoke and accessibility suites.
+Every later deploy is run by `deploy-dev.yml`, which takes the backup, runs the warm-up when image styles, the image manifest or the content recipe change, and runs the smoke and accessibility suites.
 
 ### Measurement
 
