@@ -80,33 +80,53 @@ Locally `BASE_URL` defaults to `https://cedar-hollow.ddev.site:30001`; set it to
 
 ## Deploy to Pantheon
 
+Deploys run through `.github/workflows/deploy-dev.yml` after every CI job passes on `main`; there is no manual push. Watch a run on the Actions tab or under the `pantheon-dev` deployment. A green run means Dev runs the commit, `drush deploy` completed, `config:status` and `updatedb:status` are clean, the image warm-up returned 200 everywhere, and the smoke and accessibility suites passed. A red run marks the failed step, and the `deploy` job's summary lists the commit, the push result, the backup file and the build status up to that point. To see which commit Dev runs:
+
 ```bash
-terminus backup:create cedar-hollow-demo.dev
-git push origin main
-git push pantheon main:master
-terminus workflow:wait cedar-hollow-demo.dev
-terminus drush cedar-hollow-demo.dev -- deploy -y
-cd tests && npm run warm -- https://dev-cedar-hollow-demo.pantheonsite.io
+terminus env:code-log cedar-hollow-demo.dev
 ```
 
-The warm-up requests every image derivative the main pages use, so the first visitors do not wait for Drupal to generate them.
+Re-run only the newest `main` commit's CI run; re-running an older one cancels the newer commit's CI. To retry an older failure, push an empty commit. Re-running `deploy-dev.yml` itself is safe: it skips the push when Dev already runs the commit and waits for that commit's build.
 
-The first deploy with images also imports them once, since content reached Pantheon by database copy and the recipe imports only what does not exist yet. Between `deploy` and the warm-up:
+Pantheon's build runs `composer install` and builds Storybook (`frontend_build` in `pantheon.yml`). Content reached Pantheon once, by database copy from DDEV.
+
+On a freshly created Dev, the one-time recipe and image import must run after `drush deploy` and before the warm-up. The first deploy there is expected to end red at `warm` or `smoke`; then run:
 
 ```bash
 terminus drush cedar-hollow-demo.dev -- recipe ../recipes/cedar_hollow_demo_content
 terminus drush cedar-hollow-demo.dev -- php:script ../scripts/place-demo-images.php
 ```
 
-Then run the smoke and accessibility suites against Pantheon, which include a check that a session page shows its AVIF image.
+and re-run `deploy-dev.yml`, which skips the push and must go green.
 
-Pantheon's build runs `composer install` and builds Storybook (`frontend_build` in `pantheon.yml`). Content reached Pantheon once, by database copy from DDEV.
-
-Restore Dev from its latest backup (tested on 2026-10-28: after a full restore every page returned 200, configuration matched the code and the reviewer account was intact):
+Restore Dev from the deploy run's backup file (a full restore was tested on 2026-10-28: every page returned 200, configuration matched the code and the reviewer account was intact), together with a revert on `main`, because code is corrected only through `main`:
 
 ```bash
-terminus backup:restore cedar-hollow-demo.dev --element=all -y
+terminus backup:restore cedar-hollow-demo.dev --file=<database backup file from the run summary> -y
 ```
+
+If a deploy reports that Pantheon refused the push because its `master` holds a commit not on `main`, bring that commit into `main` through a pull request, without a saved remote or a force push:
+
+```bash
+git fetch "$(terminus connection:info cedar-hollow-demo.dev --field=git_url)" master
+git switch -c pantheon-divergence main
+git merge FETCH_HEAD
+```
+
+Open a pull request from `pantheon-divergence`; once it merges and CI passes, the next deploy is a fast-forward.
+
+**Deploy credentials.** The site owner's own Pantheon account (identity not recorded here) holds the credentials, stored in the `pantheon-dev` GitHub Environment: the secrets `PANTHEON_SSH_KEY` and `TERMINUS_TOKEN` (a Personal Access Token), and the variable `PANTHEON_KNOWN_HOSTS` (the codeserver host key). Created on 2026-10-30. To rotate them:
+
+```bash
+ssh-keygen -t rsa -b 4096 -N '' -C 'cedar-hollow-drupalcamp deploy-dev' -f <scratch path>
+terminus ssh-key:add <scratch path>.pub
+gh secret set PANTHEON_SSH_KEY --env pantheon-dev < <scratch path>
+terminus ssh-key:list                  # find the old key's ID
+terminus ssh-key:remove <old key id>
+rm <scratch path> <scratch path>.pub
+```
+
+The Personal Access Token expires 90 days after it is created, and a deploy then fails at the Terminus login step, so rotate it before then: in the Pantheon dashboard, Personal Settings, Personal Access Tokens, click Add token, store it with `gh secret set TERMINUS_TOKEN --env pantheon-dev`, then revoke the old token there.
 
 Clear test sign-ups so every session has its seats again:
 
