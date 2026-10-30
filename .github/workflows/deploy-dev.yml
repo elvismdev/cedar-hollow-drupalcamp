@@ -27,6 +27,8 @@ jobs:
     environment:
       name: pantheon-dev
       url: https://dev-cedar-hollow-demo.pantheonsite.io
+    outputs:
+      warm: ${{ steps.push.outputs.warm }}
     env:
       SITE: cedar-hollow-demo
       SHA: ${{ github.event.workflow_run.head_sha }}
@@ -92,10 +94,29 @@ jobs:
         run: |
           head=$(terminus env:code-log "$SITE.dev" --format=json | jq -r '.[0].hash')
           if [ "$head" = "$SHA" ]; then
+            # A re-run: what this commit changed can no longer be read from
+            # Dev, so the warm-up runs.
             echo "pushed=false" >> "$GITHUB_OUTPUT"
+            echo "warm=true" >> "$GITHUB_OUTPUT"
             echo "- Push: already deployed, push skipped" >> "$GITHUB_STEP_SUMMARY"
+            echo "- Warm-up: runs (re-run, changes unknown)" >> "$GITHUB_STEP_SUMMARY"
             exit 0
           fi
+          # Image derivatives go cold only when an image style is saved (Drupal
+          # flushes its derivatives) or new images arrive, so the warm-up runs
+          # only when the deployed commits change image styles, the image
+          # manifest or the content recipe. An unreadable range warms too.
+          if changed=$(git diff --name-only "$head" "$SHA" 2>/dev/null); then
+            if grep -qE '^(config/image\.style\..*\.yml|scripts/demo-images\.json|recipes/cedar_hollow_demo_content/)' <<< "$changed"; then
+              warm=true; why="image styles, the image manifest or the content recipe changed"
+            else
+              warm=false; why="no image style, image manifest or content recipe change"
+            fi
+          else
+            warm=true; why="the range from Dev's commit could not be read"
+          fi
+          echo "warm=$warm" >> "$GITHUB_OUTPUT"
+          echo "- Warm-up: $([ "$warm" = true ] && echo runs || echo skipped) ($why)" >> "$GITHUB_STEP_SUMMARY"
           mode=$(terminus env:info "$SITE.dev" --field=connection_mode)
           if [ "$mode" != "git" ]; then
             msg="Dev is in SFTP mode; run \`terminus connection:set cedar-hollow-demo.dev git\` and re-run."
@@ -188,6 +209,7 @@ jobs:
   # No deploy secrets here, only the bot-bypass token, and no npm install.
   warm:
     needs: deploy
+    if: needs.deploy.outputs.warm == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
@@ -206,8 +228,10 @@ jobs:
           PANTHEON_BOT_BYPASS_TOKEN: ${{ secrets.PANTHEON_BOT_BYPASS_TOKEN }}
 
   # Waits for warm: parallel requests for cold image derivatives can answer 503.
+  # Runs when warm succeeded or was skipped because no images changed.
   smoke:
     needs: [deploy, warm]
+    if: always() && needs.deploy.result == 'success' && (needs.warm.result == 'success' || needs.warm.result == 'skipped')
     uses: ./.github/workflows/pantheon-nightly.yml
     with:
       environment: dev
