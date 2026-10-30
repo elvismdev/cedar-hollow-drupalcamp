@@ -185,7 +185,7 @@ jobs:
             exit 1
           fi
 
-  # No secrets here: npm ci runs dependency install scripts.
+  # No deploy secrets here, only the bot-bypass token, and no npm install.
   warm:
     needs: deploy
     runs-on: ubuntu-24.04
@@ -195,15 +195,15 @@ jobs:
         with:
           ref: ${{ github.event.workflow_run.head_sha }}
           persist-credentials: false
+      # The warm-up uses only Node's own fs and fetch, so no npm install runs
+      # next to the bot-bypass token.
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-          cache: npm
-          cache-dependency-path: tests/package-lock.json
-      - run: npm ci
+      - run: node perf/warm-derivatives.mjs https://dev-cedar-hollow-demo.pantheonsite.io
         working-directory: tests
-      - run: npm run warm -- https://dev-cedar-hollow-demo.pantheonsite.io
-        working-directory: tests
+        env:
+          PANTHEON_BOT_BYPASS_TOKEN: ${{ secrets.PANTHEON_BOT_BYPASS_TOKEN }}
 
   # Waits for warm: parallel requests for cold image derivatives can answer 503.
   smoke:
@@ -212,3 +212,5 @@ jobs:
     with:
       environment: dev
       ref: ${{ github.event.workflow_run.head_sha }}
+    secrets:
+      PANTHEON_BOT_BYPASS_TOKEN: ${{ secrets.PANTHEON_BOT_BYPASS_TOKEN }}

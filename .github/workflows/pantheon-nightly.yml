@@ -22,6 +22,9 @@ on:
       ref:
         type: string
         default: ''
+    secrets:
+      PANTHEON_BOT_BYPASS_TOKEN:
+        required: false
 
 permissions:
   contents: read
@@ -41,8 +44,11 @@ jobs:
           node-version: '22'
       - run: npm ci && npx playwright install --with-deps chromium
         working-directory: tests
+      # Only this step reads the bot-bypass token, not the npm install above.
       - run: npx playwright test --project=smoke --project=a11y
         working-directory: tests
+        env:
+          PANTHEON_BOT_BYPASS_TOKEN: ${{ secrets.PANTHEON_BOT_BYPASS_TOKEN }}
       - if: failure()
         uses: actions/upload-artifact@v4
         with:

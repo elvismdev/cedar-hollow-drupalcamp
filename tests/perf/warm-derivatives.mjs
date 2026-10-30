@@ -11,8 +11,14 @@ if (!base) {
   console.error('Usage: npm run warm -- <base URL>');
   process.exit(2);
 }
-// Pantheon sandboxes show a warning page unless this header is sent.
-const headers = new URL(base).hostname.endsWith('.pantheonsite.io') ? { 'Deterrence-Bypass': '1' } : {};
+// Pantheon sandboxes show a warning page unless Deterrence-Bypass is sent, and
+// PANTHEON_BOT_BYPASS_TOKEN (from `terminus gcdn:bot-bypass`) keeps the edge's
+// bot protection from challenging these requests. Neither goes to other hosts.
+const onPantheon = new URL(base).hostname.endsWith('.pantheonsite.io');
+const botBypass = process.env.PANTHEON_BOT_BYPASS_TOKEN;
+const headers = onPantheon
+  ? { 'Deterrence-Bypass': '1', ...(botBypass ? { 'x-pantheon-bot-bypass': botBypass } : {}) }
+  : {};
 
 const manifest = JSON.parse(readFileSync(new URL('../../scripts/demo-images.json', import.meta.url), 'utf8'));
 const sessions = manifest.filter((entry) => entry.use === 'session').map((entry) => entry.target);
@@ -20,21 +26,40 @@ const pages = [...new Set(['/', '/sessions', '/credits', ...sessions])];
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-// The host's rate limit answers 429 without Retry-After, so requests are
-// spaced, a 429 is retried after a growing pause, and a request still
-// refused after the last pause stops the run instead of adding load.
+// Requests are spaced. A 429 waits for the host's Retry-After when it sends
+// one (capped), or for a growing pause when it does not, and a request still
+// refused after the last retry stops the run instead of adding load. Each 429
+// logs the headers that name the layer that refused it.
 const RETRY_PAUSES = [5000, 10000, 20000, 40000, 60000];
 const REQUEST_GAP = 1000;
+const MAX_RETRY_AFTER = 300_000;
+// Exit code for "rate limited by the host", distinct from a page or image
+// that answered with an error.
+const EXIT_RATE_LIMITED = 75;
+const DIAGNOSTIC_HEADERS = ['retry-after', 'server', 'via', 'x-served-by', 'x-cache', 'cf-ray', 'cf-mitigated', 'age', 'content-type'];
+
+function describe429(response, body) {
+  const seen = DIAGNOSTIC_HEADERS.filter((name) => response.headers.has(name))
+    .map((name) => `${name}=${response.headers.get(name)}`);
+  const text = body.toString('utf8').replace(/\s+/g, ' ').trim().slice(0, 120);
+  return `429 headers: ${seen.join(' ') || '(none of the expected)'}; body: ${text || '(empty)'}`;
+}
 
 async function get(url) {
-  for (const pause of [REQUEST_GAP, ...RETRY_PAUSES]) {
-    await sleep(pause);
+  let wait = REQUEST_GAP;
+  for (let retry = 0; retry <= RETRY_PAUSES.length; retry += 1) {
+    await sleep(wait);
     const response = await fetch(url, { headers });
     const body = Buffer.from(await response.arrayBuffer());
     if (response.status !== 429) return { status: response.status, body };
+    console.error(`${describe429(response, body)} (${url})`);
+    const retryAfter = Number(response.headers.get('retry-after'));
+    wait = Number.isFinite(retryAfter) && retryAfter > 0
+      ? Math.min(retryAfter * 1000, MAX_RETRY_AFTER)
+      : RETRY_PAUSES[retry];
   }
-  console.error(`Still rate limited after ${RETRY_PAUSES.length} retries at ${url}; stopping.`);
-  process.exit(1);
+  console.error(`Rate limited by the host, not a broken page: still 429 after ${RETRY_PAUSES.length} retries at ${url}; stopping.`);
+  process.exit(EXIT_RATE_LIMITED);
 }
 
 const images = new Set();
