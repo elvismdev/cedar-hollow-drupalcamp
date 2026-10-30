@@ -36,10 +36,10 @@ jobs:
     env:
       BASE_URL: https://${{ inputs.environment || 'dev' }}-cedar-hollow-demo.pantheonsite.io
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: ${{ inputs.ref }}
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: '22'
       - run: npm ci && npx playwright install --with-deps chromium
@@ -50,7 +50,7 @@ jobs:
         env:
           PANTHEON_BOT_BYPASS_TOKEN: ${{ secrets.PANTHEON_BOT_BYPASS_TOKEN }}
       - if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: pantheon-smoke
           path: |

@@ -21,7 +21,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: shivammathur/setup-php@v2
         with:
           php-version: '8.3'
@@ -41,8 +41,8 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: '22'
           cache: npm
@@ -73,7 +73,7 @@ jobs:
       - name: Storybook Test
         run: npm run test:storybook
         working-directory: web/themes/custom/cedar_hollow
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: storybook
           path: web/themes/custom/cedar_hollow/storybook
@@ -96,7 +96,7 @@ jobs:
       SIMPLETEST_BASE_URL: http://127.0.0.1:8080
       BROWSERTEST_OUTPUT_DIRECTORY: ${{ github.workspace }}/web/sites/simpletest/browser_output
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: shivammathur/setup-php@v2
         with:
           php-version: '8.3'
@@ -115,7 +115,7 @@ jobs:
       - if: failure()
         run: tail -n 100 /tmp/php-server.log
       - if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: phpunit-browser-output
           path: web/sites/simpletest/browser_output
@@ -128,13 +128,13 @@ jobs:
     env:
       BASE_URL: https://cedar-hollow.ddev.site
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: ddev/github-action-setup-ddev@v1
       - name: Rebuild the site from configuration and the content recipe
         run: scripts/rebuild.sh
       - name: Build the theme's Storybook (served by Drupal for the BEM parity test)
         run: ddev exec -d /var/www/html/web/themes/custom/cedar_hollow "npm ci && npm run build"
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: '22'
       - run: npm ci && npx playwright install --with-deps chromium
@@ -158,13 +158,13 @@ jobs:
           sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
           npm run test:perf || npm run test:perf
       - if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: lighthouse-reports
           path: tests/perf/reports
           retention-days: 7
       - if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: playwright-e2e
           path: |
@@ -182,8 +182,8 @@ jobs:
       image: mcr.microsoft.com/playwright:v1.64.1-noble
       options: --ipc=host
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v8
         with:
           name: storybook
           path: web/themes/custom/cedar_hollow/storybook
@@ -194,7 +194,7 @@ jobs:
         env:
           HOME: /root
       - if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: visual-diffs
           path: tests/test-results

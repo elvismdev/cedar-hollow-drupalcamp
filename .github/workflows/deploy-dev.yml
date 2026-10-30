@@ -36,7 +36,7 @@ jobs:
     steps:
       # Third-party actions in this job are pinned by commit because the job
       # holds the deploy secrets.
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           ref: ${{ github.event.workflow_run.head_sha }}
           fetch-depth: 0
@@ -213,13 +213,13 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: ${{ github.event.workflow_run.head_sha }}
           persist-credentials: false
       # The warm-up uses only Node's own fs and fetch, so no npm install runs
       # next to the bot-bypass token.
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: '22'
       - run: node perf/warm-derivatives.mjs https://dev-cedar-hollow-demo.pantheonsite.io
