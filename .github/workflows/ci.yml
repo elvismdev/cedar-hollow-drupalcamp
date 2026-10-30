@@ -1,3 +1,6 @@
+# deploy-dev.yml starts when this workflow, matched by the name "CI", succeeds
+# on main. Renaming it stops deploys, and adding if: or continue-on-error to a
+# job would let a deploy run without that job passing.
 name: CI
 
 on:
