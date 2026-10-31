@@ -8,12 +8,19 @@ tmp=$(mktemp -d); trap 'rm -rf "$tmp"' EXIT
 run () { bash "$C" "$@" 2>&1; }
 rc  () { bash "$C" "$@" >/dev/null 2>&1; echo $?; }
 
+# The roots the agents may read: the workspace without its .git, the head and
+# the input directory. Paths only; nothing is resolved on disk.
+export GITHUB_WORKSPACE=/w/repo
+export REVIEW_HEAD_DIR=/rt/head
+export REVIEW_INPUT_DIR=/rt/review-input
+
 # A call shaped as claude-code-action's execution file records it.
-call () { printf '{"type":"assistant","message":{"content":[{"type":"tool_use","id":"t%s","name":"%s","input":{}}]}}' "$RANDOM" "$1"; }
+# Usage: call <name> [input-json]
+call () { printf '{"type":"assistant","message":{"content":[{"type":"tool_use","id":"t%s","name":"%s","input":%s}]}}' "$RANDOM" "$1" "${2:-{\}}"; }
 
 # The allowed tools pass, and the count says the check read something.
 printf '[{"type":"system","subtype":"init","tools":["Read","Bash"]},%s,%s,%s]' \
-  "$(call Read)" "$(call Glob)" "$(call Grep)" > "$tmp/ok.json"
+  "$(call Read '{"file_path":"/w/repo/REVIEW.md"}')" "$(call Glob '{"pattern":"**/*.php"}')" "$(call Grep '{"pattern":"x"}')" > "$tmp/ok.json"
 assert_eq "0" "$(rc "$tmp/ok.json")" "Read, Glob and Grep pass"
 assert_contains "$(run "$tmp/ok.json")" "3 tool call(s)" "and the calls are counted"
 
@@ -21,7 +28,7 @@ assert_contains "$(run "$tmp/ok.json")" "3 tool call(s)" "and the calls are coun
 # message lists Bash above, and it passed.
 
 # Any other tool fails and is named.
-printf '[%s,%s]' "$(call Read)" "$(call Bash)" > "$tmp/bash.json"
+printf '[%s,%s]' "$(call Read '{"file_path":"/w/repo/a"}')" "$(call Bash)" > "$tmp/bash.json"
 assert_eq "1" "$(rc "$tmp/bash.json")" "a Bash call fails"
 assert_contains "$(run "$tmp/bash.json")" ": Bash" "and names the tool"
 
@@ -44,6 +51,41 @@ assert_contains "$(run "$tmp/unnamed.json")" "<unnamed>" "an unnamed call fails 
 # No calls at all is a clean trace.
 printf '[{"type":"assistant","message":{"content":[{"type":"text","text":"[]"}]}}]' > "$tmp/none.json"
 assert_eq "0" "$(rc "$tmp/none.json")" "a trace with no tool calls passes"
+
+# Paths. Every Read, Glob and Grep must stay inside the allowed roots, because
+# claude-code-action writes a write-capable token into the workspace's
+# .git/config, and /proc and the runner's other directories hold more.
+ok_path () { printf '[%s]' "$(call "$1" "$2")" > "$tmp/p.json"; assert_eq "0" "$(rc "$tmp/p.json")" "$3"; }
+no_path () { printf '[%s]' "$(call "$1" "$2")" > "$tmp/p.json"; assert_eq "1" "$(rc "$tmp/p.json")" "$3"; assert_contains "$(run "$tmp/p.json")" "outside the allowed roots" "$3 says why"; }
+
+ok_path Read '{"file_path":"/w/repo/web/index.php"}' "a read in the workspace passes"
+ok_path Read '{"file_path":"web/index.php"}' "a relative read resolves against the workspace"
+ok_path Read '{"file_path":"/rt/head/web/index.php"}' "a read in the head passes"
+ok_path Read '{"file_path":"/rt/review-input/review-diff.patch"}' "a read in the input directory passes"
+ok_path Grep '{"pattern":"token","path":"/rt/head/web"}' "a Grep in the head passes"
+ok_path Glob '{"pattern":"**/*.yml","path":"/rt/head"}' "a Glob in the head passes"
+ok_path Read '{"file_path":"/w/repo/.github/x/../../REVIEW.md"}' "a .. that stays inside passes"
+ok_path Read '{"file_path":"/w/repo/.gitignore"}' "a name that only starts with .git passes"
+
+no_path Read '{"file_path":"/w/repo/.git/config"}' "a read of .git/config is refused"
+no_path Read '{"file_path":".git/config"}' "a relative read of .git/config is refused"
+no_path Read '{"file_path":"/proc/self/environ"}' "a read of /proc/self/environ is refused"
+no_path Read '{"file_path":"/rt/other"}' "a read elsewhere in the runner's temporary directory is refused"
+no_path Read '{"file_path":"../x"}' "a relative ../x is refused"
+no_path Read '{"file_path":"/rt/head/../other/x"}' "a .. that escapes the head is refused"
+no_path Read '{"file_path":"/rt/head-other/x"}' "a sibling sharing the head's prefix is refused"
+no_path Grep '{"pattern":"token","path":".git"}' "a Grep with path .git is refused"
+no_path Glob '{"pattern":"/proc/*"}' "an absolute Glob pattern outside the roots is refused"
+no_path Glob '{"pattern":"../../*"}' "a relative Glob pattern that climbs out is refused"
+no_path Read '{}' "a Read with no file_path is refused"
+
+# Without the head and input directories set, only the workspace is allowed.
+printf '[%s]' "$(call Read '{"file_path":"/rt/head/a"}')" > "$tmp/p.json"
+assert_eq "1" "$(REVIEW_HEAD_DIR='' REVIEW_INPUT_DIR='' rc "$tmp/p.json")" "an unset head directory is not a root"
+
+# With no workspace there is nothing to compare against, so it fails closed.
+printf '[%s]' "$(call Read '{"file_path":"/w/repo/a"}')" > "$tmp/p.json"
+assert_eq "1" "$(GITHUB_WORKSPACE='' rc "$tmp/p.json")" "an unset workspace fails closed"
 
 # It fails closed on what it cannot read.
 assert_eq "1" "$(rc "$tmp/absent.json")" "a missing trace fails"

@@ -305,7 +305,10 @@ runs:
         echo "trace present: $(wc -c <"$TRACE") bytes"
 
     # The deny list names every tool it knows of; this reads what the agent
-    # actually called. always(), so a reviewer that failed part-way is still
+    # actually called, and the paths it gave Read, Glob and Grep, which must
+    # stay in the workspace (not its .git, where claude-code-action has written
+    # its token), the head or the input directory. These checks run before the
+    # screen and posting. always(), so a reviewer that failed part-way is still
     # checked. An absent trace is left to the step above.
     - name: The reviewer used only Read, Glob and Grep
       id: tools-agent

@@ -76,8 +76,8 @@ Every file below is a copy; the Changed section lists the ones edited.
 - `tools/review/assemble-review-prompt.test.sh`: `ROOT` points at `.github/claude-review`; angle prompts on the base; cases for the head directory, a git failure and `diff_from`.
 - `tools/review/assemble-verify-prompt.sh`: no git instructions; diff written to `$REVIEW_INPUT_DIR/verify-diff.patch` for the Read tool; optional `diff_from`; names `$REVIEW_HEAD_DIR` or the working directory; no merge base fails instead of falling back to the base.
 - `tools/review/assemble-verify-prompt.test.sh`: `ROOT` points at `.github/claude-review`; cases for the diff file, the head directory and `diff_from`.
-- `tools/review/check-trace-tools.sh`: new; fails when a trace shows a `tool_use` outside Read, Glob and Grep.
-- `tools/review/check-trace-tools.test.sh`: new; allowed and disallowed calls, nested and unnamed calls, and missing, empty and unreadable traces.
+- `tools/review/check-trace-tools.sh`: new; fails when a trace shows a `tool_use` outside Read, Glob and Grep, or a Read, Glob or Grep path outside the workspace (less its `.git`), `$REVIEW_HEAD_DIR` and `$REVIEW_INPUT_DIR`.
+- `tools/review/check-trace-tools.test.sh`: new; allowed and disallowed calls, nested and unnamed calls, allowed and refused paths, and missing, empty and unreadable traces.
 - `tools/review/findings-from-trace.mjs`: strips a leading `$REVIEW_HEAD_DIR/` from each finding's `file`.
 - `tools/review/findings-from-trace.test.sh`: `ROOT` points at `.github/claude-review`; cases for the head directory.
 - `tools/review/findings-gate.sh`: a thread is answered only by a later comment from `REVIEW_OWNER_LOGIN`; prints `open=<N>` and `thread=<tag> <url>`; refuses an unset owner login; prints `truncated=true` for a feed of 100 threads.
