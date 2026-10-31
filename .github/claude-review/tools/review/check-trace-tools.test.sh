@@ -48,6 +48,15 @@ assert_eq "1" "$(rc "$tmp/nested.json")" "a nested call is found"
 printf '[{"type":"tool_use","id":"x"}]' > "$tmp/unnamed.json"
 assert_contains "$(run "$tmp/unnamed.json")" "<unnamed>" "an unnamed call fails and says so"
 
+# A tool name is agent-controlled text: only a known Claude Code name is printed.
+tcanary="Tn$(od -An -N8 -tx1 /dev/urandom | tr -d ' \n')"
+printf '[%s,%s,%s]' "$(call Read '{"file_path":"/w/repo/a"}')" "$(call "$tcanary")" "$(call Bash)" > "$tmp/t.json"
+out=$(bash "$C" "$tmp/t.json" 2>&1)
+assert_eq "1" "$(rc "$tmp/t.json")" "an unlisted tool name fails"
+case "$out" in *"$tcanary"*) echo "FAIL: an unlisted tool name reached the log" >&2; exit 1;; esac
+assert_contains "$out" "call 2: tool not allowed (unlisted name)" "an unlisted name is replaced by a fixed phrase"
+assert_contains "$out" "Bash call 3: tool not allowed" "a known name is still printed"
+
 # No calls at all is a clean trace.
 printf '[{"type":"assistant","message":{"content":[{"type":"text","text":"[]"}]}}]' > "$tmp/none.json"
 assert_eq "0" "$(rc "$tmp/none.json")" "a trace with no tool calls passes"

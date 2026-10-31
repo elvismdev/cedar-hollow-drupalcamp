@@ -80,15 +80,19 @@ set -uo pipefail
 
 TRACE="${1:?usage: check-trace-tools.sh <trace.json>}"
 ALLOWED='["Read","Glob","Grep"]'
+# Claude Code's real tool names. The name in a trace is agent-written text, so
+# only one of these (or the fixed <unnamed>) is ever printed.
+KNOWN='["Read","Glob","Grep","Bash","Edit","Write","MultiEdit","NotebookEdit","WebFetch","WebSearch","Skill","Agent","Task","TodoWrite","ListAgents","ScheduleWakeup","Monitor","SendMessage","CronCreate","TaskCreate","AskUserQuestion","EnterPlanMode","ExitPlanMode","EnterWorktree","ToolSearch","<unnamed>"]'
 
 [ -s "$TRACE" ] || {
   echo "check-trace-tools: no trace at '$TRACE', so the tools the agent used cannot be checked" >&2
   exit 1
 }
 
-calls=$(jq -r --argjson allowed "$ALLOWED" '
+calls=$(jq -r --argjson allowed "$ALLOWED" --argjson known "$KNOWN" '
   [.. | objects | select(.type? == "tool_use") | (.name // "<unnamed>") | tostring]
-  | {total: length, outside: (unique | map(select(. as $n | $allowed | index($n) | not)))}
+  | {total: length, outside: (map(select(. as $n | $allowed | index($n) | not)
+      | if . as $n | $known | index($n) then . else "(unlisted name)" end) | unique)}
   | "\(.total) \(.outside | join(","))"' "$TRACE") || {
   echo "check-trace-tools: '$TRACE' is not readable JSON, so the tools the agent used cannot be checked" >&2
   exit 1
@@ -96,10 +100,12 @@ calls=$(jq -r --argjson allowed "$ALLOWED" '
 
 read -r total outside <<<"$calls"
 if [ -n "${outside:-}" ]; then
-  jq -r --argjson allowed "$ALLOWED" '
+  jq -r --argjson allowed "$ALLOWED" --argjson known "$KNOWN" '
     [.. | objects | select(.type? == "tool_use") | (.name // "<unnamed>") | tostring]
     | to_entries[] | select(.value as $n | $allowed | index($n) | not)
-    | "check-trace-tools: \(.value) call \(.key + 1): tool not allowed"' "$TRACE" >&2
+    | if .value as $n | $known | index($n)
+      then "check-trace-tools: \(.value) call \(.key + 1): tool not allowed"
+      else "check-trace-tools: call \(.key + 1): tool not allowed (unlisted name)" end' "$TRACE" >&2
   echo "check-trace-tools: the agent used a tool outside Read, Glob and Grep: ${outside}" >&2
   exit 1
 fi
