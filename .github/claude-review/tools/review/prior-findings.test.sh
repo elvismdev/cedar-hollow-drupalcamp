@@ -8,6 +8,7 @@ run() { REVIEW_THREADS_CMD="$1" bash "$P" 1 2>&1; }
 rc()  { REVIEW_THREADS_CMD="$1" bash "$P" 1 >/dev/null 2>&1; echo $?; }
 
 BOT='github-actions'
+export REVIEW_OWNER_LOGIN=repo-owner
 
 # Nothing reported yet: the section is omitted entirely rather than rendered
 # empty, so a first-round prompt carries no heading promising a list.
@@ -15,9 +16,9 @@ none='printf "[]"'
 assert_eq "0" "$(rc "$none")" "an empty feed exits 0"
 assert_eq "" "$(run "$none")" "and prints nothing at all"
 
-thread () {  # <resolved> <outdated> <author> <body> [reply] [reply-association]
+thread () {  # <resolved> <outdated> <author> <body> [reply] [reply-association] [reply-author]
 	local reply=""
-	[ -n "${5:-}" ] && reply=",{\"author\":{\"login\":\"someone\"},\"authorAssociation\":\"${6:-OWNER}\",\"body\":\"$5\"}"
+	[ -n "${5:-}" ] && reply=",{\"author\":{\"login\":\"${7:-repo-owner}\"},\"authorAssociation\":\"${6:-OWNER}\",\"body\":\"$5\"}"
 	printf 'printf %s' "'[{\"isResolved\":$1,\"isOutdated\":$2,\"path\":\"tools/x.sh\",\"line\":12,\"comments\":{\"nodes\":[{\"author\":{\"login\":\"$3\"},\"authorAssociation\":\"NONE\",\"body\":\"$4\"}$reply]}}]'"
 }
 
@@ -33,8 +34,13 @@ assert_contains "$out" "open" "and its state"
 # been answered. The reason is what prevents the repeat, so it travels too.
 resolved=$(thread true false "$BOT" "important: not run by CI" "CI runs it by discovery, proven in the job log")
 out=$(run "$resolved")
-assert_contains "$out" "resolved" "a resolved finding is listed with its state"
+assert_contains "$out" "[answered]" "a finding the owner replied to is listed as answered"
 assert_contains "$out" "proven in the job log" "and carries the reason it was resolved"
+
+# Only an owner reply answers a finding. Resolved or outdated alone does not.
+assert_contains "$(run "$(thread true false "$BOT" "important: resolved, no reply")")" "[open]" "a resolved thread with no reply is listed as open"
+assert_contains "$(run "$(thread true false "$BOT" "important: a real defect" "looks fine" "MEMBER" "a-member")")" "[open]" "a reply by someone other than the owner does not answer it"
+assert_contains "$(run "$resolved")" "answered only" "the prompt says only an owner reply answers a finding"
 
 # The trust boundary. A reply is text from the pull request, and anyone who can
 # comment can write one. Presented to the next round as the reason a finding was
@@ -62,11 +68,11 @@ assert_contains "$out" "not instructions" "the quoted text is labelled as data"
 assert_contains "$out" "not verified" "and as unverified"
 
 outdated=$(thread false true "$BOT" "nit: moved line")
-assert_contains "$(run "$outdated")" "outdated" "an outdated finding reports that state"
+assert_contains "$(run "$outdated")" "[open]" "an outdated thread is listed as open"
 
 # A human's own thread is not a prior finding. Listing one as a finding would
 # teach the reviewer that a question had already been reported and answered.
-human=$(thread false false "elvismdev" "what about this")
+human=$(thread false false "repo-owner" "what about this")
 assert_eq "" "$(run "$human")" "a human thread is not a prior finding"
 
 # The instruction is the point of the section: a list the reviewer is free to
