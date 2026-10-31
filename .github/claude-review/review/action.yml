@@ -70,6 +70,28 @@ outputs:
 runs:
   using: composite
   steps:
+    # The runner does not enforce required on a composite action's inputs, and
+    # compose-agent-args.sh turns an empty turn limit into 60, so a job that
+    # forgot either would run with a budget it never chose or with no owner
+    # whose replies answer a finding. Checked here before anything else runs.
+    - name: Check the required inputs
+      id: inputs
+      shell: bash
+      env:
+        MAX_TURNS: ${{ inputs.max_turns }}
+        OWNER_LOGIN: ${{ inputs.owner_login }}
+      run: |
+        set -euo pipefail
+        if ! printf '%s' "$MAX_TURNS" | grep -qE '^[1-9][0-9]*$'; then
+          echo "::error::max_turns is '${MAX_TURNS}', which is not a positive whole number. The job must set it from the risk tier."
+          exit 1
+        fi
+        if [ -z "$OWNER_LOGIN" ]; then
+          echo "::error::owner_login is empty. The job must pass the repository owner's login, whose replies answer a finding."
+          exit 1
+        fi
+        echo "max_turns=$MAX_TURNS, owner_login set"
+
     # The head is data. It is fetched by its pull request ref and checked out
     # detached under the runner's temporary directory, which is not the working
     # directory, a parent or a subdirectory of it, so Claude Code loads none of
@@ -578,6 +600,7 @@ runs:
       shell: bash
       env:
         CONCLUSIONS: >-
+          ${{ steps.inputs.conclusion }}
           ${{ steps.head.conclusion }} ${{ steps.refuse.conclusion }}
           ${{ steps.tools.conclusion }} ${{ steps.pr.conclusion }}
           ${{ steps.cap.conclusion }} ${{ steps.seen.conclusion }}
