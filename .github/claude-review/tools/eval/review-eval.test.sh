@@ -13,6 +13,18 @@ cat > "$tmp/bin/claude" <<'SH'
 #!/usr/bin/env bash
 prompt=$(cat)
 [ -n "${FAKE_FAIL:-}" ] && exit 3
+# Record each --add-dir the agent was given, and whether the review diff was in
+# that directory when the agent started.
+if [ -n "${ARGS_LOG:-}" ]; then
+  while [ "$#" -gt 0 ]; do
+    if [ "$1" = "--add-dir" ]; then
+      if [ -f "$2/review-diff.patch" ]; then has=patch; else has=nopatch; fi
+      printf 'add-dir %s %s\n' "$2" "$has" >> "$ARGS_LOG"
+      case "$prompt" in *"$2/review-diff.patch"*|*"$2/verify-diff.patch"*) printf 'prompt-names %s\n' "$2" >> "$ARGS_LOG" ;; esac
+    fi
+    shift
+  done
+fi
 if printf '%s' "$prompt" | grep -q VERIFYING; then body="${VERDICT_JSON:-[]}"; else body="${REVIEW_JSON:-[]}"; fi
 python3 -c 'import json,sys; print(json.dumps({"type":"system","subtype":"init"})); print(json.dumps({"type":"assistant","message":{"content":[{"type":"text","text":"```json\n"+sys.argv[1]+"\n```"}]}}))' "$body"
 SH
@@ -81,5 +93,17 @@ mkdir -p "$r/empty"
 assert_eq "2" "$(run X=1 -- empty --base main)" "a directory with no live cases measured nothing"
 printf '{"name":"broken","kind":"clean","angle":"bugs"}' > "$r/cases/004.json"
 assert_eq "2" "$(run X=1 -- cases --base main)" "a case missing its fields is refused"
+
+# The diff is a file the agent opens with the Read tool, outside the worktree it
+# runs in, so each case gets an input directory that the agent is given with
+# --add-dir and that the prompt names.
+rm -f "$r/cases/004.json"; : > "$tmp/args.log"
+run REVIEW_JSON="$hit" ARGS_LOG="$tmp/args.log" -- cases --base main --no-verify --only gate-fails-open >/dev/null
+assert_contains "$(cat "$tmp/args.log")" "add-dir " "the reviewer is given --add-dir"
+dir=$(awk '/^add-dir /{print $2; exit}' "$tmp/args.log")
+case "$dir" in /*) abs=0;; *) abs=1;; esac
+assert_exit 0 "$abs" "for an absolute directory, without quotes ($dir)"
+assert_contains "$(cat "$tmp/args.log")" "add-dir $dir patch" "which holds the review diff when the agent starts"
+assert_contains "$(cat "$tmp/args.log")" "prompt-names $dir" "and the prompt names the diff there"
 
 pass "review-eval.test.sh"

@@ -37,7 +37,7 @@
 //   baseline  {"cases": {"<case name>": "pass" | "fail"}}, the last measured result
 //   Run from the root of the repository whose history the cases name. The
 //   reviewer is the `claude` CLI on PATH, authenticated the usual way.
-import { readFileSync, writeFileSync, readdirSync, mkdtempSync, appendFileSync, existsSync } from 'node:fs';
+import { readFileSync, writeFileSync, readdirSync, mkdtempSync, mkdirSync, appendFileSync, existsSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { join, dirname } from 'node:path';
 import { tmpdir } from 'node:os';
@@ -94,11 +94,18 @@ export function scoreClean(findings) {
   return { ok: true, why: `nothing important (${findings.length} other finding(s))` };
 }
 
-/** The review's own arguments, split for argv. They carry no quoted values. */
+/**
+ * The review's own arguments, split for argv. The only quoted values are the
+ * --add-dir directories, each one double-quoted word; anything else quoted, a
+ * single quote or a backslash makes the line unusable.
+ */
 export function reviewArgs(line) {
   const value = String(line || '').replace(/^AGENT_ARGS_REVIEW=/, '').trim();
-  if (!value || /["'\\]/.test(value)) throw new Error(`unusable reviewer arguments: ${value}`);
-  return value.split(/\s+/);
+  const words = value.match(/"[^"\s]*"|[^\s"]+/g) || [];
+  if (!value || /['\\]/.test(value) || words.join(' ') !== value.replace(/\s+/g, ' ')) {
+    throw new Error(`unusable reviewer arguments: ${value}`);
+  }
+  return words.map((w) => (w.startsWith('"') ? w.slice(1, -1) : w));
 }
 
 /** Each case against its last measured result. Only a pass turning into a fail regresses. */
@@ -158,16 +165,29 @@ function extract(trace, out) {
   return r.status === 0 && existsSync(out);
 }
 
-function runCase(repo, c, kind, base, args, verify) {
+function runCase(repo, c, kind, base, verify) {
   const commit = kind === 'incident' ? c.introduced : c.commit;
   const angle = c.angle;
   const work = mkdtempSync(join(tmpdir(), `review-eval-${c.name}-`));
   const tree = join(work, 'tree');
+  // The diffs are written here and the agent opens them with the Read tool. It
+  // runs in the worktree, so the directory is added for reading with --add-dir,
+  // which compose-agent-args.sh emits from REVIEW_INPUT_DIR, as in the review job.
+  const input = join(work, 'input');
+  mkdirSync(input);
+  const env = { ...process.env, REVIEW_INPUT_DIR: input };
+  let args;
+  try {
+    const compose = sh('bash', [join(TOOLS, 'agent/compose-agent-args.sh')], { cwd: repo, env }).stdout || '';
+    args = reviewArgs(compose.split('\n').find((l) => l.startsWith('AGENT_ARGS_REVIEW=')));
+  } catch (e) {
+    return { error: e.message };
+  }
   const add = sh('git', ['worktree', 'add', '--detach', tree, commit], { cwd: repo });
   if (add.status !== 0) return { error: `could not check out ${commit}: ${add.stderr.trim()}` };
   try {
     const prompt = join(work, 'prompt.txt');
-    const a = sh('bash', [join(TOOLS, 'review/assemble-review-prompt.sh'), angle, base, commit, prompt, `${commit}^`], { cwd: repo });
+    const a = sh('bash', [join(TOOLS, 'review/assemble-review-prompt.sh'), angle, base, commit, prompt, `${commit}^`], { cwd: repo, env });
     if (a.status !== 0) return { error: `could not assemble the prompt: ${(a.stderr || a.stdout).trim()}` };
     console.log(`    ${(a.stdout || '').trim()}`);
 
@@ -181,7 +201,7 @@ function runCase(repo, c, kind, base, args, verify) {
     const count = JSON.parse(readFileSync(candidates, 'utf8')).length;
     if (verify && count > 0) {
       const vprompt = join(work, 'verify-prompt.txt');
-      const v = sh('bash', [join(TOOLS, 'review/assemble-verify-prompt.sh'), base, commit, candidates, vprompt], { cwd: repo });
+      const v = sh('bash', [join(TOOLS, 'review/assemble-verify-prompt.sh'), base, commit, candidates, vprompt], { cwd: repo, env });
       if (v.status !== 0) return { error: `could not assemble the verification prompt: ${(v.stderr || v.stdout).trim()}` };
       const votes = [];
       for (let i = 1; i <= VERIFIERS; i += 1) {
@@ -252,9 +272,6 @@ function main(argv) {
   const base = resolveBase(repo, opts.base);
   if (!base) { console.error('review-eval: no base ref with a REVIEW.md, so there is no standard to judge against'); return 2; }
 
-  const compose = sh('bash', [join(TOOLS, 'agent/compose-agent-args.sh')], { cwd: repo }).stdout || '';
-  const args = reviewArgs(compose.split('\n').find((l) => l.startsWith('AGENT_ARGS_REVIEW=')));
-
   const self = process.env.CLAUDE_REVIEW_REF
     || sh('git', ['-C', TOOLS, 'rev-parse', '--short', 'HEAD']).stdout.trim() || 'unknown';
   console.log(`review-eval: ${cases.length} case(s) from ${dir}, standard from ${base}, reviewer scripts at ${self}, `
@@ -262,7 +279,7 @@ function main(argv) {
 
   const results = [];
   for (const { c, kind } of cases) {
-    const r = runCase(repo, c, kind, base, args, opts.verify);
+    const r = runCase(repo, c, kind, base, opts.verify);
     let row;
     if (r.error) row = { name: c.name, kind, status: 'error', why: r.error };
     else {
