@@ -5,7 +5,12 @@
 # directory's .git/config before the agent starts, and the agent's Read tool
 # can open that file. With .git moved out of the workspace, git finds no
 # repository there, the action's git setup fails (it catches that and carries
-# on), and no token is written anywhere the agent can read.
+# on), and the token is not written to .git/config.
+#
+# This removes the token from .git/config only. The action also puts the token
+# in the agent process's environment, readable at /proc/self/environ, and that
+# is protected by check-trace-tools.sh refusing any path outside the allowed
+# roots, not by this script.
 #
 #   hide     move $GITHUB_WORKSPACE/.git to $RUNNER_TEMP/workspace-git
 #   check    after the agent: fail if the workspace has a .git again, or if the
