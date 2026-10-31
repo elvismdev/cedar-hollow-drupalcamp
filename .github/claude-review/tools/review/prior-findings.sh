@@ -61,16 +61,21 @@ threads_feed() {
     --jq '.data.repository.pullRequest.reviewThreads.nodes'
 }
 
+# The feed goes to python3 in a file. Linux caps one environment string at
+# 128 KiB, which long finding bodies pass.
+feed_file=$(mktemp) || { echo "prior-findings: could not create a temporary file" >&2; exit 1; }
+trap 'rm -f "$feed_file"' EXIT
 set +e
-feed=$(threads_feed); frc=$?
+threads_feed > "$feed_file"; frc=$?
 set -e
 [ "$frc" -eq 0 ] || {
   echo "prior-findings: could not read the review threads for #${PR}" >&2; exit 1; }
 
-REVIEW_FEED="$feed" python3 - "$BOT" "$OWNER" <<'PY' || exit $?
-import json, os, sys
+python3 - "$BOT" "$OWNER" "$feed_file" <<'PY' || exit $?
+import json, sys
 bot, owner = sys.argv[1], sys.argv[2]
-raw = os.environ.get('REVIEW_FEED', '')
+with open(sys.argv[3], encoding='utf-8') as f:
+    raw = f.read()
 try:
     threads = json.loads(raw)
     if not isinstance(threads, list):

@@ -110,4 +110,21 @@ assert_eq "" "$(run "$broken" | grep truncated)" "which an unreadable feed does 
 grep -q 'comments(first:100){nodes{author{login} body url}}' "$G"
 assert_exit 0 "$?" "the query selects each comment's author, body and url"
 
+
+# A feed larger than one environment string may hold (128 KiB on Linux), under
+# the 100-thread limit: long finding bodies reach it on a long-lived pull request.
+big=$(mktemp); trap 'rm -f "$big"' EXIT
+python3 -I - "$big" <<'PY2'
+import json, sys
+pad = 'y' * 2048
+threads = [{"isResolved": False, "isOutdated": False, "path": "tools/x.sh", "line": 12,
+            "comments": {"nodes": [{"author": {"login": "github-actions[bot]"}, "authorAssociation": "NONE",
+                                    "body": f"important: finding {i} {pad}", "url": f"https://example.invalid/{i}"}]}}
+           for i in range(80)]
+open(sys.argv[1], 'w').write(json.dumps(threads))
+PY2
+[ "$(stat -c %s "$big")" -gt 131072 ] || { echo "FAIL: the large feed fixture is under 128 KiB" >&2; exit 1; }
+assert_eq "1" "$(rc "cat $big")" "a feed over 128 KiB is read: its open finding blocks"
+assert_contains "$(run "cat $big")" "80 review finding(s)" "and every thread in it is counted"
+
 pass

@@ -103,4 +103,21 @@ done < <(grep -E "\.get\('[A-Za-z_]+'\)" "$P" | grep -v environ \
          | grep -oE "\.get\('[A-Za-z_]+'\)" | sed "s/\.get('//; s/')//" | sort -u)
 assert_eq "" "$missing" "every field the reader consumes is requested by the query"
 
+
+# A feed larger than one environment string may hold (128 KiB on Linux), under
+# the 100-thread limit: long finding bodies reach it on a long-lived pull request.
+big=$(mktemp); trap 'rm -f "$big"' EXIT
+python3 -I - "$big" <<'PY2'
+import json, sys
+pad = 'y' * 2048
+threads = [{"isResolved": False, "isOutdated": False, "path": "tools/x.sh", "line": 12,
+            "comments": {"nodes": [{"author": {"login": "github-actions[bot]"}, "authorAssociation": "NONE",
+                                    "body": f"important: finding {i} {pad}", "url": f"https://example.invalid/{i}"}]}}
+           for i in range(80)]
+open(sys.argv[1], 'w').write(json.dumps(threads))
+PY2
+[ "$(stat -c %s "$big")" -gt 131072 ] || { echo "FAIL: the large feed fixture is under 128 KiB" >&2; exit 1; }
+assert_eq "0" "$(rc "cat $big")" "a feed over 128 KiB is read"
+assert_eq "80" "$(run "cat $big" | grep -c '^- \[open\]')" "and every thread in it is listed"
+
 pass "prior-findings.test.sh"

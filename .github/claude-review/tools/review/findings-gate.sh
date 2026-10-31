@@ -49,19 +49,23 @@ threads_feed() {
     --jq '.data.repository.pullRequest.reviewThreads.nodes'
 }
 
+feed_file=$(mktemp) || { echo "findings-gate: could not create a temporary file; not reporting a pass" >&2; exit 2; }
+trap 'rm -f "$feed_file"' EXIT
 set +e
-feed=$(threads_feed); frc=$?
+threads_feed > "$feed_file"; frc=$?
 set -e
 [ "$frc" -eq 0 ] || { echo "findings-gate: could not read the review threads; not reporting a pass" >&2; exit 2; }
 
-# The feed travels in the environment, not on stdin: `python3 -` reads its
-# program from stdin, so a heredoc and a herestring cannot both be given. The
-# first version of this did exactly that, which made the JSON the program and
-# left two of this script's tests passing for the wrong reason.
-REVIEW_FEED="$feed" python3 - "$BOT" "$OWNER" <<'PY' || exit $?
-import json, os, re, sys
+# The feed travels in a file, not on stdin: `python3 -` reads its program from
+# stdin, so a heredoc and a herestring cannot both be given. The first version
+# of this did exactly that, which made the JSON the program and left two of this
+# script's tests passing for the wrong reason. Nor in the environment: Linux
+# caps one environment string at 128 KiB, which long finding bodies pass.
+python3 - "$BOT" "$OWNER" "$feed_file" <<'PY' || exit $?
+import json, re, sys
 bot, owner = sys.argv[1], sys.argv[2]
-raw = os.environ.get('REVIEW_FEED', '')
+with open(sys.argv[3], encoding='utf-8') as f:
+    raw = f.read()
 try:
     threads = json.loads(raw)
     if not isinstance(threads, list):

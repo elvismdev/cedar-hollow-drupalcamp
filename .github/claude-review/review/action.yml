@@ -207,8 +207,8 @@ runs:
         echo "reviewing #$IN_PR: origin/$base..$HEAD_SHA"
 
     # Three rounds, then stop: past it a reviewer finds a few more old things
-    # each pass rather than new ones. One line per review counted by wc, because
-    # --jq runs once per page and an aggregate inside it breaks on page two.
+    # each pass rather than new ones. Only the bot's reviews, by exact login,
+    # count toward the cap.
     - name: Round cap
       id: cap
       shell: bash
@@ -216,12 +216,10 @@ runs:
         GH_TOKEN: ${{ inputs.github_token }}
         PR: ${{ steps.pr.outputs.number }}
         ANGLE: ${{ inputs.angle }}
+        TOOLS: ${{ github.workspace }}/.github/claude-review/tools
       run: |
         set -euo pipefail
-        rounds=$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR}/reviews" --paginate \
-          --jq ".[] | select(.user.login | test(\"github-actions\"))
-                    | select(.body | test(\"Claude ${ANGLE} review\")) | .id" \
-          | wc -l)
+        rounds=$(bash "$TOOLS/review/review-rounds.sh" "$PR" "$ANGLE")
         echo "rounds=$rounds" >> "$GITHUB_OUTPUT"
         if [ "$rounds" -ge 3 ]; then
           gh pr comment "$PR" --body "Claude ${ANGLE} review has run ${rounds} times on this pull request and is stopping. Three rounds is the cap: past it a reviewer finds a few more old things each pass rather than new ones. Step back and reconsider the approach, or say why the current one is right."

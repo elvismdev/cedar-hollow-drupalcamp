@@ -45,6 +45,20 @@ assert_contains "$(run "$(feed "$C2")")" "since=$C2" "and reports that commit as
 # base is that commit's own tree, so the diff is the ordinary since..head one.
 assert_contains "$(run "$(feed "$C2")")" "diff_from=$(git rev-parse "$C2^{tree}")" "and diffs from that commit's tree"
 
+# A feed larger than one environment string may hold (128 KiB on Linux): every
+# owner reply is a review object too, so a long-lived pull request reaches it.
+python3 -I - "$tmp/big-feed.json" "$C2" <<'PY2'
+import json, sys
+pad = 'x' * 2048
+reviews = [{"user": {"login": "repo-owner"}, "commit_id": sys.argv[2],
+            "submitted_at": "2026-01-02T00:00:00Z", "body": pad} for _ in range(70)]
+reviews.append({"user": {"login": "github-actions[bot]"}, "commit_id": sys.argv[2],
+                "submitted_at": "2026-01-01T00:00:00Z", "body": "Claude bugs review: " + pad})
+open(sys.argv[1], 'w').write(json.dumps(reviews))
+PY2
+[ "$(stat -c %s "$tmp/big-feed.json")" -gt 131072 ] || { echo "FAIL: the large feed fixture is under 128 KiB" >&2; exit 1; }
+assert_contains "$(run "cat $tmp/big-feed.json")" "since=$C2" "a feed over 128 KiB is read and its review found"
+
 # Nothing new since the last round. Running an agent on an empty diff invents
 # findings out of nothing, so this is its own state rather than a full review.
 assert_contains "$(run "$(feed "$C3")")" "state=current" "a prior review on the head means nothing new"

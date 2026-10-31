@@ -1,0 +1,209 @@
+name: Review
+
+# pull_request_target runs this file, the scripts and the prompts from main
+# with a token that can write to the pull request. That is safe here only while
+# three conditions hold:
+#   1. Same-repository pull requests only. The guard fails any other, and the
+#      review jobs repeat the head-repository check in their own if:.
+#   2. The head is fetched as data outside the working directory. Every
+#      checkout below takes main, with no pull request ref and no stored
+#      credentials; the review action fetches the head into a detached worktree
+#      under the runner's temporary directory.
+#   3. Nothing from the head is executed, and the agents can only read: they
+#      are allowed Read, Glob and Grep, and their traces are checked for any
+#      other tool.
+on:
+  pull_request_target:
+    types: [opened, synchronize, reopened, ready_for_review]
+    branches: [main]
+
+permissions: {}
+
+# Two pushes in quick succession would otherwise review the same pull request
+# twice, spend two of the three rounds and post duplicate threads.
+concurrency:
+  group: review-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  guard:
+    name: Same-repository pull request
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      pull-requests: write
+    steps:
+      - name: Refuse a pull request from another repository
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+          if [ "$HEAD_REPO" = "$GITHUB_REPOSITORY" ]; then
+            echo "same-repository pull request"
+            exit 0
+          fi
+          marker='<!-- cedar-hollow-guard -->'
+          posted=$(gh api --paginate "repos/${GITHUB_REPOSITORY}/issues/${PR}/comments" \
+            --jq ".[] | select(.body | contains(\"${marker}\")) | .id")
+          if [ -z "$posted" ]; then
+            gh api "repos/${GITHUB_REPOSITORY}/issues/${PR}/comments" \
+              -f body="This demo takes issues, not outside pull requests. Please open an issue describing the change. ${marker}" > /dev/null
+          fi
+          echo "::error::the head repository is ${HEAD_REPO:-unknown}, not ${GITHUB_REPOSITORY}; outside pull requests are not reviewed"
+          exit 1
+
+  classify:
+    name: Risk tier
+    needs: guard
+    if: github.event.pull_request.draft == false
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      pull-requests: write
+    outputs:
+      tier: ${{ steps.tier.outputs.tier }}
+      reason: ${{ steps.tier.outputs.reason }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      # Both names of a renamed file, so moving a file out of a High path
+      # still counts as touching it.
+      - name: Write the changed paths and the body
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+          gh api --paginate "repos/${GITHUB_REPOSITORY}/pulls/${PR}/files" \
+            --jq '.[] | .filename, (.previous_filename // empty)' > "$RUNNER_TEMP/changed-paths.txt"
+          # From the event file, not env:, which caps one string at 128 KiB.
+          jq -r '.pull_request.body // ""' "$GITHUB_EVENT_PATH" > "$RUNNER_TEMP/pr-body.md"
+          echo "$(wc -l < "$RUNNER_TEMP/changed-paths.txt") changed path(s), previous names included"
+      - name: Classify
+        id: tier
+        run: |
+          set -euo pipefail
+          bash .github/claude-review/tools/review/risk-tier.sh \
+            "$RUNNER_TEMP/changed-paths.txt" "$RUNNER_TEMP/pr-body.md" > "$RUNNER_TEMP/tier.txt"
+          cat "$RUNNER_TEMP/tier.txt"
+          cat "$RUNNER_TEMP/tier.txt" >> "$GITHUB_OUTPUT"
+      - name: Post or update the tier comment
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR: ${{ github.event.pull_request.number }}
+          TIER: ${{ steps.tier.outputs.tier }}
+          REASON: ${{ steps.tier.outputs.reason }}
+        run: |
+          set -euo pipefail
+          marker='<!-- cedar-hollow-tier -->'
+          body=$(printf 'Risk tier: **%s** (%s).\n\n%s' "$TIER" "$REASON" "$marker")
+          ids=$(gh api --paginate "repos/${GITHUB_REPOSITORY}/issues/${PR}/comments" \
+            --jq ".[] | select(.user.login == \"github-actions[bot]\" and (.body | contains(\"${marker}\"))) | .id")
+          id=$(printf '%s\n' "$ids" | sed -n 1p)
+          if [ -z "$id" ]; then
+            gh api "repos/${GITHUB_REPOSITORY}/issues/${PR}/comments" -f body="$body" > /dev/null
+            echo "tier comment posted"
+          elif [ "$(gh api "repos/${GITHUB_REPOSITORY}/issues/comments/${id}" --jq .body)" != "$body" ]; then
+            gh api -X PATCH "repos/${GITHUB_REPOSITORY}/issues/comments/${id}" -f body="$body" > /dev/null
+            echo "tier comment ${id} updated"
+          else
+            echo "tier comment ${id} unchanged"
+          fi
+
+  review-bugs:
+    name: Review (bugs)
+    needs: [guard, classify]
+    if: github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.draft == false
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    environment: claude-agents
+    permissions:
+      contents: read
+      pull-requests: write
+    outputs:
+      state: ${{ steps.review.outputs.state }}
+      cause: ${{ steps.review.outputs.cause }}
+    steps:
+      # Main, full history: the working directory and the only source of the
+      # scripts, the prompts and REVIEW.md, with origin/main for the base.
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - id: review
+        uses: ./.github/claude-review/review
+        with:
+          angle: bugs
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          owner_login: ${{ github.repository_owner }}
+          max_turns: ${{ needs.classify.outputs.tier == 'High' && 60 || 40 }}
+
+  review-security:
+    name: Review (security)
+    needs: [guard, classify]
+    if: github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.draft == false
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    environment: claude-agents
+    permissions:
+      contents: read
+      pull-requests: write
+    outputs:
+      state: ${{ steps.review.outputs.state }}
+      cause: ${{ steps.review.outputs.cause }}
+    steps:
+      # Main, full history: the working directory and the only source of the
+      # scripts, the prompts and REVIEW.md, with origin/main for the base.
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - id: review
+        uses: ./.github/claude-review/review
+        with:
+          angle: security
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          owner_login: ${{ github.repository_owner }}
+          max_turns: ${{ needs.classify.outputs.tier == 'High' && 60 || 40 }}
+
+  # Never skipped: a skipped required check can count as passing. Re-running
+  # only this job keeps the review jobs' outputs from the same run.
+  gate:
+    name: Review gate
+    needs: [guard, classify, review-bugs, review-security]
+    if: always()
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      # Main with full history, then the head, because the acknowledgement
+      # check compares the head with commits on origin/main.
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Fetch the pull request head
+        env:
+          PR: ${{ github.event.pull_request.number }}
+        run: git fetch --no-tags origin "+refs/pull/${PR}/head"
+      - uses: ./.github/claude-review/gate
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          owner_login: ${{ github.repository_owner }}
+          guard_result: ${{ needs.guard.result }}
+          draft: ${{ github.event.pull_request.draft }}
+          bugs_state: ${{ needs.review-bugs.outputs.state }}
+          bugs_cause: ${{ needs.review-bugs.outputs.cause }}
+          security_state: ${{ needs.review-security.outputs.state }}
+          security_cause: ${{ needs.review-security.outputs.cause }}
+          tier: ${{ needs.classify.outputs.tier }}
+          pr: ${{ github.event.pull_request.number }}
+          head_sha: ${{ github.event.pull_request.head.sha }}
