@@ -12,6 +12,10 @@
 //                         Also not a clean review, and a different fault from
 //                         the one above, so the message says which.
 //
+// A leading $REVIEW_HEAD_DIR/ is stripped from each finding's file, because the
+// head is checked out in its own directory and a finding is posted against the
+// path relative to the repository root.
+//
 // Usage: findings-from-trace.mjs <trace.json> <out.json>
 import { readFileSync, writeFileSync, existsSync } from 'node:fs';
 
@@ -117,6 +121,12 @@ for (const span of [...fenced(text), ...candidates(text)]) {
   try { parsed = JSON.parse(span); } catch { continue; }
   if (!Array.isArray(parsed)) continue;
   if (!parsed.every((e) => e && typeof e === 'object' && !Array.isArray(e))) continue;
+  const headDir = (process.env.REVIEW_HEAD_DIR || '').replace(/\/+$/, '');
+  if (headDir) {
+    for (const f of parsed) {
+      if (typeof f.file === 'string' && f.file.startsWith(`${headDir}/`)) f.file = f.file.slice(headDir.length + 1);
+    }
+  }
   writeFileSync(out, JSON.stringify(parsed, null, 2));
   console.log(`findings-from-trace: ${parsed.length} finding(s) extracted from the trace`);
   process.exit(0);

@@ -97,4 +97,18 @@ trace 'Nothing to report.
 got=$(node "$F" "$tmp/clean.json" "$tmp/out.json" >/dev/null 2>&1; python3 -c "import json;print(json.load(open('$tmp/out.json')))")
 assert_eq "[]" "$got" "a clean review is still an explicit empty array"
 
+
+# The head is checked out in its own directory, and a reviewer may name a file
+# by its absolute path there. Posting needs the path relative to the repository
+# root, so a leading REVIEW_HEAD_DIR is stripped; other paths are left alone.
+trace '```json
+[{"severity":"important","file":"/runner/temp/head/web/x.php","line":1,"title":"t","detail":"d"},{"severity":"nit","file":"web/y.php","line":2,"title":"t","detail":"d"}]
+```' "$tmp/abs.json"
+got=$(REVIEW_HEAD_DIR=/runner/temp/head node "$F" "$tmp/abs.json" "$tmp/out.json" >/dev/null 2>&1; python3 -c "import json;d=json.load(open('$tmp/out.json'));print(d[0]['file'],d[1]['file'])")
+assert_eq "web/x.php web/y.php" "$got" "an absolute path under the head directory is made relative"
+got=$(REVIEW_HEAD_DIR=/runner/temp/head/ node "$F" "$tmp/abs.json" "$tmp/out.json" >/dev/null 2>&1; python3 -c "import json;print(json.load(open('$tmp/out.json'))[0]['file'])")
+assert_eq "web/x.php" "$got" "with a trailing slash on the head directory too"
+got=$(env -u REVIEW_HEAD_DIR node "$F" "$tmp/abs.json" "$tmp/out.json" >/dev/null 2>&1; python3 -c "import json;print(json.load(open('$tmp/out.json'))[0]['file'])")
+assert_eq "/runner/temp/head/web/x.php" "$got" "and nothing is stripped when it is unset"
+
 pass
