@@ -50,14 +50,20 @@
 #     its static prefix rather than from its path. It is then resolved against
 #     its path, normalised for .. (a brace group's .. included, as segments),
 #     and held to the same roots.
-#   - A Grep glob: the same set as a Glob pattern. Claude Code passes it to
-#     ripgrep after its own !.git exclusion, where it overrides that exclusion,
-#     so after Claude Code's split on commas (a part holding a brace group is
-#     kept whole) each part must end in a literal file extension or a brace
-#     group of extensions (*.php, *.{php,module}, src/**/*.ts). Its last
-#     segment may instead be a brace group of plain names before that
-#     extension (**/{a,b}.php); a brace group anywhere else is refused. No
-#     part may name .git.
+#   - A Grep glob: the same set as a Glob pattern, with no .. segment. Claude
+#     Code passes it to ripgrep after its own !.git exclusion, where it
+#     overrides that exclusion, which matters only where the search can reach
+#     the workspace's .git/config. So the rule below applies when the Grep has
+#     no path (it then searches the working directory, the workspace) or a path
+#     inside $GITHUB_WORKSPACE. When the path is inside $REVIEW_HEAD_DIR or
+#     $REVIEW_INPUT_DIR, whose .git is a pointer file with no token and which
+#     holds only a diff, any glob that passes the character allowlist is
+#     accepted. The rule: after Claude Code's split on commas (a part holding
+#     a brace group is kept whole) each part must end in a literal file
+#     extension or a brace group of extensions (*.php, *.{php,module},
+#     src/**/*.ts). Its last segment may instead be a brace group of plain
+#     names before that extension (**/{a,b}.php); a brace group anywhere else
+#     is refused. No part may name .git.
 #
 # A Glob or Grep with no path searches the working directory and is allowed. A
 # Read with no file_path, and any of these fields present but empty, is
@@ -173,6 +179,15 @@ def grep_glob_allowed(value):
 def inside(p):
     return p is not None and not under(p, git_dir) and any(under(p, r) for r in roots)
 
+def away_from_workspace(path):
+    """True when a Grep path is a valid path inside the head or the input
+    directory, so its search cannot reach the workspace's .git."""
+    if not isinstance(path, str) or path_refusal('path', path, ws):
+        return False
+    resolved = resolve(path, ws)
+    return any(under(resolved, posixpath.normpath(os.environ[v]))
+               for v in ('REVIEW_HEAD_DIR', 'REVIEW_INPUT_DIR') if os.environ.get(v))
+
 def calls(node):
     if isinstance(node, dict):
         if node.get('type') == 'tool_use':
@@ -220,7 +235,9 @@ def refusal(call):
             return ('field not a string', 'glob')
         if not glob_ok(g):
             return ('character outside the allowlist', 'glob')
-        if not grep_glob_allowed(g):
+        if '..' in re.split(r'[/{},]', g):
+            return ('Grep glob is not extension-shaped', 'glob')
+        if not away_from_workspace(args.get('path')) and not grep_glob_allowed(g):
             return ('Grep glob is not extension-shaped', 'glob')
     path = args.get('path')
     if path is None:
