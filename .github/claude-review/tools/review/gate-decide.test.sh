@@ -139,6 +139,17 @@ assert_eq "1" "$(rc TIER=)" "a missing tier is treated as High"
 # The acknowledgement.
 ack_head=$(comments repo-owner "Accepted at $A1: reviewed the workflow change")
 assert_eq "0" "$(rc TIER=High REVIEW_COMMENTS_CMD="$ack_head")" "an acknowledgement for the head clears High"
+# A comments feed larger than one environment string may hold (128 KiB on
+# Linux), with the acknowledgement last.
+python3 -I - "$tmp/big-comments.json" "$A1" <<'PY2'
+import json, sys
+pad = 'x' * 2048
+comments = [{"user": {"login": "someone"}, "body": pad} for _ in range(70)]
+comments.append({"user": {"login": "repo-owner"}, "body": f"Accepted at {sys.argv[2]}: reviewed"})
+open(sys.argv[1], 'w').write(json.dumps(comments))
+PY2
+[ "$(stat -c %s "$tmp/big-comments.json")" -gt 131072 ] || { echo "FAIL: the large feed fixture is under 128 KiB" >&2; exit 1; }
+assert_eq "0" "$(rc TIER=High REVIEW_COMMENTS_CMD="cat $tmp/big-comments.json")" "a comments feed over 128 KiB is read and its acknowledgement found"
 assert_eq "0" "$(rc BUGS_STATE=capped REVIEW_COMMENTS_CMD="$ack_head")" "and the round cap"
 ack_short=$(comments repo-owner "Accepted at ${A1:0:7}: short sha")
 assert_eq "0" "$(rc TIER=High REVIEW_COMMENTS_CMD="$ack_short")" "a short sha is expanded"

@@ -84,8 +84,8 @@ Every file below is a copy; the Changed section lists the ones edited.
 - `tools/review/findings-from-trace.test.sh`: `ROOT` points at `.github/claude-review`; cases for the head directory and an unquoted parse error.
 - `tools/review/findings-gate.sh`: a thread is answered only by a later comment from `REVIEW_OWNER_LOGIN`; prints `open=<N>` and `thread=<tag> <url>`; refuses an unset owner login; prints `truncated=true` for a feed of 100 threads; the feed reaches python3 in a temporary file, not an environment variable, which Linux caps at 128 KiB.
 - `tools/review/findings-gate.test.sh`: `ROOT` points at `.github/claude-review`; rewritten for owner replies and the machine lines; owner fixture `repo-owner`; a case for `truncated=true`; a feed over 128 KiB is read.
-- `tools/review/gate-decide.sh`: new; the Review gate's decision order, acknowledgement check, step summary and re-run hint; `findings-gate.sh`'s stderr, which names why the threads could not be read, stays in the log.
-- `tools/review/gate-decide.test.sh`: new; every decision step and their order, angles, drafts, missing states and acknowledgements in a real repository; the cause of unreadable threads on stderr.
+- `tools/review/gate-decide.sh`: new; the Review gate's decision order, acknowledgement check, step summary and re-run hint; `findings-gate.sh`'s stderr, which names why the threads could not be read, stays in the log; the comments feed reaches python3 in a temporary file, not an environment variable, which Linux caps at 128 KiB.
+- `tools/review/gate-decide.test.sh`: new; every decision step and their order, angles, drafts, missing states and acknowledgements in a real repository; the cause of unreadable threads on stderr; a comments feed over 128 KiB is read.
 - `tools/review/keep-trace.sh`: screen-only mode, `REVIEW_SCREEN_ONLY=1`, screening the given files and copying nothing.
 - `tools/review/keep-trace.test.sh`: `ROOT` points at `.github/claude-review`; screen-only cases with a planted secret.
 - `tools/review/post-findings.test.sh`: `ROOT` points at `.github/claude-review`.

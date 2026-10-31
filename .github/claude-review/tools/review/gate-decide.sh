@@ -130,15 +130,21 @@ acknowledged() {
 # check_ack: set ack_state to valid or none, in this shell so that red() exits
 # the script.
 check_ack() {
-  local head feed frc shas sha full base tree head_tree
+  local head frc shas sha full base tree head_tree
   head=$(git rev-parse --verify --quiet "${HEAD_SHA}^{commit}") ||
     red "The pull request head ${HEAD_SHA:-(none)} is not in this checkout; the gate cannot decide." hint
-  feed=$(comments_feed); frc=$?
+  # The feed goes to python3 in a file. Linux caps one environment string at
+  # 128 KiB, which a long-lived pull request's comments feed passes. Not local:
+  # the trap reads it when the script exits.
+  feed_file=$(mktemp) || red "Pull request comments could not be read." hint
+  trap 'rm -f "$feed_file"' EXIT
+  comments_feed > "$feed_file"; frc=$?
   [ "$frc" -eq 0 ] || red "Pull request comments could not be read." hint
-  shas=$(REVIEW_FEED="$feed" python3 - "$OWNER" <<'PY'
-import json, os, re, sys
+  shas=$(python3 - "$OWNER" "$feed_file" <<'PY'
+import json, re, sys
 owner = sys.argv[1]
-raw = os.environ.get('REVIEW_FEED', '')
+with open(sys.argv[2], encoding='utf-8') as f:
+    raw = f.read()
 
 # `gh api --paginate` may print one array per page, so read a sequence of JSON
 # documents rather than exactly one.
