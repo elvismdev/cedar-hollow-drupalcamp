@@ -3,23 +3,49 @@ set -uo pipefail
 ROOT="$(git rev-parse --show-toplevel)/.github/claude-review"
 . "$ROOT/tools/agent/test/assert.sh"
 R="$ROOT/tools/agent/compose-agent-args.sh"
-NO_HUMAN="Agent,Task,ListAgents,ScheduleWakeup,SendMessage,Monitor,TaskCreate,CronCreate"
-NO_WRITE="Bash,Edit,Write,MultiEdit,NotebookEdit,WebFetch,WebSearch,Skill"
+REQUIRED_DENY="Agent Task ListAgents ScheduleWakeup SendMessage Monitor TaskCreate CronCreate Bash Edit Write MultiEdit NotebookEdit WebFetch WebSearch Skill"
+
+# The comma-separated value that follows a flag in an args line.
+flag_value() { # line flag
+  printf '%s\n' "$1" | sed -nE "s/.* $2 ([^ ]*).*/\1/p"
+}
+
+# Whole-token checks on the allow and deny lists. Substring matching would let
+# Task pass on TaskCreate, Agent on ListAgents and Edit on MultiEdit.
+check_tool_lists() { # line ; prints a failure per line, nothing when sound
+  local allow deny t
+  allow=$(flag_value "$1" --allowedTools | tr ',' '\n')
+  deny=$(flag_value "$1" --disallowedTools | tr ',' '\n')
+  [ "$(printf '%s\n' "$allow" | sort | tr '\n' ' ')" = "Glob Grep Read " ] || echo "allow list is not exactly Read, Glob, Grep"
+  for t in $REQUIRED_DENY; do
+    printf '%s\n' "$deny" | grep -qxF -- "$t" || echo "deny list lacks $t"
+  done
+  for t in $allow; do
+    ! printf '%s\n' "$deny" | grep -qxF -- "$t" || echo "$t is both allowed and denied"
+  done
+}
 
 # Default: no model, no directories. Both tool lists are asserted exactly.
 out=$(env -u REVIEW_HEAD_DIR -u REVIEW_INPUT_DIR AGENT_TURNS_REVIEW=60 AGENT_MODEL_REVIEW='' bash "$R")
-assert_eq "AGENT_ARGS_REVIEW=--setting-sources user --max-turns 60 --allowedTools Read,Glob,Grep --disallowedTools $NO_HUMAN,$NO_WRITE" \
-  "$out" "default review args: allow list and deny list"
+assert_contains "$out" "AGENT_ARGS_REVIEW=--setting-sources user --max-turns 60 --allowedTools " "default review args shape"
 assert_eq "1" "$(printf '%s\n' "$out" | grep -c .)" "exactly one env line"
 case "$out" in *"--model"*) echo "FAIL: an empty model still emitted --model" >&2; exit 1 ;; esac
 case "$out" in *"--add-dir"*) echo "FAIL: unset directories still emitted --add-dir" >&2; exit 1 ;; esac
 
-# The allow list has no command or write tool, and the deny list covers them.
-allow=$(printf '%s' "$out" | sed -E 's/.*--allowedTools ([^ ]*) .*/\1/')
-assert_eq "Read,Glob,Grep" "$allow" "the allow list is read-only"
-for t in Bash Edit Write MultiEdit NotebookEdit WebFetch WebSearch Skill Agent Task ListAgents ScheduleWakeup; do
-  assert_contains "$out" "$t" "the deny list names $t"
-done
+# Both lists, checked by whole token.
+problems=$(check_tool_lists "$out")
+assert_eq "" "$problems" "allow list is exactly Read,Glob,Grep; every deny name is a whole token; no overlap"
+
+# The check can fail: crafted lines with an emptied deny list, a missing name
+# that only substring matching would find, and an allowed tool also denied.
+bad=$(check_tool_lists "x --allowedTools Read,Glob,Grep --disallowedTools ")
+[ -n "$bad" ] || { echo "FAIL: an emptied deny list passed the check" >&2; exit 1; }
+bad=$(check_tool_lists "x --allowedTools Read,Glob,Grep --disallowedTools Agent,Task,ListAgents,ScheduleWakeup,SendMessage,Monitor,CronCreate,Bash,Edit,Write,NotebookEdit,WebFetch,WebSearch,Skill,TaskCreate,MultiEdit,Extra")
+assert_eq "" "$bad" "a complete deny list in another order passes"
+bad=$(check_tool_lists "x --allowedTools Read,Glob,Grep --disallowedTools ListAgents,TaskCreate,MultiEdit,ScheduleWakeup,SendMessage,Monitor,CronCreate,Bash,Write,NotebookEdit,WebFetch,WebSearch,Skill")
+case "$bad" in *"lacks Agent"*"lacks Task"*"lacks Edit"*) ;; *) echo "FAIL: substring-only matches passed the check" >&2; exit 1 ;; esac
+bad=$(check_tool_lists "x --allowedTools Read,Glob,Grep,Bash --disallowedTools $(echo $REQUIRED_DENY | tr ' ' ',')")
+[ -n "$bad" ] || { echo "FAIL: an extra allowed tool passed the check" >&2; exit 1; }
 
 # A pinned model appears once.
 out=$(AGENT_MODEL_REVIEW=claude-opus-5 AGENT_TURNS_REVIEW=60 bash "$R")
