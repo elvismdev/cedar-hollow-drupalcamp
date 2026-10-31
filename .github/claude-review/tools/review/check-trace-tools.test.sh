@@ -121,6 +121,40 @@ ok_path Grep '{"pattern":"x","glob":"src/**/*.ts"}' "a Grep glob src/**/*.ts pas
 ok_path Grep '{"pattern":"x","glob":"*.php,*.inc"}' "comma-separated extension globs pass"
 no_path Grep '{"pattern":"x","glob":""}' "an empty Grep glob is refused"
 no_path Grep '{"pattern":"x","glob":"!*.php"}' "a ! outside the allowlist is refused"
+ok_path Grep '{"pattern":"x","glob":"**/{a,b}.php"}' "a brace group of names before the extension passes after **/"
+ok_path Grep '{"pattern":"x","glob":"{a,b}.php"}' "a brace group of names before the extension passes on its own"
+ok_path Grep '{"pattern":"x","glob":"src/**/*.{php,module}"}' "a brace group of extensions passes after a directory"
+no_path Grep '{"pattern":"x","glob":"**/{a,*}.php"}' "a wildcard in the names brace group is refused"
+no_path Grep '{"pattern":"x","glob":"**/{..,a}.php"}' "a .. in the names brace group is refused"
+no_path Grep '{"pattern":"x","glob":"{a,b}/x.php"}' "a brace group in a directory segment is refused"
+no_path Grep '{"pattern":"x","glob":"**/{a,b}"}' "a brace group of names with no extension is refused"
+
+# Closed input fields. Each tool's input may hold only the fields of its own
+# schema in Claude Code 2.1.309. Claude Code reads aliases and stray fields
+# (Grep reads file_path as path when path is absent), so any other key is
+# refused rather than mirrored.
+no_field () { printf '[%s]' "$(call "$1" "$2")" > "$tmp/p.json"; assert_eq "1" "$(rc "$tmp/p.json")" "$3"; assert_contains "$(run "$tmp/p.json")" "outside that tool's input fields" "$3 says why"; }
+no_field Grep '{"pattern":"SECRET","output_mode":"content","file_path":"/proc/self/environ"}' "a Grep with file_path and no path is refused"
+no_field Grep '{"pattern":"x","path":"/w/repo","file_path":"/proc/self/environ"}' "a Grep with file_path beside path is refused"
+no_field Grep '{"pattern":"x","foo":"bar"}' "a Grep with an unknown key is refused"
+no_field Read '{"file_path":"/w/repo/a","foo":1}' "a Read with an unknown key is refused"
+no_field Read '{"file_path":"/w/repo/a","length":10}' "a Read with Claude Code's length alias is refused"
+no_field Glob '{"pattern":"*.php","file_path":"/proc"}' "a Glob with file_path is refused"
+no_field Grep '{"pattern":"x","_host":"other"}' "the attached-machine field is refused"
+no_field Grep '{"pattern":"x","-r":true}' "a Grep with -r is refused"
+printf '[{"type":"tool_use","name":"Grep","input":"/proc/self/environ"}]' > "$tmp/p.json"
+assert_eq "1" "$(rc "$tmp/p.json")" "an input that is not an object is refused"
+ok_path Read '{"file_path":"/w/repo/a.pdf","offset":1,"limit":20,"pages":"1-2","allow_large":false}' "every Read field passes"
+ok_path Glob '{"pattern":"**/*.php","path":"/w/repo"}' "every Glob field passes"
+ok_path Grep '{"pattern":"x","path":"/w/repo","glob":"*.php","type":"php","output_mode":"content","-B":1,"-A":1,"-C":1,"context":1,"-n":true,"-i":true,"-o":false,"head_limit":5,"offset":0,"multiline":false}' "every Grep field passes"
+
+# A Glob pattern must be relative. Claude Code searches an absolute pattern from
+# its static prefix, not from the path the check would compute, so a brace group
+# holding .. made the check judge a different directory from the one listed.
+no_path Glob '{"pattern":"/proc/self/{environ,x/../../../w/repo/y}"}' "an absolute Glob pattern with a brace group is refused"
+no_path Glob '{"pattern":"/w/repo/**/*.php"}' "an absolute Glob pattern inside the workspace is refused"
+no_path Glob '{"pattern":"/proc/self/{environ,x}"}' "an absolute Glob pattern /proc/self/{environ,x} is refused"
+no_path Glob '{"pattern":"{..,x}/../../proc/*"}' "a relative Glob pattern climbing through a brace group is refused"
 
 # Without the head and input directories set, only the workspace is allowed.
 printf '[%s]' "$(call Read '{"file_path":"/rt/head/a"}')" > "$tmp/p.json"
