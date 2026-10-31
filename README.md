@@ -78,6 +78,10 @@ After changing the agenda builder's JSX or CSS, run `scripts/build-agenda-builde
 
 Locally `BASE_URL` defaults to `https://cedar-hollow.ddev.site:30001`; set it to your DDEV URL if it differs.
 
+## How changes are reviewed
+
+Every change reaches `main` through a pull request that must pass CI, an AI reviewer that reads it for bugs and security, and a review gate that stays red until each important finding has an owner reply. The reviewer is a copy of the owner's private review action, adapted here, and it reviews against the Drupal-specific rules in [`REVIEW.md`](REVIEW.md). [`docs/code-review-practice.md`](docs/code-review-practice.md) explains the practice, what was left out and why, and the maintainer runbook.
+
 ## Deploy to Pantheon
 
 Deploys run through `.github/workflows/deploy-dev.yml` after every CI job passes on `main`; there is no manual push. Watch a run on the Actions tab or under the `pantheon-dev` deployment. A green run means Dev runs the commit, `drush deploy` completed, `config:status` and `updatedb:status` are clean, the image warm-up returned 200 everywhere (it runs only when the deployed commits change image styles, `scripts/demo-images.json` or the content recipe; the run summary says whether it ran), and the smoke and accessibility suites passed. A red run marks the failed step, and the `deploy` job's summary lists the commit, the push result, the backup file and the build status up to that point. To see which commit Dev runs:
