@@ -89,8 +89,8 @@ Every file below is a copy; the Changed section lists the ones edited.
 - `tools/review/keep-trace.sh`: screen-only mode, `REVIEW_SCREEN_ONLY=1`, screening the given files and copying nothing.
 - `tools/review/keep-trace.test.sh`: `ROOT` points at `.github/claude-review`; screen-only cases with a planted secret.
 - `tools/review/post-findings.test.sh`: `ROOT` points at `.github/claude-review`.
-- `tools/review/prior-findings.sh`: a thread is answered only by a reply from `REVIEW_OWNER_LOGIN`; resolved and outdated threads are listed as open.
-- `tools/review/prior-findings.test.sh`: `ROOT` points at `.github/claude-review`; cases for owner replies; owner fixture `repo-owner`.
+- `tools/review/prior-findings.sh`: a thread is answered only by a reply from `REVIEW_OWNER_LOGIN`; resolved and outdated threads are listed as open; the feed reaches python3 in a temporary file, not an environment variable, which Linux caps at 128 KiB.
+- `tools/review/prior-findings.test.sh`: `ROOT` points at `.github/claude-review`; cases for owner replies; owner fixture `repo-owner`; a feed over 128 KiB is read.
 - `tools/review/reviewed-through.sh`: outputs `diff_from`; a head equal to the clean merge of the last reviewed commit with its merge base with `origin/main` is `current`; a conflicting merge is a full review.
 - `tools/review/reviewed-through.test.sh`: `ROOT` points at `.github/claude-review`; merge cases; human fixture `repo-owner`.
 - `tools/review/review-action-cause.test.sh`: new; the step proving an agent ran has `always()` and needs an attempted agent step, and the final step names `no_agent_ran` for a failed agent with no trace.
