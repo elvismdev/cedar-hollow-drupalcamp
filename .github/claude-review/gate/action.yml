@@ -1,48 +1,75 @@
-name: Review findings are answered
+name: Review gate
 description: >
-  Fail while any finding from the Claude review is unanswered, and fail when
-  the review itself did not succeed. Run as its own job after the review jobs.
+  Decide the Review gate for a pull request: red while the review did not run,
+  while an important finding is unanswered, or while a High tier or a round cap
+  has no valid "Accepted at <sha>:" from the repository owner. Run as its own
+  job, with if: always(), after the guard, classify and both review jobs.
 
 # The gate script comes from this action, never from the pull request, so a
-# change cannot edit the gate that judges it. No checkout: it reads GitHub's
-# record of the review threads and nothing in the repository.
+# change cannot edit the gate that judges it. The calling job checks out main
+# with full history and then fetches the pull request head, because the
+# acknowledgement check compares commits from both.
 
 inputs:
-  review_result:
-    description: needs.<review job>.result
-    required: true
   github_token:
     description: secrets.GITHUB_TOKEN, with pull-requests read
     required: true
-  pr:
-    description: Pull request number. Defaults to the triggering pull request.
+  owner_login:
+    description: The repository owner's login; only its replies and acknowledgements count
+    required: true
+  guard_result:
+    description: needs.guard.result
+    required: true
+  draft:
+    description: github.event.pull_request.draft
+    required: true
+  bugs_state:
+    description: needs.review-bugs.outputs.state; empty counts as missing
     required: false
     default: ''
+  bugs_cause:
+    description: needs.review-bugs.outputs.cause
+    required: false
+    default: ''
+  security_state:
+    description: needs.review-security.outputs.state; empty counts as missing
+    required: false
+    default: ''
+  security_cause:
+    description: needs.review-security.outputs.cause
+    required: false
+    default: ''
+  tier:
+    description: needs.classify.outputs.tier, High or Normal; anything else is treated as High
+    required: false
+    default: ''
+  pr:
+    description: Pull request number
+    required: true
+  head_sha:
+    description: github.event.pull_request.head.sha
+    required: true
 
 runs:
   using: composite
   steps:
-    # A gate that passes because a failed review posted nothing reads absence
-    # as safety.
-    - name: The reviews actually ran
-      shell: bash
-      env:
-        RESULT: ${{ inputs.review_result }}
-      run: |
-        set -euo pipefail
-        if [ "$RESULT" != "success" ]; then
-          echo "::error::the review job concluded '$RESULT', so no finding list can be trusted."
-          exit 1
-        fi
-        echo "reviews concluded success"
-
-    - name: Every finding is answered
+    - name: Decide the gate
       shell: bash
       env:
         GH_TOKEN: ${{ inputs.github_token }}
-        PR: ${{ inputs.pr || github.event.pull_request.number }}
+        REVIEW_OWNER_LOGIN: ${{ inputs.owner_login }}
+        GUARD_RESULT: ${{ inputs.guard_result }}
+        PR_DRAFT: ${{ inputs.draft }}
+        BUGS_STATE: ${{ inputs.bugs_state }}
+        BUGS_CAUSE: ${{ inputs.bugs_cause }}
+        SECURITY_STATE: ${{ inputs.security_state }}
+        SECURITY_CAUSE: ${{ inputs.security_cause }}
+        TIER: ${{ inputs.tier }}
+        PR_NUMBER: ${{ inputs.pr }}
+        HEAD_SHA: ${{ inputs.head_sha }}
         TOOLS: ${{ github.action_path }}/../tools
       run: |
-        set -euo pipefail
-        printf '%s' "$PR" | grep -qE '^[0-9]+$' || { echo "::error::'$PR' is not a pull request number"; exit 1; }
-        bash "$TOOLS/review/findings-gate.sh" "$PR"
+        set -uo pipefail
+        printf '%s' "$PR_NUMBER" | grep -qE '^[0-9]+$' || { echo "::error::'$PR_NUMBER' is not a pull request number"; exit 1; }
+        printf '%s' "$HEAD_SHA" | grep -qE '^[0-9a-f]{40}$' || { echo "::error::'$HEAD_SHA' is not a commit sha"; exit 1; }
+        bash "$TOOLS/review/gate-decide.sh"
