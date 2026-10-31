@@ -120,3 +120,10 @@ Rename of the private helper folder, its variable prefix and a private-name comm
 - `tools/review/prior-findings.test.sh`: helper paths and variable names
 - `tools/review/reviewed-through.test.sh`: helper paths and variable names
 - `tools/review/vote-findings.test.sh`: helper paths and variable names
+
+Test steps, ported from upstream's `test.yml` into `.github/workflows/ci.yml` as job `reviewer-tools` (paths changed to `.github/claude-review/tools` and `.claude/hooks`):
+
+- Full-history checkout and a global git identity, because the suites create commits.
+- Every `*.test.sh` runs, the suite count prints, no suites found fails, and every failing suite is listed.
+- `shellcheck -S warning` over every `*.sh` in both folders, `check-actions.sh`, and `check-cli-version.sh` with the workflow token.
+- `tools/review-workflow.test.sh`: new; asserts the trigger, the review jobs' needs and conditions and the gate's `if: always()` in `review.yml`, with fixture self-tests; skips while `review.yml` is absent.

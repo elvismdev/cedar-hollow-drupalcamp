@@ -172,6 +172,45 @@ jobs:
             tests/a11y-results
           retention-days: 7
 
+  reviewer-tools:
+    name: Reviewer tools tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      # Full history: the suites build repositories and merges from it.
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - name: Git identity for the suites that create commits
+        run: |
+          git config --global user.email "ci@example.invalid"
+          git config --global user.name "CI"
+      - name: Run every reviewer and hook test suite
+        run: |
+          mapfile -t suites < <(find .github/claude-review/tools .claude/hooks -name '*.test.sh' | sort)
+          echo "Found ${#suites[@]} suites"
+          if [ "${#suites[@]}" -eq 0 ]; then echo "No test suites found" >&2; exit 1; fi
+          failed=()
+          for suite in "${suites[@]}"; do
+            echo "::group::$suite"
+            bash "$suite" || failed+=("$suite")
+            echo "::endgroup::"
+          done
+          if [ "${#failed[@]}" -gt 0 ]; then
+            echo "Failed suites (${#failed[@]} of ${#suites[@]}):" >&2
+            printf '  %s\n' "${failed[@]}" >&2
+            exit 1
+          fi
+      - name: Shellcheck
+        run: |
+          find .github/claude-review .claude/hooks -name '*.sh' -print0 | xargs -0 shellcheck -S warning
+      - name: Workflow and action checks
+        run: .github/claude-review/tools/check-actions.sh
+      - name: Pinned Claude Code version matches the review action
+        run: .github/claude-review/tools/check-cli-version.sh
+        env:
+          GH_TOKEN: ${{ github.token }}
+
   visual:
     name: Visual regression on Storybook templates
     needs: theme
