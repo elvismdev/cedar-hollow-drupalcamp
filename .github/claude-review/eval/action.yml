@@ -1,0 +1,86 @@
+name: Claude review eval
+description: >
+  Score the Claude review against a repository's own record: incident cases it
+  must report as important, and clean cases it must leave without an important
+  finding. Uses this repository's review scripts at the pinned sha, the same
+  ones the review action runs.
+
+# The calling workflow checks out with full history, because every case names
+# the commit it replays; this action does no checkout of its own.
+#
+# Every case runs a live agent, up to four with verification, so this belongs
+# on a schedule and on changes to the reviewer (its pin, its prompts, the
+# cases), not on every pull request. It holds one secret, the OAuth token the
+# agents need, and nothing else is passed to it.
+
+inputs:
+  cases:
+    description: Directory of case files, relative to the repository root
+    required: true
+  claude_code_oauth_token:
+    description: secrets.CLAUDE_CODE_OAUTH_TOKEN
+    required: true
+  base:
+    description: Ref whose REVIEW.md is the standard. Empty uses the default branch.
+    required: false
+    default: ''
+  baseline:
+    description: >
+      Path to the last measured result, {"cases": {"<name>": "pass" | "fail"}}.
+      With it the eval fails only when a case that passed there fails now;
+      without it, any failing case fails the eval.
+    required: false
+    default: ''
+  verify:
+    description: "'true' runs the three-verifier vote, as the review action does by default"
+    required: false
+    default: 'true'
+
+outputs:
+  summary:
+    description: One line, for example "incidents caught 2 of 2; clean cases flagged 0 of 3; 0 case(s) could not run"
+    value: ${{ steps.eval.outputs.summary }}
+  rc:
+    description: review-eval.mjs's exit status. 0 passed, 1 a case failed or regressed, 2 a case could not run.
+    value: ${{ steps.eval.outputs.rc }}
+
+runs:
+  using: composite
+  steps:
+    # The version claude-code-action installs at the sha review/action.yml
+    # pins, so the eval scores the reviewer the review job runs.
+    # tools/check-cli-version.sh keeps the two equal.
+    - name: Install Claude Code
+      shell: bash
+      run: |
+        set -euo pipefail
+        CLAUDE_CODE_VERSION="2.1.309"
+        for attempt in 1 2 3; do
+          timeout --foreground --kill-after=10 120 bash -c "curl -fsSL https://claude.ai/install.sh | bash -s -- $CLAUDE_CODE_VERSION" && break
+          [ "$attempt" -eq 3 ] && { echo "::error::could not install Claude Code $CLAUDE_CODE_VERSION"; exit 1; }
+          sleep 5
+        done
+        echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+    - name: Score the reviewer
+      id: eval
+      shell: bash
+      env:
+        CASES: ${{ inputs.cases }}
+        BASE: ${{ inputs.base }}
+        BASELINE: ${{ inputs.baseline }}
+        VERIFY: ${{ inputs.verify }}
+        CLAUDE_CODE_OAUTH_TOKEN: ${{ inputs.claude_code_oauth_token }}
+        TOOLS: ${{ github.action_path }}/../tools
+      run: |
+        set -uo pipefail
+        args=("$CASES" --out "$RUNNER_TEMP/review-eval.json")
+        [ -n "$BASE" ] && args+=(--base "$BASE")
+        [ -n "$BASELINE" ] && args+=(--baseline "$BASELINE")
+        [ "$VERIFY" = "true" ] || args+=(--no-verify)
+        node "$TOOLS/eval/review-eval.mjs" "${args[@]}"; rc=$?
+        echo "rc=$rc" >> "$GITHUB_OUTPUT"
+        if [ -s "$RUNNER_TEMP/review-eval.json" ]; then
+          echo "summary=$(jq -r .summary "$RUNNER_TEMP/review-eval.json")" >> "$GITHUB_OUTPUT"
+        fi
+        exit "$rc"

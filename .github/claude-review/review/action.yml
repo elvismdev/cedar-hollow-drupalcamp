@@ -1,0 +1,797 @@
+name: Claude review (one angle)
+description: >
+  Review one pull request from one angle: round cap, diff-only re-review,
+  findings already reported carried forward, REVIEW.md and the angle prompt read
+  from the base, the agents' tools checked, and the findings and summary
+  screened for secrets before they are posted inline and tagged. Run once per
+  angle.
+
+# Composite, called by its path in the job's checkout of main, so the action and
+# the scripts it runs come from the same commit.
+#
+# The scripts come from the calling job's checkout of main, never from the pull
+# request, so a pull request cannot supply the code that reviews it. The action
+# does no checkout of its own: the head is fetched as data into a detached
+# worktree under the runner's temporary directory, outside the working
+# directory, so none of its instruction files load. The scripts are
+# fingerprinted before the agent and checked again before anything that posts
+# or screens runs.
+
+inputs:
+  angle:
+    description: bugs, security, or any angle with a prompt in .github/claude-review/ on the base
+    required: true
+  pr:
+    description: Pull request number. Defaults to the triggering pull request.
+    required: false
+    default: ''
+  github_token:
+    description: secrets.GITHUB_TOKEN. Posts the findings, and passing it skips the action's app-token exchange.
+    required: true
+  claude_code_oauth_token:
+    description: secrets.CLAUDE_CODE_OAUTH_TOKEN
+    required: true
+  owner_login:
+    description: The repository owner's login; only its replies answer a finding already reported
+    required: true
+  secrets_json:
+    description: >
+      No longer accepted, and refused when set. It carried toJSON(secrets),
+      which put every repository secret on a runner where the reviewer could
+      reach it. The findings, the summary and the trace are screened against
+      the two secrets this action is given, the only ones the job holds.
+    required: false
+    default: ''
+  verify:
+    description: >
+      'true' has three independent verifier agents try to refute each finding
+      before it is posted, and drops a finding two of them refute. 'false'
+      posts the reviewer's findings as they are.
+    required: false
+    default: 'true'
+  model:
+    description: Model for the reviewer. Empty uses claude-code-action's default.
+    required: false
+    default: ''
+  max_turns:
+    description: Turn limit for the reviewer and each verifier, set by the job from the risk tier
+    required: true
+
+outputs:
+  state:
+    description: reviewed, current, capped or failed
+    value: ${{ steps.result.outputs.state }}
+  cause:
+    description: >
+      For failed: token_or_quota, no_agent_ran, tool_violation, secret_screen,
+      head_mismatch, empty_diff or infrastructure. Empty otherwise.
+    value: ${{ steps.result.outputs.cause }}
+
+runs:
+  using: composite
+  steps:
+    # The runner does not enforce required on a composite action's inputs, and
+    # compose-agent-args.sh turns an empty turn limit into 60, so a job that
+    # forgot either would run with a budget it never chose or with no owner
+    # whose replies answer a finding. Checked here before anything else runs.
+    - name: Check the required inputs
+      id: inputs
+      shell: bash
+      env:
+        MAX_TURNS: ${{ inputs.max_turns }}
+        OWNER_LOGIN: ${{ inputs.owner_login }}
+      run: |
+        set -euo pipefail
+        if ! printf '%s' "$MAX_TURNS" | grep -qE '^[1-9][0-9]*$'; then
+          echo "::error::max_turns is '${MAX_TURNS}', which is not a positive whole number. The job must set it from the risk tier."
+          exit 1
+        fi
+        if [ -z "$OWNER_LOGIN" ]; then
+          echo "::error::owner_login is empty. The job must pass the repository owner's login, whose replies answer a finding."
+          exit 1
+        fi
+        echo "max_turns=$MAX_TURNS, owner_login set"
+
+    # The head is data. It is fetched by its pull request ref and checked out
+    # detached under the runner's temporary directory, which is not the working
+    # directory, a parent or a subdirectory of it, so Claude Code loads none of
+    # its instruction files. Its commit must be the one the API reports, and an
+    # empty file list while the API reports changed files is a failure, never
+    # "no issues". The caller's checkout of main has no stored credentials, so
+    # the fetch is anonymous, which works on a public repository.
+    - name: Fetch the head as data
+      id: head
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.github_token }}
+        IN_PR: ${{ inputs.pr || github.event.pull_request.number }}
+      run: |
+        set -euo pipefail
+        printf '%s' "$IN_PR" | grep -qE '^[0-9]+$' || { echo "::error::'$IN_PR' is not a pull request number"; exit 1; }
+        meta=$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${IN_PR}" --jq '"\(.head.sha) \(.changed_files)"')
+        read -r api_sha changed <<<"$meta"
+        printf '%s' "$api_sha" | grep -qE '^[0-9a-f]{40}$' || { echo "::error::the pulls API returned '$api_sha' as the head of #$IN_PR, which is not a sha"; exit 1; }
+        printf '%s' "$changed" | grep -qE '^[0-9]+$' || { echo "::error::the pulls API returned '$changed' as the changed file count of #$IN_PR"; exit 1; }
+        git fetch --no-tags origin "+refs/pull/${IN_PR}/head"
+        fetched=$(git rev-parse --verify 'FETCH_HEAD^{commit}')
+        if [ "$fetched" != "$api_sha" ]; then
+          echo "cause=head_mismatch" >> "$GITHUB_OUTPUT"
+          echo "::error::the fetched head ${fetched} is not the head the pulls API reports, ${api_sha}. A push arrived during the run or the ref is wrong; nothing is reviewed."
+          exit 1
+        fi
+        git worktree add --detach "$RUNNER_TEMP/head" "$fetched"
+        if [ "$changed" -gt 0 ]; then
+          merge_base=$(git merge-base "$fetched" origin/main)
+          files=$(git diff --name-only "$merge_base" "$fetched")
+          if [ -z "$files" ]; then
+            echo "cause=empty_diff" >> "$GITHUB_OUTPUT"
+            echo "::error::the pulls API reports ${changed} changed file(s) on #${IN_PR}, but the diff from ${merge_base} to ${fetched} names none. An empty diff is not a clean review."
+            exit 1
+          fi
+        fi
+        mkdir -p "$RUNNER_TEMP/review-input"
+        {
+          echo "REVIEW_HEAD_DIR=$RUNNER_TEMP/head"
+          echo "REVIEW_INPUT_DIR=$RUNNER_TEMP/review-input"
+        } >> "$GITHUB_ENV"
+        {
+          echo "number=$IN_PR"
+          echo "sha=$fetched"
+        } >> "$GITHUB_OUTPUT"
+        echo "head of #$IN_PR at $fetched, in $RUNNER_TEMP/head"
+
+    # Links the change adds would let the reviewer's Read follow them out of
+    # the head, to the workspace's .git or to /proc. Each becomes a file naming
+    # its target before any agent runs.
+    - name: Replace the head's symlinks with files
+      id: symlinks
+      shell: bash
+      env:
+        TOOLS: ${{ github.workspace }}/.github/claude-review/tools
+      run: bash "$TOOLS/review/replace-symlinks.sh" "$RUNNER_TEMP/head"
+
+    # Checked in the expression, so the value is never put in a step's
+    # environment. A caller still passing toJSON(secrets) would otherwise get
+    # only an unexpected-input warning while every secret kept reaching the
+    # runner.
+    - name: Refuse secrets_json
+      id: refuse
+      if: inputs.secrets_json != ''
+      shell: bash
+      run: |
+        echo "::error::secrets_json is no longer accepted. Remove it from the workflow: it sent every repository secret to the runner, and the findings, the summary and the trace are screened against the two secrets this action is given."
+        exit 1
+
+    - name: Fingerprint the review scripts
+      id: tools
+      shell: bash
+      env:
+        TOOLS: ${{ github.workspace }}/.github/claude-review/tools
+      run: |
+        set -euo pipefail
+        sum=$(cd "$TOOLS" && find . -type f -print0 | sort -z | xargs -0 sha256sum | sha256sum | cut -d' ' -f1)
+        echo "sum=$sum" >> "$GITHUB_OUTPUT"
+        echo "review scripts: $sum"
+
+    - name: Resolve the pull request under review
+      id: pr
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.github_token }}
+        IN_PR: ${{ steps.head.outputs.number }}
+        HEAD_SHA: ${{ steps.head.outputs.sha }}
+      run: |
+        set -euo pipefail
+        read -r base base_sha < <(gh pr view "$IN_PR" \
+          --json baseRefName,baseRefOid \
+          --jq '"\(.baseRefName) \(.baseRefOid)"')
+        git rev-parse --verify --quiet "origin/$base" >/dev/null || {
+          echo "::error::origin/$base is not present in this checkout, so the base cannot be read."
+          exit 1
+        }
+        if ! printf '%s' "$base_sha" | grep -qE '^[0-9a-f]{40}$'; then
+          echo "::error::gh returned '$base_sha' as the base sha for #$IN_PR, which is not a sha."
+          exit 1
+        fi
+        # What the pull request says it does, from the pull request itself, so a run
+        # given a number gets it too: github.event.pull_request is empty then.
+        # Written by gh straight to a file, never through a variable or expression.
+        gh pr view "$IN_PR" --json title,body --jq '.title + "\n\n" + (.body // "")' \
+          > "$RUNNER_TEMP/pr-intent.md"
+        {
+          echo "number=$IN_PR"
+          echo "base=origin/$base"
+          echo "head=$HEAD_SHA"
+          echo "base_sha=$base_sha"
+        } >> "$GITHUB_OUTPUT"
+        echo "reviewing #$IN_PR: origin/$base..$HEAD_SHA"
+
+    # Three rounds, then stop: past it a reviewer finds a few more old things
+    # each pass rather than new ones. One line per review counted by wc, because
+    # --jq runs once per page and an aggregate inside it breaks on page two.
+    - name: Round cap
+      id: cap
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.github_token }}
+        PR: ${{ steps.pr.outputs.number }}
+        ANGLE: ${{ inputs.angle }}
+      run: |
+        set -euo pipefail
+        rounds=$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR}/reviews" --paginate \
+          --jq ".[] | select(.user.login | test(\"github-actions\"))
+                    | select(.body | test(\"Claude ${ANGLE} review\")) | .id" \
+          | wc -l)
+        echo "rounds=$rounds" >> "$GITHUB_OUTPUT"
+        if [ "$rounds" -ge 3 ]; then
+          gh pr comment "$PR" --body "Claude ${ANGLE} review has run ${rounds} times on this pull request and is stopping. Three rounds is the cap: past it a reviewer finds a few more old things each pass rather than new ones. Step back and reconsider the approach, or say why the current one is right."
+          echo "capped=1" >> "$GITHUB_OUTPUT"
+          echo "stopping after $rounds rounds"
+        else
+          echo "capped=0" >> "$GITHUB_OUTPUT"
+          echo "round $((rounds + 1)) of 3"
+        fi
+
+    - name: What this angle has already reviewed
+      id: seen
+      if: steps.cap.outputs.capped == '0'
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.github_token }}
+        PR: ${{ steps.pr.outputs.number }}
+        ANGLE: ${{ inputs.angle }}
+        HEAD: ${{ steps.pr.outputs.head }}
+        TOOLS: ${{ github.workspace }}/.github/claude-review/tools
+      run: bash "$TOOLS/review/reviewed-through.sh" "$PR" "$ANGLE" "$HEAD" >> "$GITHUB_OUTPUT"
+
+    # One switch for every step below, so the condition is written once.
+    - name: Decide whether this round runs
+      id: go
+      shell: bash
+      env:
+        CAPPED: ${{ steps.cap.outputs.capped }}
+        STATE: ${{ steps.seen.outputs.state }}
+      run: |
+        if [ "$CAPPED" = "0" ] && [ -n "$STATE" ] && [ "$STATE" != "current" ]; then
+          echo "run=1" >> "$GITHUB_OUTPUT"
+        else
+          echo "run=0" >> "$GITHUB_OUTPUT"
+          echo "nothing to review this round (capped=$CAPPED, state=${STATE:-none})"
+        fi
+
+    - name: Findings already reported
+      id: prior
+      if: steps.go.outputs.run == '1'
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.github_token }}
+        PR: ${{ steps.pr.outputs.number }}
+        REVIEW_OWNER_LOGIN: ${{ inputs.owner_login }}
+        TOOLS: ${{ github.workspace }}/.github/claude-review/tools
+      run: |
+        set -euo pipefail
+        bash "$TOOLS/review/prior-findings.sh" "$PR" > "$RUNNER_TEMP/prior-findings.md"
+        echo "prior findings: $(wc -c <"$RUNNER_TEMP/prior-findings.md") bytes"
+
+    # Read, Glob and Grep only, user settings only, every other tool denied by
+    # name, and the head and input directories added for reading. One
+    # definition, tested in compose-agent-args.test.sh.
+    - name: Compose the reviewer's arguments
+      id: args
+      if: steps.go.outputs.run == '1'
+      shell: bash
+      env:
+        AGENT_MODEL_REVIEW: ${{ inputs.model }}
+        AGENT_TURNS_REVIEW: ${{ inputs.max_turns }}
+        TOOLS: ${{ github.workspace }}/.github/claude-review/tools
+      run: |
+        set -euo pipefail
+        line=$(bash "$TOOLS/agent/compose-agent-args.sh" | grep '^AGENT_ARGS_REVIEW=')
+        echo "claude_args=${line#AGENT_ARGS_REVIEW=}" >> "$GITHUB_OUTPUT"
+
+    - name: Assemble the review prompt
+      id: prompt
+      if: steps.go.outputs.run == '1'
+      shell: bash
+      env:
+        ANGLE: ${{ inputs.angle }}
+        BASE: ${{ steps.pr.outputs.base }}
+        HEAD: ${{ steps.pr.outputs.head }}
+        SINCE: ${{ steps.seen.outputs.since }}
+        DIFF_FROM: ${{ steps.seen.outputs.diff_from }}
+        TOOLS: ${{ github.workspace }}/.github/claude-review/tools
+      run: |
+        set -euo pipefail
+        bash "$TOOLS/review/assemble-review-prompt.sh" \
+          "$ANGLE" "$BASE" "$HEAD" "$RUNNER_TEMP/review-prompt.txt" \
+          "$SINCE" "$RUNNER_TEMP/prior-findings.md" "$RUNNER_TEMP/pr-intent.md" "$DIFF_FROM"
+        bash "$TOOLS/agent/emit-block.sh" prompt "$RUNNER_TEMP/review-prompt.txt" >> "$GITHUB_OUTPUT"
+
+    # .git leaves the workspace before reviewer starts, so claude-code-action has
+    # no repository to write its token into. Nothing that needs git runs until
+    # it is restored.
+    - name: Move the workspace's .git away (reviewer)
+      id: hide-agent
+      if: steps.go.outputs.run == '1'
+      shell: bash
+      env:
+        TOOLS: ${{ github.workspace }}/.github/claude-review/tools
+      run: bash "$TOOLS/review/workspace-git.sh" hide
+
+    # github_token is passed so the action uses it instead of exchanging an OIDC
+    # token for its app token. That exchange is where the action skips itself
+    # and reports success when it judges the workflow file wrong.
+    - name: Claude review
+      id: agent
+      if: steps.go.outputs.run == '1'
+      uses: anthropics/claude-code-action@ae68417a745a5df4b2124873632bd73a2255e6f6 # v1.0.259
+      with:
+        claude_code_oauth_token: ${{ inputs.claude_code_oauth_token }}
+        github_token: ${{ inputs.github_token }}
+        prompt: ${{ steps.prompt.outputs.prompt }}
+        claude_args: ${{ steps.args.outputs.claude_args }}
+
+    - name: No token reached the workspace's .git (reviewer)
+      id: check-agent
+      if: always() && steps.hide-agent.outcome == 'success'
+      shell: bash
+      env:
+        TOOLS: ${{ github.workspace }}/.github/claude-review/tools
+      run: bash "$TOOLS/review/workspace-git.sh" check
+
+    - name: Restore the workspace's .git (reviewer)
+      id: restore-agent
+      if: always() && steps.hide-agent.outcome == 'success'
+      shell: bash
+      env:
+        TOOLS: ${{ github.workspace }}/.github/claude-review/tools
+      run: bash "$TOOLS/review/workspace-git.sh" restore
+
+    # The agent step can exit success having run no agent. The trace is the
+    # only evidence one ran. always(), so a failed agent step that left no
+    # trace is reported as no_agent_ran; skipped when the agent step was.
+    - name: Prove an agent ran
+      id: ran
+      if: always() && steps.go.outputs.run == '1' && steps.agent.outcome != 'skipped'
+      shell: bash
+      env:
+        TRACE: ${{ steps.agent.outputs.execution_file }}
+      run: |
+        set -euo pipefail
+        if [ -z "${TRACE:-}" ] || [ ! -s "$TRACE" ]; then
+          echo "::error::claude-code-action produced no execution trace, so no agent ran. The step exits success having done nothing on this path."
+          exit 1
+        fi
+        echo "trace present: $(wc -c <"$TRACE") bytes"
+
+    # The deny list names every tool it knows of; this reads what the agent
+    # actually called, and the paths it gave Read, Glob and Grep, which must
+    # stay in the workspace (not its .git, which is moved away while the agents
+    # run so claude-code-action cannot write its token there), the head or the
+    # input directory. These checks run before the screen and posting. always(), so a reviewer that failed part-way is still
+    # checked. An absent trace is left to the step above.
+    - name: The reviewer used only Read, Glob and Grep
+      id: tools-agent
+      if: always() && steps.go.outputs.run == '1'
+      shell: bash
+      env:
+        TRACE: ${{ steps.agent.outputs.execution_file }}
+        TOOLS: ${{ github.workspace }}/.github/claude-review/tools
+      run: |
+        set -euo pipefail
+        if [ -z "${TRACE:-}" ] || [ ! -s "$TRACE" ]; then
+          echo "no reviewer trace to check"
+          exit 0
+        fi
+        bash "$TOOLS/review/check-trace-tools.sh" "$TRACE"
+
+    # The scripts that post findings and screen the trace are checked against
+    # their fingerprint before they run. The fingerprint is a step output, which
+    # nothing can rewrite once that step ended.
+    - name: The review scripts are unchanged
+      id: unchanged
+      if: always() && steps.go.outputs.run == '1'
+      shell: bash
+      env:
+        TOOLS: ${{ github.workspace }}/.github/claude-review/tools
+        BEFORE: ${{ steps.tools.outputs.sum }}
+      run: |
+        set -euo pipefail
+        now=$(cd "$TOOLS" && find . -type f -print0 | sort -z | xargs -0 sha256sum | sha256sum | cut -d' ' -f1)
+        if [ "$now" != "$BEFORE" ]; then
+          echo "::error::the review scripts changed while the reviewer ran ($BEFORE -> $now). Nothing is posted from this run."
+          exit 1
+        fi
+        echo "review scripts unchanged"
+
+    # Read only after the check above, so the extractor that decides what is
+    # posted is the one that was fingerprinted.
+    - name: Extract the findings
+      id: candidates
+      if: steps.go.outputs.run == '1'
+      shell: bash
+      env:
+        TRACE: ${{ steps.agent.outputs.execution_file }}
+        TOOLS: ${{ github.workspace }}/.github/claude-review/tools
+      run: |
+        set -euo pipefail
+        node "$TOOLS/review/findings-from-trace.mjs" "$TRACE" "$RUNNER_TEMP/candidates.json"
+        echo "count=$(jq length "$RUNNER_TEMP/candidates.json")" >> "$GITHUB_OUTPUT"
+
+    # Findings are claims until other agents fail to refute them. Three
+    # verifiers run independently with the reviewer's read-only tools; a
+    # verifier that fails is a vote to keep, so continue-on-error only ever
+    # lets a finding through, never hides one.
+    - name: Assemble the verification prompt
+      id: verify-prompt
+      if: steps.go.outputs.run == '1' && inputs.verify == 'true' && steps.candidates.outputs.count != '0'
+      shell: bash
+      env:
+        BASE: ${{ steps.pr.outputs.base }}
+        HEAD: ${{ steps.pr.outputs.head }}
+        DIFF_FROM: ${{ steps.seen.outputs.diff_from }}
+        TOOLS: ${{ github.workspace }}/.github/claude-review/tools
+      run: |
+        set -euo pipefail
+        bash "$TOOLS/review/assemble-verify-prompt.sh" \
+          "$BASE" "$HEAD" "$RUNNER_TEMP/candidates.json" "$RUNNER_TEMP/verify-prompt.txt" "$DIFF_FROM"
+        bash "$TOOLS/agent/emit-block.sh" prompt "$RUNNER_TEMP/verify-prompt.txt" >> "$GITHUB_OUTPUT"
+
+    # .git leaves the workspace before verifier 1 starts, so claude-code-action has
+    # no repository to write its token into. Nothing that needs git runs until
+    # it is restored.
+    - name: Move the workspace's .git away (verifier 1)
+      id: hide-verify1
+      if: steps.verify-prompt.outcome == 'success'
+      shell: bash
+      env:
+        TOOLS: ${{ github.workspace }}/.github/claude-review/tools
+      run: bash "$TOOLS/review/workspace-git.sh" hide
+
+    - name: Verify the findings (1 of 3)
+      id: verify1
+      if: steps.verify-prompt.outcome == 'success'
+      continue-on-error: true
+      uses: anthropics/claude-code-action@ae68417a745a5df4b2124873632bd73a2255e6f6 # v1.0.259
+      with:
+        claude_code_oauth_token: ${{ inputs.claude_code_oauth_token }}
+        github_token: ${{ inputs.github_token }}
+        prompt: ${{ steps.verify-prompt.outputs.prompt }}
+        claude_args: ${{ steps.args.outputs.claude_args }}
+
+    - name: No token reached the workspace's .git (verifier 1)
+      id: check-verify1
+      if: always() && steps.hide-verify1.outcome == 'success'
+      shell: bash
+      env:
+        TOOLS: ${{ github.workspace }}/.github/claude-review/tools
+      run: bash "$TOOLS/review/workspace-git.sh" check
+
+    - name: Restore the workspace's .git (verifier 1)
+      id: restore-verify1
+      if: always() && steps.hide-verify1.outcome == 'success'
+      shell: bash
+      env:
+        TOOLS: ${{ github.workspace }}/.github/claude-review/tools
+      run: bash "$TOOLS/review/workspace-git.sh" restore
+
+    - name: Verifier 1 used only Read, Glob and Grep
+      id: tools-verify1
+      if: steps.verify-prompt.outcome == 'success'
+      shell: bash
+      env:
+        TRACE: ${{ steps.verify1.outputs.execution_file }}
+        TOOLS: ${{ github.workspace }}/.github/claude-review/tools
+      run: |
+        set -euo pipefail
+        if [ -z "${TRACE:-}" ] || [ ! -s "$TRACE" ]; then
+          echo "verifier 1 produced no trace to check"
+          exit 0
+        fi
+        bash "$TOOLS/review/check-trace-tools.sh" "$TRACE"
+
+    # .git leaves the workspace before verifier 2 starts, so claude-code-action has
+    # no repository to write its token into. Nothing that needs git runs until
+    # it is restored.
+    - name: Move the workspace's .git away (verifier 2)
+      id: hide-verify2
+      if: steps.verify-prompt.outcome == 'success'
+      shell: bash
+      env:
+        TOOLS: ${{ github.workspace }}/.github/claude-review/tools
+      run: bash "$TOOLS/review/workspace-git.sh" hide
+
+    - name: Verify the findings (2 of 3)
+      id: verify2
+      if: steps.verify-prompt.outcome == 'success'
+      continue-on-error: true
+      uses: anthropics/claude-code-action@ae68417a745a5df4b2124873632bd73a2255e6f6 # v1.0.259
+      with:
+        claude_code_oauth_token: ${{ inputs.claude_code_oauth_token }}
+        github_token: ${{ inputs.github_token }}
+        prompt: ${{ steps.verify-prompt.outputs.prompt }}
+        claude_args: ${{ steps.args.outputs.claude_args }}
+
+    - name: No token reached the workspace's .git (verifier 2)
+      id: check-verify2
+      if: always() && steps.hide-verify2.outcome == 'success'
+      shell: bash
+      env:
+        TOOLS: ${{ github.workspace }}/.github/claude-review/tools
+      run: bash "$TOOLS/review/workspace-git.sh" check
+
+    - name: Restore the workspace's .git (verifier 2)
+      id: restore-verify2
+      if: always() && steps.hide-verify2.outcome == 'success'
+      shell: bash
+      env:
+        TOOLS: ${{ github.workspace }}/.github/claude-review/tools
+      run: bash "$TOOLS/review/workspace-git.sh" restore
+
+    - name: Verifier 2 used only Read, Glob and Grep
+      id: tools-verify2
+      if: steps.verify-prompt.outcome == 'success'
+      shell: bash
+      env:
+        TRACE: ${{ steps.verify2.outputs.execution_file }}
+        TOOLS: ${{ github.workspace }}/.github/claude-review/tools
+      run: |
+        set -euo pipefail
+        if [ -z "${TRACE:-}" ] || [ ! -s "$TRACE" ]; then
+          echo "verifier 2 produced no trace to check"
+          exit 0
+        fi
+        bash "$TOOLS/review/check-trace-tools.sh" "$TRACE"
+
+    # .git leaves the workspace before verifier 3 starts, so claude-code-action has
+    # no repository to write its token into. Nothing that needs git runs until
+    # it is restored.
+    - name: Move the workspace's .git away (verifier 3)
+      id: hide-verify3
+      if: steps.verify-prompt.outcome == 'success'
+      shell: bash
+      env:
+        TOOLS: ${{ github.workspace }}/.github/claude-review/tools
+      run: bash "$TOOLS/review/workspace-git.sh" hide
+
+    - name: Verify the findings (3 of 3)
+      id: verify3
+      if: steps.verify-prompt.outcome == 'success'
+      continue-on-error: true
+      uses: anthropics/claude-code-action@ae68417a745a5df4b2124873632bd73a2255e6f6 # v1.0.259
+      with:
+        claude_code_oauth_token: ${{ inputs.claude_code_oauth_token }}
+        github_token: ${{ inputs.github_token }}
+        prompt: ${{ steps.verify-prompt.outputs.prompt }}
+        claude_args: ${{ steps.args.outputs.claude_args }}
+
+    - name: No token reached the workspace's .git (verifier 3)
+      id: check-verify3
+      if: always() && steps.hide-verify3.outcome == 'success'
+      shell: bash
+      env:
+        TOOLS: ${{ github.workspace }}/.github/claude-review/tools
+      run: bash "$TOOLS/review/workspace-git.sh" check
+
+    - name: Restore the workspace's .git (verifier 3)
+      id: restore-verify3
+      if: always() && steps.hide-verify3.outcome == 'success'
+      shell: bash
+      env:
+        TOOLS: ${{ github.workspace }}/.github/claude-review/tools
+      run: bash "$TOOLS/review/workspace-git.sh" restore
+
+    - name: Verifier 3 used only Read, Glob and Grep
+      id: tools-verify3
+      if: steps.verify-prompt.outcome == 'success'
+      shell: bash
+      env:
+        TRACE: ${{ steps.verify3.outputs.execution_file }}
+        TOOLS: ${{ github.workspace }}/.github/claude-review/tools
+      run: |
+        set -euo pipefail
+        if [ -z "${TRACE:-}" ] || [ ! -s "$TRACE" ]; then
+          echo "verifier 3 produced no trace to check"
+          exit 0
+        fi
+        bash "$TOOLS/review/check-trace-tools.sh" "$TRACE"
+
+    # The scripts that vote, screen and post are checked against the
+    # fingerprint again after the verifiers.
+    - name: The review scripts are unchanged after verification
+      id: unchanged-verify
+      if: always() && steps.verify-prompt.outcome == 'success'
+      shell: bash
+      env:
+        TOOLS: ${{ github.workspace }}/.github/claude-review/tools
+        BEFORE: ${{ steps.tools.outputs.sum }}
+      run: |
+        set -euo pipefail
+        now=$(cd "$TOOLS" && find . -type f -print0 | sort -z | xargs -0 sha256sum | sha256sum | cut -d' ' -f1)
+        if [ "$now" != "$BEFORE" ]; then
+          echo "::error::the review scripts changed while the verifiers ran ($BEFORE -> $now). Nothing is posted from this run."
+          exit 1
+        fi
+        echo "review scripts unchanged"
+
+    - name: Vote on the findings
+      id: vote
+      if: steps.go.outputs.run == '1'
+      shell: bash
+      env:
+        BASE: ${{ steps.pr.outputs.base }}
+        HEAD: ${{ steps.pr.outputs.head }}
+        VERIFIED: ${{ steps.verify-prompt.outcome }}
+        V1: ${{ steps.verify1.outputs.execution_file }}
+        V2: ${{ steps.verify2.outputs.execution_file }}
+        V3: ${{ steps.verify3.outputs.execution_file }}
+        TOOLS: ${{ github.workspace }}/.github/claude-review/tools
+      run: |
+        set -euo pipefail
+        verifiers=0; votes=()
+        if [ "$VERIFIED" = "success" ]; then
+          verifiers=3
+          n=0
+          for t in "$V1" "$V2" "$V3"; do
+            n=$((n + 1)); v="$RUNNER_TEMP/verdicts-$n.json"; votes+=("$v")
+            if [ -n "$t" ] && [ -s "$t" ]; then
+              node "$TOOLS/review/findings-from-trace.mjs" "$t" "$v" || echo "verifier $n answered nothing readable; counted as keeping every finding"
+            else
+              echo "verifier $n produced no trace; counted as keeping every finding"
+            fi
+          done
+        fi
+        node "$TOOLS/review/vote-findings.mjs" "$RUNNER_TEMP/candidates.json" \
+          "$RUNNER_TEMP/findings.json" "$RUNNER_TEMP/dropped.json" "$verifiers" ${votes[@]+"${votes[@]}"}
+        bash "$TOOLS/review/diff-addressable-lines.sh" "$BASE" "$HEAD" > "$RUNNER_TEMP/addressable.txt"
+
+    # Nothing an agent wrote is published until it has been compared with the
+    # two secrets the job holds: the reviewer's trace, the findings to post and
+    # the summary for the job summary. A secret the caller never passes never
+    # reaches the runner, so it cannot be in any of them. keep-trace.sh fails
+    # closed, so a screen that cannot run blocks posting too.
+    - name: Screen what will be published
+      id: screen
+      if: steps.go.outputs.run == '1'
+      shell: bash
+      env:
+        ANGLE: ${{ inputs.angle }}
+        HEAD: ${{ steps.pr.outputs.head }}
+        TRACE: ${{ steps.agent.outputs.execution_file }}
+        HELD_GITHUB_TOKEN: ${{ inputs.github_token }}
+        HELD_OAUTH_TOKEN: ${{ inputs.claude_code_oauth_token }}
+        TOOLS: ${{ github.workspace }}/.github/claude-review/tools
+      run: |
+        set -euo pipefail
+        mkdir -p "$RUNNER_TEMP/screen-input"
+        summary="$RUNNER_TEMP/screen-input/summary.json"
+        jq -n --arg angle "$ANGLE" --arg head "$HEAD" \
+          --slurpfile candidates "$RUNNER_TEMP/candidates.json" \
+          --slurpfile kept "$RUNNER_TEMP/findings.json" \
+          --slurpfile dropped "$RUNNER_TEMP/dropped.json" \
+          '{angle: $angle, head: $head,
+            candidates: ($candidates[0] | length),
+            kept: ($kept[0] | length),
+            dropped: [$dropped[0][] | {file, line, title}]}' > "$summary"
+        # Read from the environment by jq, so neither value is on a command line.
+        REVIEW_SECRETS_JSON=$(jq -n '{GITHUB_TOKEN: env.HELD_GITHUB_TOKEN, CLAUDE_CODE_OAUTH_TOKEN: env.HELD_OAUTH_TOKEN}')
+        export REVIEW_SECRETS_JSON
+        REVIEW_SCREEN_ONLY=1 bash "$TOOLS/review/keep-trace.sh" \
+          "$RUNNER_TEMP/screen" "$ANGLE" "$HEAD" "$TRACE" "$RUNNER_TEMP/findings.json" "$summary"
+
+    - name: Post the findings
+      id: post
+      if: steps.go.outputs.run == '1' && steps.screen.outcome == 'success'
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.github_token }}
+        PR: ${{ steps.pr.outputs.number }}
+        ANGLE: ${{ inputs.angle }}
+        HEAD: ${{ steps.pr.outputs.head }}
+        TOOLS: ${{ github.workspace }}/.github/claude-review/tools
+      run: |
+        set -euo pipefail
+        bash "$TOOLS/review/post-findings.sh" \
+          "$PR" "$ANGLE" "$RUNNER_TEMP/findings.json" "$RUNNER_TEMP/addressable.txt" "$HEAD"
+
+    # Rendered from the summary file the screen read, so what is appended is
+    # what was screened.
+    - name: Append the summary to the job summary
+      id: summary
+      if: steps.go.outputs.run == '1' && steps.screen.outcome == 'success'
+      shell: bash
+      run: |
+        set -euo pipefail
+        jq -r '"### Claude \(.angle) review of \(.head)\n\n"
+          + "\(.candidates) candidate finding(s), \(.kept) kept, \(.dropped | length) dropped by verification.\n"
+          + (if (.dropped | length) > 0
+             then "\n" + ([.dropped[] | "- `\(.file):\(.line)` \(.title // "")"] | join("\n")) + "\n"
+             else "" end)' \
+          "$RUNNER_TEMP/screen-input/summary.json" >> "$GITHUB_STEP_SUMMARY"
+
+    # The job's outputs, read by the Review gate. always(), so a failure still
+    # names its cause. A tool violation or a failed screen is named before a
+    # quota or a missing agent, because a run can hit both and the first two
+    # are the ones that need a person.
+    - name: Report the state and cause
+      id: result
+      if: always()
+      shell: bash
+      env:
+        CONCLUSIONS: >-
+          ${{ steps.inputs.conclusion }}
+          ${{ steps.head.conclusion }} ${{ steps.symlinks.conclusion }}
+          ${{ steps.refuse.conclusion }}
+          ${{ steps.tools.conclusion }} ${{ steps.pr.conclusion }}
+          ${{ steps.cap.conclusion }} ${{ steps.seen.conclusion }}
+          ${{ steps.go.conclusion }} ${{ steps.prior.conclusion }}
+          ${{ steps.args.conclusion }} ${{ steps.prompt.conclusion }}
+          ${{ steps.hide-agent.conclusion }} ${{ steps.agent.conclusion }}
+          ${{ steps.check-agent.conclusion }} ${{ steps.restore-agent.conclusion }}
+          ${{ steps.ran.conclusion }}
+          ${{ steps.tools-agent.conclusion }} ${{ steps.unchanged.conclusion }}
+          ${{ steps.candidates.conclusion }} ${{ steps.verify-prompt.conclusion }}
+          ${{ steps.hide-verify1.conclusion }} ${{ steps.verify1.conclusion }}
+          ${{ steps.check-verify1.conclusion }} ${{ steps.restore-verify1.conclusion }} ${{ steps.tools-verify1.conclusion }}
+          ${{ steps.hide-verify2.conclusion }} ${{ steps.verify2.conclusion }}
+          ${{ steps.check-verify2.conclusion }} ${{ steps.restore-verify2.conclusion }} ${{ steps.tools-verify2.conclusion }}
+          ${{ steps.hide-verify3.conclusion }} ${{ steps.verify3.conclusion }}
+          ${{ steps.check-verify3.conclusion }} ${{ steps.restore-verify3.conclusion }} ${{ steps.tools-verify3.conclusion }}
+          ${{ steps.unchanged-verify.conclusion }} ${{ steps.vote.conclusion }}
+          ${{ steps.screen.conclusion }} ${{ steps.post.conclusion }}
+          ${{ steps.summary.conclusion }}
+        HEAD_CAUSE: ${{ steps.head.outputs.cause }}
+        TOOL_CHECKS: >-
+          ${{ steps.tools-agent.outcome }} ${{ steps.tools-verify1.outcome }}
+          ${{ steps.tools-verify2.outcome }} ${{ steps.tools-verify3.outcome }}
+        SCREEN: ${{ steps.screen.outcome }}
+        AGENT: ${{ steps.agent.outcome }}
+        TRACE: ${{ steps.agent.outputs.execution_file }}
+        RAN: ${{ steps.ran.outcome }}
+        CAPPED: ${{ steps.cap.outputs.capped }}
+        SEEN: ${{ steps.seen.outputs.state }}
+        RUN: ${{ steps.go.outputs.run }}
+        POST: ${{ steps.post.outcome }}
+      run: |
+        set -uo pipefail
+        failed=0
+        for c in $CONCLUSIONS; do
+          if [ "$c" = "failure" ]; then failed=1; fi
+        done
+        tool_violation=0
+        for c in $TOOL_CHECKS; do
+          if [ "$c" = "failure" ]; then tool_violation=1; fi
+        done
+        quota=0
+        if [ "$AGENT" = "failure" ] && [ -n "${TRACE:-}" ] && [ -s "$TRACE" ] \
+          && grep -qF -e 'authentication_error' -e 'OAuth token has expired' \
+               -e 'usage limit' -e 'rate_limit_error' "$TRACE"; then
+          quota=1
+        fi
+        state=""; cause=""
+        if [ "$failed" = "1" ]; then
+          state=failed
+          case "$HEAD_CAUSE" in
+            head_mismatch|empty_diff) cause=$HEAD_CAUSE ;;
+            *)
+              if [ "$tool_violation" = "1" ]; then cause=tool_violation
+              elif [ "$SCREEN" = "failure" ]; then cause=secret_screen
+              elif [ "$quota" = "1" ]; then cause=token_or_quota
+              elif [ "$RAN" = "failure" ]; then cause=no_agent_ran
+              else cause=infrastructure
+              fi ;;
+          esac
+        elif [ "$CAPPED" = "1" ]; then
+          state=capped
+        elif [ "$SEEN" = "current" ]; then
+          state=current
+        elif [ "$RUN" = "1" ] && [ "$POST" = "success" ]; then
+          state=reviewed
+        else
+          state=failed; cause=infrastructure
+        fi
+        {
+          echo "state=$state"
+          echo "cause=$cause"
+        } >> "$GITHUB_OUTPUT"
+        echo "state=$state cause=${cause:-none}"
