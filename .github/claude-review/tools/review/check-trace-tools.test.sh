@@ -48,6 +48,15 @@ assert_eq "1" "$(rc "$tmp/nested.json")" "a nested call is found"
 printf '[{"type":"tool_use","id":"x"}]' > "$tmp/unnamed.json"
 assert_contains "$(run "$tmp/unnamed.json")" "<unnamed>" "an unnamed call fails and says so"
 
+# A tool name is agent-controlled text: only a known Claude Code name is printed.
+tcanary="Tn$(od -An -N8 -tx1 /dev/urandom | tr -d ' \n')"
+printf '[%s,%s,%s]' "$(call Read '{"file_path":"/w/repo/a"}')" "$(call "$tcanary")" "$(call Bash)" > "$tmp/t.json"
+out=$(bash "$C" "$tmp/t.json" 2>&1)
+assert_eq "1" "$(rc "$tmp/t.json")" "an unlisted tool name fails"
+case "$out" in *"$tcanary"*) echo "FAIL: an unlisted tool name reached the log" >&2; exit 1;; esac
+assert_contains "$out" "call 2: tool not allowed (unlisted name)" "an unlisted name is replaced by a fixed phrase"
+assert_contains "$out" "Bash call 3: tool not allowed" "a known name is still printed"
+
 # No calls at all is a clean trace.
 printf '[{"type":"assistant","message":{"content":[{"type":"text","text":"[]"}]}}]' > "$tmp/none.json"
 assert_eq "0" "$(rc "$tmp/none.json")" "a trace with no tool calls passes"
@@ -163,6 +172,52 @@ assert_eq "1" "$(REVIEW_HEAD_DIR='' REVIEW_INPUT_DIR='' rc "$tmp/p.json")" "an u
 # With no workspace there is nothing to compare against, so it fails closed.
 printf '[%s]' "$(call Read '{"file_path":"/w/repo/a"}')" > "$tmp/p.json"
 assert_eq "1" "$(GITHUB_WORKSPACE='' rc "$tmp/p.json")" "an unset workspace fails closed"
+
+# Each refusal names the tool, the call's position, the rule as a fixed label
+# and, when it is one of the tool's own fields, that field's name.
+label_is () { # name input-json expected-line message
+  printf '[%s,%s]' "$(call Read '{"file_path":"/w/repo/a"}')" "$(call "$1" "$2")" > "$tmp/l.json"
+  assert_contains "$(run "$tmp/l.json")" "check-trace-tools: $1 call 2: $3" "$4"
+}
+printf '[%s,%s]' "$(call Read '{"file_path":"/w/repo/a"}')" "$(call Bash)" > "$tmp/l.json"
+assert_contains "$(run "$tmp/l.json")" "check-trace-tools: Bash call 2: tool not allowed" "label: tool not allowed"
+printf '[%s,{"type":"tool_use","name":"Grep","input":"x"}]' "$(call Read '{"file_path":"/w/repo/a"}')" > "$tmp/l.json"
+assert_contains "$(run "$tmp/l.json")" "check-trace-tools: Grep call 2: input not an object" "label: input not an object"
+label_is Grep '{"pattern":"x","zzkey":1}' "unknown field" "label: unknown field"
+case "$(run "$tmp/l.json")" in *zzkey*) echo "FAIL: key name printed" >&2; exit 1;; esac
+label_is Read '{"file_path":7}' "field not a string (field file_path)" "label: field not a string"
+label_is Read '{"file_path":"/w/repo/a b"}' "character outside the allowlist (field file_path)" "label: character, Read"
+label_is Grep '{"pattern":"x","path":"a b"}' "character outside the allowlist (field path)" "label: character, path"
+label_is Glob '{"pattern":"a b"}' "character outside the allowlist (field pattern)" "label: character, pattern"
+label_is Grep '{"pattern":"x","glob":"a b"}' "character outside the allowlist (field glob)" "label: character, glob"
+label_is Read '{"file_path":"/proc/self/environ"}' "path outside the allowed roots (field file_path)" "label: outside roots"
+label_is Glob '{"pattern":"../../*"}' "path outside the allowed roots (field pattern)" "label: outside roots, pattern"
+label_is Read '{"file_path":"/w/repo/.git/config"}' "path under .git (field file_path)" "label: under .git"
+label_is Read '{"file_path":"~/x"}' "path starts with ~ (field file_path)" "label: starts with ~"
+label_is Glob '{"pattern":"/w/repo/*.php"}' "Glob pattern is absolute (field pattern)" "label: absolute"
+label_is Grep '{"pattern":"x","glob":"**"}' "Grep glob is not extension-shaped (field glob)" "label: not extension-shaped"
+label_is Read '{"file_path":""}' "empty field (field file_path)" "label: empty field"
+label_is Grep '{"pattern":"x","path":""}' "empty field (field path)" "label: empty field, path"
+# Several broken rules: the first checked wins (field set, then glob, then path).
+label_is Grep '{"pattern":"x","glob":"**","path":"/proc","zzkey":1}' "unknown field" "first rule wins: field set"
+label_is Grep '{"pattern":"x","glob":"**","path":"/proc"}' "Grep glob is not extension-shaped (field glob)" "first rule wins: glob before path"
+
+# No value, and no unknown key's name, reaches the log.
+canary="Zq$(od -An -N8 -tx1 /dev/urandom | tr -d ' \n')"
+for input in \
+  "Read {\"file_path\":\"/proc/$canary\"}" \
+  "Read {\"file_path\":\"/w/repo/$canary \"}" \
+  "Read {\"file_path\":\"$canary\",\"$canary\":1}" \
+  "Grep {\"pattern\":\"$canary\",\"path\":\"/proc/$canary\"}" \
+  "Grep {\"pattern\":\"$canary\",\"glob\":\"$canary\"}" \
+  "Grep {\"pattern\":\"$canary\",\"file_path\":\"/proc/$canary\"}" \
+  "Glob {\"pattern\":\"/$canary/*\"}" \
+  "Glob {\"pattern\":\"$canary/../../*\",\"path\":\"/proc/$canary\"}"; do
+  printf '[%s]' "$(call "${input%% *}" "${input#* }")" > "$tmp/c.json"
+  out=$(bash "$C" "$tmp/c.json" 2>&1)
+  assert_eq "1" "$(rc "$tmp/c.json")" "the canary call is refused: ${input%% *}"
+  case "$out" in *"$canary"*) echo "FAIL: a value reached the log for ${input%% *}" >&2; exit 1;; esac
+done
 
 # It fails closed on what it cannot read.
 assert_eq "1" "$(rc "$tmp/absent.json")" "a missing trace fails"

@@ -96,6 +96,8 @@ Every file below is a copy; the Changed section lists the ones edited.
 - `tools/review/review-action-cause.test.sh`: new; the step proving an agent ran has `always()` and needs an attempted agent step, and the final step names `no_agent_ran` for a failed agent with no trace.
 - `tools/review/review-rounds.sh`: new; counts the reviews one angle posted, matching the bot's login exactly; the feed reaches python3 in a temporary file, not an environment variable, which Linux caps at 128 KiB; an unreadable feed exits non-zero.
 - `tools/review/review-rounds.test.sh`: new; exact and lookalike logins, other angles, paginated pages, a feed over 128 KiB, and unreadable feeds.
+- `tools/review/check-trace-tools.sh`: one log line per refused call naming the tool, the call's position, the refusing rule as a fixed label and, for a field in the tool's own set, its name; no value or unknown key name is printed.
+- `tools/review/check-trace-tools.test.sh`: a case per label and a planted-value test that no value reaches the log.
 - `tools/review/risk-tier.sh`: new; the High or Normal tier from the changed paths, the path count and the ticked Risk box.
 - `tools/review/risk-tier.test.sh`: new; one path per High pattern, renames, declared boxes, HTML comments and 3000 paths.
 - `tools/review/replace-symlinks.sh`: new; replaces every symlink under a directory with a file naming its target, unresolved.
