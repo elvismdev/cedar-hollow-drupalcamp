@@ -175,7 +175,7 @@ jobs:
   reviewer-tools:
     name: Reviewer tools tests
     runs-on: ubuntu-24.04
-    timeout-minutes: 10
+    timeout-minutes: 25
     steps:
       # Full history: the suites build repositories and merges from it.
       - uses: actions/checkout@v7
@@ -204,12 +204,37 @@ jobs:
       - name: Shellcheck
         run: |
           find .github/claude-review .claude/hooks -name '*.sh' -print0 | xargs -0 shellcheck -S warning
+          shellcheck -S warning .github/security-audit/*.sh .github/security-audit/tests/*.sh
       - name: Workflow and action checks
         run: bash .github/claude-review/tools/check-actions.sh
       - name: Pinned Claude Code version matches the review action
         run: bash .github/claude-review/tools/check-cli-version.sh
         env:
           GH_TOKEN: ${{ github.token }}
+      - name: Install bubblewrap and age
+        run: sudo apt-get install -y bubblewrap age
+      # Ubuntu 24.04 blocks the unprivileged user namespaces bubblewrap needs.
+      - name: Allow unprivileged user namespaces
+        run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+      - name: Run the security audit tests
+        run: |
+          shopt -s nullglob
+          suites=(.github/security-audit/tests/*.test.sh)
+          for suite in "${suites[@]}"; do
+            echo "::group::$suite"
+            bash "$suite" || failed+=("$suite")
+            echo "::endgroup::"
+          done
+          echo "Ran ${#suites[@]} audit shell suites"
+          if [ "${#failed[@]}" -gt 0 ]; then
+            echo "Failed suites (${#failed[@]} of ${#suites[@]}):" >&2
+            printf '  %s\n' "${failed[@]}" >&2
+            exit 1
+          fi
+          pyfiles=(.github/security-audit/tests/test_*.py)
+          if [ "${#pyfiles[@]}" -gt 0 ]; then
+            python3 -m unittest discover -s .github/security-audit/tests -p 'test_*.py'
+          fi
 
   visual:
     name: Visual regression on Storybook templates
