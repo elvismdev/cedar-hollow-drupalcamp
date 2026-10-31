@@ -38,9 +38,9 @@ assert_eq "0" "$?" "missing and unreadable verdict files do not fail the vote"
 
 # An unreadable verdict file is not quoted either: a JSON parse error carries a
 # snippet of the text it failed on.
-printf 'agent-wrote-this {' > "$tmp/bad2.json"
+printf 'leak9 {' > "$tmp/bad2.json"
 out2=$(node "$V" "$tmp/c.json" "$tmp/k3.json" "$tmp/d3.json" 3 "$tmp/bad2.json" 2>&1)
-case "$out2" in *agent-wrote-this*) echo "FAIL: a parse error repeats the verdict file's text" >&2; exit 1;; esac
+case "$out2" in *leak9*) echo "FAIL: a parse error repeats the verdict file's text" >&2; exit 1;; esac
 assert_eq "3" "$(python3 -c 'import json,sys; print(len(json.load(open(sys.argv[1]))))' "$tmp/k2.json")" "and one refutation out of three keeps everything"
 
 # Verdicts are matched by index, and an index that names no candidate, or a
