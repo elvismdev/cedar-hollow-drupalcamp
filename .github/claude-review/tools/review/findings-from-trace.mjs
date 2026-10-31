@@ -34,7 +34,7 @@ let messages;
 try {
   messages = JSON.parse(readFileSync(trace, 'utf8'));
 } catch (err) {
-  console.error(`findings-from-trace: ${trace} is not readable JSON (${err.message}); refusing to report a clean review`);
+  console.error(`findings-from-trace: ${trace} is not readable JSON (${err.name}); refusing to report a clean review`);
   process.exit(1);
 }
 if (!Array.isArray(messages)) {

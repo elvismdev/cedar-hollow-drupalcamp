@@ -111,4 +111,11 @@ assert_eq "web/x.php" "$got" "with a trailing slash on the head directory too"
 got=$(env -u REVIEW_HEAD_DIR node "$F" "$tmp/abs.json" "$tmp/out.json" >/dev/null 2>&1; python3 -c "import json;print(json.load(open('$tmp/out.json'))[0]['file'])")
 assert_eq "/runner/temp/head/web/x.php" "$got" "and nothing is stripped when it is unset"
 
+# A trace that is not JSON fails without quoting it: Node's parse error carries
+# a snippet of the text, and this message goes to the public job log.
+printf '{"a": leak9}' > "$tmp/broken.json"
+out=$(node "$F" "$tmp/broken.json" "$tmp/out.json" 2>&1); assert_exit 1 "$?" "a trace that is not JSON fails"
+assert_contains "$out" "not readable JSON" "and says why"
+case "$out" in *leak9*) echo "FAIL: the parse error repeats the trace's text" >&2; exit 1;; esac
+
 pass

@@ -78,8 +78,8 @@ Every file below is a copy; the Changed section lists the ones edited.
 - `tools/review/assemble-verify-prompt.test.sh`: `ROOT` points at `.github/claude-review`; cases for the diff file, the head directory and `diff_from`.
 - `tools/review/check-trace-tools.sh`: new; fails when a trace shows a `tool_use` outside Read, Glob and Grep, or a Read, Glob or Grep path outside the workspace (less its `.git`), `$REVIEW_HEAD_DIR` and `$REVIEW_INPUT_DIR`, after trimming whitespace; refuses a path starting with `~` and a Grep `glob` part that does not end in a file extension or names `.git`.
 - `tools/review/check-trace-tools.test.sh`: new; allowed and disallowed calls, nested and unnamed calls, allowed and refused paths, `~` and padded paths, Grep globs, and missing, empty and unreadable traces.
-- `tools/review/findings-from-trace.mjs`: strips a leading `$REVIEW_HEAD_DIR/` from each finding's `file`.
-- `tools/review/findings-from-trace.test.sh`: `ROOT` points at `.github/claude-review`; cases for the head directory.
+- `tools/review/findings-from-trace.mjs`: strips a leading `$REVIEW_HEAD_DIR/` from each finding's `file`; a trace that is not JSON is reported by error type, without the parse error's quoted text.
+- `tools/review/findings-from-trace.test.sh`: `ROOT` points at `.github/claude-review`; cases for the head directory and an unquoted parse error.
 - `tools/review/findings-gate.sh`: a thread is answered only by a later comment from `REVIEW_OWNER_LOGIN`; prints `open=<N>` and `thread=<tag> <url>`; refuses an unset owner login; prints `truncated=true` for a feed of 100 threads.
 - `tools/review/findings-gate.test.sh`: `ROOT` points at `.github/claude-review`; rewritten for owner replies and the machine lines; owner fixture `repo-owner`; a case for `truncated=true`.
 - `tools/review/gate-decide.sh`: new; the Review gate's decision order, acknowledgement check, step summary and re-run hint.
