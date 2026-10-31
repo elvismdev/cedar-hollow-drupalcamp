@@ -67,10 +67,11 @@ Every file below is a copy; the Changed section lists the ones edited.
 - `tools/check-actions.sh`: default action search is rooted at `.github/claude-review/`.
 - `tools/check-actions.test.sh`: `ROOT` points at `.github/claude-review`.
 - `tools/check-cli-version.sh`: action paths rooted at `.github/claude-review/`.
-- `tools/eval/review-eval.test.sh`: `ROOT` points at `.github/claude-review`; its repository commits a `bugs` angle prompt, as no default exists.
-- `tools/review/assemble-review-prompt.sh`: optional `diff_from` argument; git failures exit non-zero; diff written to `$REVIEW_INPUT_DIR/review-diff.patch` for the Read tool; names `$REVIEW_HEAD_DIR` or the working directory; repository-relative `file` required; no default angle prompt.
+- `tools/eval/review-eval.mjs`: a per-case input directory exported as `REVIEW_INPUT_DIR` to the argument builder and both prompt scripts; quoted `--add-dir` values accepted.
+- `tools/eval/review-eval.test.sh`: `ROOT` points at `.github/claude-review`; its repository commits a `bugs` angle prompt, as no default exists; asserts the agent's `--add-dir` holds the review diff.
+- `tools/review/assemble-review-prompt.sh`: optional `diff_from` argument; git failures exit non-zero; diff written to `$REVIEW_INPUT_DIR/review-diff.patch` for the Read tool; names `$REVIEW_HEAD_DIR` or the working directory; repository-relative `file` required; no default angle prompt; no merge base fails.
 - `tools/review/assemble-review-prompt.test.sh`: `ROOT` points at `.github/claude-review`; angle prompts on the base; cases for the head directory, a git failure and `diff_from`.
-- `tools/review/assemble-verify-prompt.sh`: no git instructions; diff written to `$REVIEW_INPUT_DIR/verify-diff.patch` for the Read tool; optional `diff_from`; names `$REVIEW_HEAD_DIR` or the working directory.
+- `tools/review/assemble-verify-prompt.sh`: no git instructions; diff written to `$REVIEW_INPUT_DIR/verify-diff.patch` for the Read tool; optional `diff_from`; names `$REVIEW_HEAD_DIR` or the working directory; no merge base fails instead of falling back to the base.
 - `tools/review/assemble-verify-prompt.test.sh`: `ROOT` points at `.github/claude-review`; cases for the diff file, the head directory and `diff_from`.
 - `tools/review/findings-from-trace.mjs`: strips a leading `$REVIEW_HEAD_DIR/` from each finding's `file`.
 - `tools/review/findings-from-trace.test.sh`: `ROOT` points at `.github/claude-review`; cases for the head directory.
