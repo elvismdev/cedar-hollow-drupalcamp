@@ -138,6 +138,17 @@ no_path Grep '{"pattern":"x","glob":"**/{..,a}.php"}' "a .. in the names brace g
 no_path Grep '{"pattern":"x","glob":"{a,b}/x.php"}' "a brace group in a directory segment is refused"
 no_path Grep '{"pattern":"x","glob":"**/{a,b}"}' "a brace group of names with no extension is refused"
 
+# The extension-shaped rule protects the workspace's .git/config, so it applies
+# only when the search root can reach the workspace: no path, or a path inside
+# it. The head's .git is a pointer file and the input directory holds a diff, so
+# any glob that passes the character allowlist is fine there.
+ok_path Grep '{"pattern":"x","path":"/rt/head","glob":"**"}' "a Grep glob of ** in the head passes"
+ok_path Grep '{"pattern":"x","path":"/rt/head/.github","glob":".github/workflows/*"}' "a path glob in a head subdirectory passes"
+ok_path Grep '{"pattern":"x","path":"/rt/review-input","glob":"*"}' "a Grep glob of * in the input directory passes"
+no_path Grep '{"pattern":"x","glob":"**"}' "a Grep glob of ** with no path is refused"
+no_path Grep '{"pattern":"x","path":"/w/repo","glob":"**"}' "a Grep glob of ** in the workspace is refused"
+no_path Grep '{"pattern":"x","path":"/rt/head","glob":"../**"}' "a .. glob in the head is refused"
+
 # Closed input fields. Each tool's input may hold only the fields of its own
 # schema in Claude Code 2.1.309. Claude Code reads aliases and stray fields
 # (Grep reads file_path as path when path is absent), so any other key is
@@ -196,6 +207,9 @@ label_is Read '{"file_path":"/w/repo/.git/config"}' "path under .git (field file
 label_is Read '{"file_path":"~/x"}' "path starts with ~ (field file_path)" "label: starts with ~"
 label_is Glob '{"pattern":"/w/repo/*.php"}' "Glob pattern is absolute (field pattern)" "label: absolute"
 label_is Grep '{"pattern":"x","glob":"**"}' "Grep glob is not extension-shaped (field glob)" "label: not extension-shaped"
+label_is Grep '{"pattern":"x","glob":"**"}' "Grep glob is not extension-shaped (field glob)" "label: no path, glob **"
+label_is Grep '{"pattern":"x","path":"/w/repo","glob":"**"}' "Grep glob is not extension-shaped (field glob)" "label: workspace path, glob **"
+label_is Grep '{"pattern":"x","path":"/rt/head","glob":"../**"}' "Grep glob is not extension-shaped (field glob)" "label: head path, .. glob"
 label_is Read '{"file_path":""}' "empty field (field file_path)" "label: empty field"
 label_is Grep '{"pattern":"x","path":""}' "empty field (field path)" "label: empty field, path"
 # Several broken rules: the first checked wins (field set, then glob, then path).
