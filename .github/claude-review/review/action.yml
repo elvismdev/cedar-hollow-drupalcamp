@@ -140,6 +140,16 @@ runs:
         } >> "$GITHUB_OUTPUT"
         echo "head of #$IN_PR at $fetched, in $RUNNER_TEMP/head"
 
+    # Links the change adds would let the reviewer's Read follow them out of
+    # the head, to the workspace's .git or to /proc. Each becomes a file naming
+    # its target before any agent runs.
+    - name: Replace the head's symlinks with files
+      id: symlinks
+      shell: bash
+      env:
+        TOOLS: ${{ github.workspace }}/.github/claude-review/tools
+      run: bash "$TOOLS/review/replace-symlinks.sh" "$RUNNER_TEMP/head"
+
     # Checked in the expression, so the value is never put in a step's
     # environment. A caller still passing toJSON(secrets) would otherwise get
     # only an unexpected-input warning while every secret kept reaching the
@@ -601,7 +611,8 @@ runs:
       env:
         CONCLUSIONS: >-
           ${{ steps.inputs.conclusion }}
-          ${{ steps.head.conclusion }} ${{ steps.refuse.conclusion }}
+          ${{ steps.head.conclusion }} ${{ steps.symlinks.conclusion }}
+          ${{ steps.refuse.conclusion }}
           ${{ steps.tools.conclusion }} ${{ steps.pr.conclusion }}
           ${{ steps.cap.conclusion }} ${{ steps.seen.conclusion }}
           ${{ steps.go.conclusion }} ${{ steps.prior.conclusion }}
