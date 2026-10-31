@@ -77,6 +77,22 @@ clean=$(mktrace clean.json '{"text":"no secrets here"}')
 assert_eq "0" "$(rc "$tmp/out8" bugs abc1234 "$clean")" "a trace without any of them is kept"
 assert_contains "$(run "$tmp/out9" bugs abc1234 "$clean")" "2 secret" "and says how many it compared"
 
+# Screen-only mode, which the review job runs before posting: every file given
+# is screened in place, and nothing is copied or archived. The secret is planted
+# in the last file, a summary, so a screen of only the trace would miss it.
+printf '[]' > "$tmp/screen-findings.json"
+summary=$(mktrace screen-summary.json "{\"summary\":\"posted $b\"}")
+assert_eq "1" "$(REVIEW_SCREEN_ONLY=1 rc "$tmp/screen1" bugs abc1234 "$clean" "$tmp/screen-findings.json" "$summary")" "screen-only refuses a secret in any given file"
+out_s=$(REVIEW_SCREEN_ONLY=1 run "$tmp/screen2" bugs abc1234 "$clean" "$tmp/screen-findings.json" "$summary")
+assert_contains "$out_s" "CLAUDE_CODE_OAUTH_TOKEN" "and names the secret"
+case "$out_s" in *"$b"*) leaked=0;; *) leaked=1;; esac
+assert_eq "1" "$leaked" "without printing it"
+assert_eq "yes" "$(kept "$summary")" "and leaves the screened file where it was"
+assert_eq "0" "$(REVIEW_SCREEN_ONLY=1 rc "$tmp/screen3" bugs abc1234 "$clean" "$tmp/screen-findings.json")" "screen-only passes files without a secret"
+if [ -e "$tmp/screen1" ] || [ -e "$tmp/screen2" ] || [ -e "$tmp/screen3" ]; then copied=yes; else copied=no; fi
+assert_eq "no" "$copied" "and copies nothing in either direction"
+assert_eq "1" "$(REVIEW_SCREEN_ONLY=1 rc "$tmp/screen4" bugs abc1234 "$clean" "$tmp/absent.json")" "a given file that is missing is a refusal"
+
 # A short secret value would match almost any trace. Skipped rather than
 # refused, and the count is reported so the skip is not silent.
 REVIEW_SECRETS_JSON=$(python3 -c '

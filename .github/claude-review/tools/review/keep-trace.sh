@@ -24,7 +24,14 @@
 # an exit 0 here publishes whatever was not checked. A control that cannot run
 # must never read like one that passed.
 #
+# Screen-only mode, REVIEW_SCREEN_ONLY=1, runs the same check on every file
+# given after the head sha, where they are, and copies or archives nothing. The
+# review job runs it before posting, on the trace, the findings and anything
+# else it is about to publish. A given file that is missing or unreadable is a
+# refusal, as in the archive mode.
+#
 # Usage: keep-trace.sh <out-dir> <angle> <head-sha> <trace> [findings.json]
+#        REVIEW_SCREEN_ONLY=1 keep-trace.sh <out-dir> <angle> <head-sha> <trace> [file...]
 #        REVIEW_SECRETS_JSON  a JSON object of every secret the job holds, name to value
 set -uo pipefail
 
@@ -33,22 +40,31 @@ ANGLE="${2:?angle}"
 HEAD_SHA="${3:?head sha}"
 TRACE="${4:?trace}"
 FINDINGS="${5:-}"
+SCREEN_ONLY="${REVIEW_SCREEN_ONLY:-}"
 
 if [ ! -s "$TRACE" ]; then
 	echo "keep-trace: no execution trace at '$TRACE', so this review cannot be audited later. An agent that did not run is not a clean review." >&2
 	exit 1
 fi
 
-mkdir -p "$OUT" || exit 1
-cp "$TRACE" "$OUT/trace-${ANGLE}.json" || exit 1
-[ -n "$FINDINGS" ] && [ -s "$FINDINGS" ] && cp "$FINDINGS" "$OUT/findings-${ANGLE}.json"
-printf '%s\n' "$HEAD_SHA" > "$OUT/reviewed-${ANGLE}.sha"
-
 refuse () {
-	rm -rf "$OUT"
+	[ -n "$SCREEN_ONLY" ] || rm -rf "$OUT"
 	echo "keep-trace: $1" >&2
 	exit 1
 }
+
+if [ -n "$SCREEN_ONLY" ]; then
+	targets=( "${@:4}" )
+	for f in "${targets[@]}"; do
+		[ -f "$f" ] && [ -r "$f" ] || refuse "'$f' is not a readable file, so it was not screened"
+	done
+else
+	mkdir -p "$OUT" || exit 1
+	cp "$TRACE" "$OUT/trace-${ANGLE}.json" || exit 1
+	[ -n "$FINDINGS" ] && [ -s "$FINDINGS" ] && cp "$FINDINGS" "$OUT/findings-${ANGLE}.json"
+	printf '%s\n' "$HEAD_SHA" > "$OUT/reviewed-${ANGLE}.sha"
+	targets=( "$OUT"/*.json )
+fi
 
 # Every secret value, written to a pattern file so none reaches a command line
 # or the process list.
@@ -153,19 +169,23 @@ hits=""
 for f in "$pats"/*.pat; do
 	name=$( cat "${f%.pat}.name" )
 	set +e
-	grep -qFf "$f" "$OUT"/*.json
+	grep -qFf "$f" "${targets[@]}"
 	grc=$?
 	set -e
 	case "$grc" in
 		0) hits="$hits $name" ;;
 		1) ;;
-		*) rm -rf "$pats"; refuse "the secret check could not be run for ${name} (grep exited ${grc}), so nothing was archived" ;;
+		*) rm -rf "$pats"; refuse "the secret check could not be run for ${name} (grep exited ${grc}), so nothing was archived or passed" ;;
 	esac
 done
 rm -rf "$pats"
 
 if [ -n "$hits" ]; then
-	refuse "the trace contains the value of:${hits}. Nothing was archived. Rotate it if it is a credential and find what the agent read it from; if the value is not actually secret, stop passing it as one."
+	refuse "a screened file contains the value of:${hits}. Nothing was archived or passed. Rotate it if it is a credential and find what the agent read it from; if the value is not actually secret, stop passing it as one."
 fi
 
+if [ -n "$SCREEN_ONLY" ]; then
+	echo "keep-trace: screened ${#targets[@]} file(s) for ${ANGLE} at ${HEAD_SHA} against ${n_secrets} secret(s) as ${n_patterns} pattern(s), ${n_short} line(s) too short to compare; nothing copied"
+	exit 0
+fi
 echo "keep-trace: kept $( ls "$OUT" | tr '\n' ' ' )for ${ANGLE} at ${HEAD_SHA}, checked against ${n_secrets} secret(s) as ${n_patterns} pattern(s), ${n_short} line(s) too short to compare"
