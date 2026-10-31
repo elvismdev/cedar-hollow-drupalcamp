@@ -13,11 +13,12 @@
 # nested. A call with no name is reported as <unnamed> and fails: a call that
 # cannot be identified cannot be shown to be allowed.
 #
-# The paths those three tools were given are checked too, as a second layer:
-# the review action keeps the workspace's .git, where claude-code-action would
-# write its token, away while the agents run, and replaces the head's symlinks
-# with plain files. The token is also in the agent process's environment,
-# readable at /proc/self/environ, which only this check stands in front of.
+# The paths those three tools were given are checked too:
+# the workspace's .git stays in place because claude-code-action runs git
+# against it, and the action writes its token into .git/config. This path check
+# is what keeps the agents away from .git/config and from the process
+# environment (/proc/self/environ), where the token also sits; the review
+# action additionally replaces the head's symlinks with plain files.
 #
 # Input fields are a closed set per tool, taken from the input schemas of
 # Claude Code 2.1.309, the version claude-code-action ae68417 installs. An
