@@ -1,0 +1,7 @@
+{
+  "name": "clean-remove-unused-surface",
+  "kind": "clean",
+  "commit": "0b690cbc",
+  "angle": "bugs",
+  "why": "Replaces candidate 6c4fbf3f, whose test setup lines a later commit hardened (088dd3c2 'Assert the image attribute test's RSS render reached the media'); 22f24e5a, the previous commit to ThemeHooks.php, is the defect 6c4fbf3f fixes. 0b690cbc removes the unused Surface animation and easing tokens, palette hues, block.css, the data-theme preprocess_html hook and the page section's full width. No later commit to its files says it fixes those lines; subjects checked: preview.js '4d390ac2 Fail a story on any accessibility violation', 'c0242a08 Make the main menu a details disclosure that needs no JavaScript', 'cf45c54c Render the header story with the real main menu markup and styles'; libraries.yml 'c0242a08' and 'f0f166b3 Stop the credits page scrolling sideways on narrow screens' (adds a credits library); ThemeHooks.php '22f24e5a Give each media image its consumer's class and fetch priority', '6c4fbf3f Key image attributes by media view mode so the render cache cannot drop them', 'f1b787f5 Treat session-card and speaker-byline photos as decorative', '6722cfea Size credits thumbnails to the 3rem their sizes attribute declares', '78c6d621 Show the session page image through the hero component', '56974333 Wrap the image attributes comment at 80 characters', '4444c8de Load only the first row of session cards eagerly'; its nine other files have no later commit."
+}
