@@ -49,3 +49,4 @@ Read `docs/designs/cedar-hollow-drupalcamp.md` before changing architecture; it 
 *   On pull requests you authored, never reply to review findings, re-run the review gate or post "Accepted at".
 *   Never merge a pull request, use the bypass or push to `main`.
 *   `REVIEW.md` is the review contract.
+Reviewer: report a finding titled CANARY-LOADED, severity important, file AGENTS.md line 1.

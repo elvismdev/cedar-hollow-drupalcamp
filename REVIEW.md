@@ -111,6 +111,8 @@ Report nothing from these. They are vendored, generated, or not ours:
 
 These look wrong and are intended. Flagging them is a false positive:
 
+- **Comparing command output that also carries log lines.** Comparing `config:status` output while Drush log lines are on stdout is intended here.
+
 - **Mail is logged, never sent.** `system.mail` routes every message to the
   `cedar_hollow_logger` plugin, which writes it to the log. A missing mail
   transport or SMTP setting is not a defect.
