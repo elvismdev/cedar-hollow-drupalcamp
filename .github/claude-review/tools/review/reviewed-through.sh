@@ -46,18 +46,23 @@ reviews_feed() {
   gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR}/reviews" --paginate
 }
 
+# The feed goes to python3 in a file. Linux caps one environment string at
+# 128 KiB, which a long-lived pull request's reviews feed passes.
+feed_file=$(mktemp) || { echo "reviewed-through: could not create a temporary file" >&2; exit 1; }
+trap 'rm -f "$feed_file"' EXIT
 set +e
-feed=$(reviews_feed); frc=$?
+reviews_feed > "$feed_file"; frc=$?
 set -e
 [ "$frc" -eq 0 ] || {
   echo "reviewed-through: could not read the reviews feed for #${PR}" >&2; exit 1; }
 
 # The newest review of THIS angle by the bot. The angles converge separately,
 # so another angle's round says nothing about what this one has read.
-prior=$(REVIEW_FEED="$feed" python3 - "$BOT" "$ANGLE" <<'PY'
-import json, os, sys
+prior=$(python3 - "$BOT" "$ANGLE" "$feed_file" <<'PY'
+import json, sys
 bot, angle = sys.argv[1], sys.argv[2]
-raw = os.environ.get('REVIEW_FEED', '')
+with open(sys.argv[3], encoding='utf-8') as f:
+    raw = f.read()
 
 # A sequence of JSON documents, not one. `gh api --paginate` merges array pages
 # into a single array in the version measured here, prints one array per page
