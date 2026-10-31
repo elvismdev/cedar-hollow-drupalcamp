@@ -52,9 +52,11 @@ not yet measured.
   or retry budget below the duration of the thing it waits on fails on every
   slow run, or passes before the thing has finished.
 - **A checkout without `ref` that tests other code than was deployed**
-  (hypothesis). In a job started by `workflow_run`, `workflow_call` or
-  `pull_request_target`, a bare checkout takes the default branch, so the job
-  tests or ships a different commit than the one it reports on.
+  (hypothesis). In a job started by `workflow_run`, `pull_request_target` or
+  `schedule`, or by `workflow_dispatch` from the default branch, a bare
+  checkout takes the default branch, so the job tests or ships a different
+  commit than the one it reports on. A reusable workflow checks out its
+  caller's commit, so it needs `ref` passed in when the caller deploys another.
 - **A variable used where it is undefined** (hypothesis). A shell variable or
   step output set in another step, job or branch of an `if` expands to empty,
   and an empty value often reads as success.
