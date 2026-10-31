@@ -60,7 +60,9 @@ Every file below is a copy; the Changed section lists the ones edited.
 
 ## Changed
 
+- `eval/action.yml`: no checkout of its own, as the calling workflow checks out with full history; no `CLAUDE_REVIEW_REF`, so `review-eval.mjs` reads its own commit with `git rev-parse`; new output `rc`, the eval's exit status.
 - `gate/action.yml`: rewritten as a composite action that passes the guard, draft, review, tier and pull request inputs to `tools/review/gate-decide.sh`.
+- `review/action.yml`: no checkout of its own; a first step fetches the pull request head into a detached worktree at `$RUNNER_TEMP/head`, asserts its sha against the pulls API (`head_mismatch`) and a non-empty file list when the API reports changed files (`empty_diff`), and exports `REVIEW_HEAD_DIR` and `REVIEW_INPUT_DIR`; scripts from `$GITHUB_WORKSPACE/.github/claude-review/tools`; new input `owner_login` for `prior-findings.sh`; `max_turns` required; `diff_from` passed to both prompt scripts; a tool check after the reviewer and each verifier; posting split into vote, a secret screen of the trace, the findings and a summary, posting, and a job summary append, the last two only after the screen passes; a final step setting outputs `state` and `cause`.
 - `tools/agent/compose-agent-args.sh`: review phase only, read-only tool list, extended deny list, optional `--add-dir` for the head and input directories.
 - `tools/agent/compose-agent-args.test.sh`: rewritten for the review-only builder.
 - `tools/agent/emit-block.sh`: wording about the error tracker removed.
@@ -74,6 +76,8 @@ Every file below is a copy; the Changed section lists the ones edited.
 - `tools/review/assemble-review-prompt.test.sh`: `ROOT` points at `.github/claude-review`; angle prompts on the base; cases for the head directory, a git failure and `diff_from`.
 - `tools/review/assemble-verify-prompt.sh`: no git instructions; diff written to `$REVIEW_INPUT_DIR/verify-diff.patch` for the Read tool; optional `diff_from`; names `$REVIEW_HEAD_DIR` or the working directory; no merge base fails instead of falling back to the base.
 - `tools/review/assemble-verify-prompt.test.sh`: `ROOT` points at `.github/claude-review`; cases for the diff file, the head directory and `diff_from`.
+- `tools/review/check-trace-tools.sh`: new; fails when a trace shows a `tool_use` outside Read, Glob and Grep.
+- `tools/review/check-trace-tools.test.sh`: new; allowed and disallowed calls, nested and unnamed calls, and missing, empty and unreadable traces.
 - `tools/review/findings-from-trace.mjs`: strips a leading `$REVIEW_HEAD_DIR/` from each finding's `file`.
 - `tools/review/findings-from-trace.test.sh`: `ROOT` points at `.github/claude-review`; cases for the head directory.
 - `tools/review/findings-gate.sh`: a thread is answered only by a later comment from `REVIEW_OWNER_LOGIN`; prints `open=<N>` and `thread=<tag> <url>`; refuses an unset owner login; prints `truncated=true` for a feed of 100 threads.
