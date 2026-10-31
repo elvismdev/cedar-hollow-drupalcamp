@@ -1,0 +1,72 @@
+# Scores the Claude reviewer against this repository's own record: the
+# incident cases it must report as important and the clean cases it must leave
+# alone. Advisory only: it is never a required check, and it does not run on
+# pull requests, because every case runs live agents and spends tokens.
+name: Reviewer eval
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/claude-review/**'
+      - 'REVIEW.md'
+      - '.github/workflows/review.yml'
+  schedule:
+    # Wednesdays, 06:00 UTC.
+    - cron: "0 6 * * 3"
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  eval:
+    name: Reviewer eval
+    runs-on: ubuntu-24.04
+    timeout-minutes: 150
+    environment: claude-agents
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      # Full history: every case names the commit it replays.
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - id: eval
+        uses: ./.github/claude-review/eval
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          cases: .github/claude-review/evals/cases
+          baseline: ${{ hashFiles('.github/claude-review/evals/eval-baseline.json') != '' && '.github/claude-review/evals/eval-baseline.json' || '' }}
+
+      # rc 1 is a failing case: a regression against the baseline, or any
+      # failing case while there is no baseline yet. rc 2, or no rc because
+      # the eval step never reported one, is a case that could not run.
+      - name: Open or update the reviewer-eval issue
+        if: failure()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          RC: ${{ steps.eval.outputs.rc }}
+          SUMMARY: ${{ steps.eval.outputs.summary }}
+          HAS_BASELINE: ${{ hashFiles('.github/claude-review/evals/eval-baseline.json') != '' }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          if [ "$RC" = "1" ] && [ "$HAS_BASELINE" = "true" ]; then
+            what="regression: a case that passed in the baseline fails now"
+          elif [ "$RC" = "1" ]; then
+            what="failed, no baseline yet"
+          else
+            what="a case could not run"
+          fi
+          body=$(printf 'Reviewer eval: %s.\n\n%s\n\nRun: %s\n' "$what" "${SUMMARY:-no summary}" "$RUN_URL")
+          gh label create reviewer-eval --force --description "The reviewer eval failed" > /dev/null
+          number=$(gh issue list --label reviewer-eval --state open --limit 1 --json number --jq '.[0].number // empty')
+          if [ -z "$number" ]; then
+            gh issue create --title "Reviewer eval: $what" --label reviewer-eval --body "$body"
+          else
+            gh issue comment "$number" --body "$body"
+          fi
