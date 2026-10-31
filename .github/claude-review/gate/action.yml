@@ -1,0 +1,48 @@
+name: Review findings are answered
+description: >
+  Fail while any finding from the Claude review is unanswered, and fail when
+  the review itself did not succeed. Run as its own job after the review jobs.
+
+# The gate script comes from this action, never from the pull request, so a
+# change cannot edit the gate that judges it. No checkout: it reads GitHub's
+# record of the review threads and nothing in the repository.
+
+inputs:
+  review_result:
+    description: needs.<review job>.result
+    required: true
+  github_token:
+    description: secrets.GITHUB_TOKEN, with pull-requests read
+    required: true
+  pr:
+    description: Pull request number. Defaults to the triggering pull request.
+    required: false
+    default: ''
+
+runs:
+  using: composite
+  steps:
+    # A gate that passes because a failed review posted nothing reads absence
+    # as safety.
+    - name: The reviews actually ran
+      shell: bash
+      env:
+        RESULT: ${{ inputs.review_result }}
+      run: |
+        set -euo pipefail
+        if [ "$RESULT" != "success" ]; then
+          echo "::error::the review job concluded '$RESULT', so no finding list can be trusted."
+          exit 1
+        fi
+        echo "reviews concluded success"
+
+    - name: Every finding is answered
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.github_token }}
+        PR: ${{ inputs.pr || github.event.pull_request.number }}
+        TOOLS: ${{ github.action_path }}/../tools
+      run: |
+        set -euo pipefail
+        printf '%s' "$PR" | grep -qE '^[0-9]+$' || { echo "::error::'$PR' is not a pull request number"; exit 1; }
+        bash "$TOOLS/review/findings-gate.sh" "$PR"
