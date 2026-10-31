@@ -1,0 +1,10 @@
+{
+  "name": "deploy-dev-config-status",
+  "control": "review",
+  "introduced": "747849ee",
+  "fix": "66741ad2",
+  "file": ".github/workflows/deploy-dev.yml",
+  "angle": "bugs",
+  "expect_file": ".github/workflows/deploy-dev.yml",
+  "expect_any": ["log line", "stdout", "[notice]", "not valid json"]
+}
