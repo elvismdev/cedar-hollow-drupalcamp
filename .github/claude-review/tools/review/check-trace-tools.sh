@@ -63,8 +63,12 @@
 # Read with no file_path, and any of these fields present but empty, is
 # refused. Nothing is resolved on disk, so a symlink is not followed here; the
 # head's are replaced before any agent runs, and the workspace is the trusted
-# checkout of main. A refusal names the tool and the call's position, never the
-# path: the job log is public and the path is agent-written text.
+# checkout of main. A refusal names the tool, the call's position, the
+# rule that refused it as a fixed label and, when the field is one of the
+# tool's own, its name; never a value, path, glob or pattern, and never an
+# unknown key's name: the job log is public and those are agent-written text.
+# A call that breaks several rules gets the first label in the order checked:
+# input shape, field set, Grep glob, path, Glob pattern.
 #
 # Fails closed: a missing, empty or unreadable trace, or no workspace to compare
 # against, exits non-zero. The caller decides whether an absent trace means
@@ -92,6 +96,10 @@ calls=$(jq -r --argjson allowed "$ALLOWED" '
 
 read -r total outside <<<"$calls"
 if [ -n "${outside:-}" ]; then
+  jq -r --argjson allowed "$ALLOWED" '
+    [.. | objects | select(.type? == "tool_use") | (.name // "<unnamed>") | tostring]
+    | to_entries[] | select(.value as $n | $allowed | index($n) | not)
+    | "check-trace-tools: \(.value) call \(.key + 1): tool not allowed"' "$TRACE" >&2
   echo "check-trace-tools: the agent used a tool outside Read, Glob and Grep: ${outside}" >&2
   exit 1
 fi
@@ -169,39 +177,83 @@ def calls(node):
         for v in node:
             yield from calls(v)
 
-def allowed(call):
+def path_refusal(field, value, base):
+    """The label for a path-valued field the check refuses, else None."""
+    if value is None or value == '':
+        return ('empty field', field)
+    if not isinstance(value, str):
+        return ('field not a string', field)
+    if value.startswith('~'):
+        return ('path starts with ~', field)
+    if not path_ok(value):
+        return ('character outside the allowlist', field)
+    resolved = resolve(value, base)
+    if resolved is not None and under(resolved, git_dir):
+        return ('path under .git', field)
+    if not inside(resolved):
+        return ('path outside the allowed roots', field)
+    return None
+
+def refusal(call):
+    """(label, field or None) for the first rule that refuses the call, else None.
+    A field name is returned only when it is in the tool's own field set."""
     name, args = call.get('name'), call.get('input')
     if name not in FIELDS:
-        return True  # any other name was refused by the name check above
-    if not isinstance(args, dict) or not set(args) <= FIELDS[name]:
-        return False
+        return None  # any other name was refused by the name check above
+    if not isinstance(args, dict):
+        return ('input not an object', None)
+    if not set(args) <= FIELDS[name]:
+        return ('unknown field', None)
     if name == 'Read':
-        fp = args.get('file_path')
-        return path_ok(fp) and inside(resolve(fp, ws))
+        return path_refusal('file_path', args.get('file_path'), ws)
+    if name == 'Grep' and 'glob' in args and args['glob'] is not None:
+        g = args['glob']
+        if g == '':
+            return ('empty field', 'glob')
+        if not isinstance(g, str):
+            return ('field not a string', 'glob')
+        if not glob_ok(g):
+            return ('character outside the allowlist', 'glob')
+        if not grep_glob_allowed(g):
+            return ('Grep glob is not extension-shaped', 'glob')
     path = args.get('path')
-    if name == 'Grep' and 'glob' in args and args['glob'] is not None \
-            and not grep_glob_allowed(args['glob']):
-        return False
     if path is None:
         base = ws
-    elif path_ok(path):
-        base = resolve(path, ws)
-        if not inside(base):
-            return False
     else:
-        return False
+        r = path_refusal('path', path, ws)
+        if r:
+            return r
+        base = resolve(path, ws)
     if name == 'Glob' and 'pattern' in args:
         pattern = args['pattern']
+        if pattern == '':
+            return ('empty field', 'pattern')
+        if not isinstance(pattern, str):
+            return ('field not a string', 'pattern')
+        if not glob_ok(pattern):
+            return ('character outside the allowlist', 'pattern')
         # Relative only: Claude Code searches an absolute pattern from its
         # static prefix, which a brace group holding .. moves away from the
         # directory this check would compute.
-        return glob_ok(pattern) and not pattern.startswith('/') \
-            and inside(resolve(pattern, base))
-    return True
+        if pattern.startswith('/'):
+            return ('Glob pattern is absolute', 'pattern')
+        resolved = resolve(pattern, base)
+        if resolved is not None and under(resolved, git_dir):
+            return ('path under .git', 'pattern')
+        if not inside(resolved):
+            return ('path outside the allowed roots', 'pattern')
+    return None
 
 trace = json.load(open(sys.argv[1]))
-print(', '.join(f"{c.get('name')} call {i}"
-                for i, c in enumerate(calls(trace), 1) if not allowed(c)))
+refused = []
+for i, c in enumerate(calls(trace), 1):
+    r = refusal(c)
+    if r:
+        refused.append(f"{c.get('name')} call {i}")
+        label, field = r
+        print(f"check-trace-tools: {c.get('name')} call {i}: {label}"
+              + (f" (field {field})" if field else ''), file=sys.stderr)
+print(', '.join(refused))
 PY
 ) || {
   echo "check-trace-tools: the paths in '$TRACE' could not be checked" >&2
