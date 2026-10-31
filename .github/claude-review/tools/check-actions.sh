@@ -8,11 +8,11 @@
 # them before bash runs, so bash never sees them, and left in place they read
 # as bad substitutions.
 #
-# Usage: check-actions.sh [action.yml ...]   (default: every */action.yml)
+# Usage: check-actions.sh [action.yml ...]   (default: every .github/claude-review/*/action.yml)
 set -euo pipefail
 cd "$(git rev-parse --show-toplevel)"
 if [ "$#" -eq 0 ]; then
-  mapfile -t files < <(git ls-files --cached --others --exclude-standard '*/action.yml' 'action.yml' | sort -u)
+  mapfile -t files < <(git ls-files --cached --others --exclude-standard '.github/claude-review/*/action.yml' | sort -u)
 else
   files=("$@")
 fi
