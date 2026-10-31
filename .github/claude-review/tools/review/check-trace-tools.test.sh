@@ -79,6 +79,30 @@ no_path Glob '{"pattern":"/proc/*"}' "an absolute Glob pattern outside the roots
 no_path Glob '{"pattern":"../../*"}' "a relative Glob pattern that climbs out is refused"
 no_path Read '{}' "a Read with no file_path is refused"
 
+# Forms Claude Code's tools rewrite before they resolve a path: it trims
+# surrounding whitespace and expands a leading ~ to the home directory.
+no_path Read '{"file_path":"~/work/repo/repo/.git/config"}' "a ~ path is refused"
+no_path Grep '{"pattern":"x","path":"~"}' "a Grep path of ~ is refused"
+no_path Read '{"file_path":" /w/repo/.git/config"}' "a path with a leading space is refused"
+no_path Grep '{"pattern":"x","path":" /proc/self"}' "a Grep path with a leading space is refused"
+no_path Read '{"file_path":"\t/proc/self/environ "}' "surrounding tabs and spaces are trimmed first"
+ok_path Read '{"file_path":" /w/repo/REVIEW.md "}' "a padded path inside the roots passes"
+
+# A Grep glob overrides Claude Code's own exclusion of .git in ripgrep, because
+# a later glob wins. Only a glob that ends in a file extension is allowed, after
+# the same split on whitespace and commas that Claude Code applies.
+no_path Grep '{"pattern":"x","glob":"**"}' "a Grep glob of ** is refused"
+no_path Grep '{"pattern":"x","glob":"*"}' "a Grep glob of * is refused"
+no_path Grep '{"pattern":"x","glob":"**,*.php"}' "a comma-joined ** is refused"
+no_path Grep '{"pattern":"x","glob":"*.php **"}' "a space-joined ** is refused"
+no_path Grep '{"pattern":"x","glob":".git/**"}' "a glob naming .git is refused"
+no_path Grep '{"pattern":"x","glob":"*.{php,*}"}' "a brace group with a wildcard is refused"
+ok_path Grep '{"pattern":"x","glob":"*.php"}' "a Grep glob *.php passes"
+ok_path Grep '{"pattern":"x","glob":"*.{php,module}"}' "a Grep glob *.{php,module} passes"
+ok_path Grep '{"pattern":"x","glob":"src/**/*.ts"}' "a Grep glob src/**/*.ts passes"
+ok_path Grep '{"pattern":"x","glob":"*.php,*.inc"}' "comma-separated extension globs pass"
+ok_path Grep '{"pattern":"x","glob":""}' "an empty Grep glob passes"
+
 # Without the head and input directories set, only the workspace is allowed.
 printf '[%s]' "$(call Read '{"file_path":"/rt/head/a"}')" > "$tmp/p.json"
 assert_eq "1" "$(REVIEW_HEAD_DIR='' REVIEW_INPUT_DIR='' rc "$tmp/p.json")" "an unset head directory is not a root"
