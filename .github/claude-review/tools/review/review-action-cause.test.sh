@@ -43,4 +43,15 @@ out=$(result RAN=failure)
 assert_contains "$out" "state=failed" "a failed agent step fails the review"
 assert_contains "$out" "cause=no_agent_ran" "and with no trace the cause is no_agent_ran"
 
+# A review run with an invalid OAuth token: the trace holds api_retry events,
+# a synthetic assistant message and an error result, none of which carry the
+# older "authentication_error" wording.
+cat > "$tmp/trace.jsonl" <<'JSON'
+{"type":"system","subtype":"api_retry","error_status":401,"error":"authentication_failed"}
+{"type":"assistant","message":{"content":[{"type":"text","text":"Failed to authenticate. API Error: 401 OAuth access token is invalid."}]},"error":"authentication_failed"}
+{"type":"result","subtype":"success","is_error":true,"result":"Failed to authenticate. API Error: 401 OAuth access token is invalid.","modelUsage":{}}
+JSON
+out=$(result RAN=success TRACE="$tmp/trace.jsonl")
+assert_contains "$out" "cause=token_or_quota" "an invalid token in the trace is token_or_quota"
+
 pass

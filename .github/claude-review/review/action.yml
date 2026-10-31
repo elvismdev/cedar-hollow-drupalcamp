@@ -650,7 +650,8 @@ runs:
         quota=0
         if [ "$AGENT" = "failure" ] && [ -n "${TRACE:-}" ] && [ -s "$TRACE" ] \
           && grep -qF -e 'authentication_error' -e 'OAuth token has expired' \
-               -e 'usage limit' -e 'rate_limit_error' "$TRACE"; then
+               -e 'usage limit' -e 'rate_limit_error' \
+               -e 'authentication_failed' -e 'OAuth access token is invalid' "$TRACE"; then
           quota=1
         fi
         state=""; cause=""
