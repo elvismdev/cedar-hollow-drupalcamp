@@ -66,6 +66,10 @@
           {
             "context": "Reviewer tools tests",
             "integration_id": 15368
+          },
+          {
+            "context": "Review gate",
+            "integration_id": 15368
           }
         ]
       }
