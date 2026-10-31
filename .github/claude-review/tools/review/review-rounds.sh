@@ -22,13 +22,18 @@ reviews_feed() {
   gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR}/reviews" --paginate
 }
 
-feed=$(reviews_feed) || {
+# The feed goes to python3 in a file. Linux caps one environment string at
+# 128 KiB, which a long-lived pull request's reviews feed passes.
+feed_file=$(mktemp) || { echo "review-rounds: could not create a temporary file" >&2; exit 1; }
+trap 'rm -f "$feed_file"' EXIT
+reviews_feed > "$feed_file" || {
   echo "review-rounds: could not read the reviews feed for #${PR}" >&2; exit 1; }
 
-REVIEW_FEED="$feed" python3 - "$BOT" "$ANGLE" <<'PY'
-import json, os, sys
+python3 - "$BOT" "$ANGLE" "$feed_file" <<'PY'
+import json, sys
 bot, angle = sys.argv[1], sys.argv[2]
-raw = os.environ.get('REVIEW_FEED', '')
+with open(sys.argv[3], encoding='utf-8') as f:
+    raw = f.read()
 
 # `gh api --paginate` may print one array per page, so read a sequence of JSON
 # documents rather than exactly one.

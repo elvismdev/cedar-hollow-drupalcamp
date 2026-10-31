@@ -24,6 +24,20 @@ assert_eq "0" "$(count "$(cmd "$lookalikes")")" "a login containing the bot's is
 # Pages printed one array each, as --paginate may.
 assert_eq "3" "$(count "$(cmd "[$bot,$bot] [$bot,$(review someone bugs)]")")" "reviews across pages are all counted"
 
+# A feed larger than one environment string may hold (128 KiB on Linux): a
+# long-lived pull request reaches it, and a count that cannot run would fail
+# every later round.
+big=$(mktemp); trap 'rm -f "$big"' EXIT
+python3 -I - "$big" <<'PY2'
+import json, sys
+pad = 'x' * 2048
+reviews = [{"user": {"login": "github-actions[bot]"}, "body": f"Claude bugs review: {pad}"} for _ in range(70)]
+reviews += [{"user": {"login": "repo-owner"}, "body": pad} for _ in range(30)]
+open(sys.argv[1], 'w').write(json.dumps(reviews))
+PY2
+[ "$(stat -c %s "$big")" -gt 131072 ] || { echo "FAIL: the large feed fixture is under 128 KiB" >&2; exit 1; }
+assert_eq "70" "$(count "cat $big")" "a feed over 128 KiB is counted"
+
 # An unreadable feed is a failure, never round 0.
 assert_eq "1" "$(rc 'exit 1')" "a failed feed exits non-zero"
 assert_eq "1" "$(rc "$(cmd 'not json')")" "a feed that is not JSON exits non-zero"
