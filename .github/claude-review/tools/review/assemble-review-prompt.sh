@@ -11,12 +11,12 @@
 # findings and misses the shapes this repository actually produces, and a
 # generic review that looks like a review is worse than none.
 #
-# Usage: assemble-review-prompt.sh <angle> <base-ref> <head-ref> <out> [since-sha] [prior-findings] [intent]
+# Usage: assemble-review-prompt.sh <angle> <base-ref> <head-ref> <out> [since-sha] [prior-findings] [intent] [diff_from]
 #   angle           bugs | security, or any name with a prompt. The prompt is
-#                   .github/claude-review/<angle>.md on the BASE ref when the
-#                   repository has one, else angles/<angle>.md beside this
-#                   script. Read from the base for the same reason as
-#                   REVIEW.md: a change must not write the brief it is judged by.
+#                   .github/claude-review/<angle>.md on the BASE ref, and an
+#                   angle with none there fails. Read from the base for the same
+#                   reason as REVIEW.md: a change must not write the brief it is
+#                   judged by.
 #   since-sha       diff from here instead of the merge base, for a re-review
 #                   that reads only what arrived after the last one
 #   prior-findings  a file of findings already reported, included verbatim so a
@@ -29,10 +29,22 @@
 #                   by the author and untrusted, so it is quoted as data and the
 #                   reviewer is told never to follow it. Named but absent fails,
 #                   for the same reason as prior-findings.
+#   diff_from       a tree to take the diff and its file list from instead of
+#                   the range: the clean merge of the last reviewed commit with
+#                   the base, so changes the branch only merged in from the base
+#                   are not shown again. The commit list still uses the range.
+#
+# The diff is written to $REVIEW_INPUT_DIR/review-diff.patch, beside the out
+# file when that is unset, and the reviewer is told to open it with the Read
+# tool. REVIEW_HEAD_DIR names the directory the change is checked out in; unset,
+# the change is the working directory.
 set -uo pipefail
 
-[ "$#" -ge 4 ] || { echo "usage: assemble-review-prompt.sh <angle> <base-ref> <head-ref> <out> [since-sha] [prior-findings] [intent]" >&2; exit 2; }
-angle="$1"; base="$2"; head="$3"; out="$4"; since="${5:-}"; prior="${6:-}"; intent="${7:-}"
+[ "$#" -ge 4 ] || { echo "usage: assemble-review-prompt.sh <angle> <base-ref> <head-ref> <out> [since-sha] [prior-findings] [intent] [diff_from]" >&2; exit 2; }
+angle="$1"; base="$2"; head="$3"; out="$4"; since="${5:-}"; prior="${6:-}"; intent="${7:-}"; diff_from="${8:-}"
+head_dir="${REVIEW_HEAD_DIR:-}"
+input_dir="${REVIEW_INPUT_DIR:-$(dirname "$out")}"
+diff_file="$input_dir/review-diff.patch"
 
 if [ -n "$prior" ] && [ ! -f "$prior" ]; then
   echo "assemble-review-prompt: prior findings file '$prior' does not exist; refusing to assemble a prompt that silently drops them" >&2
@@ -55,13 +67,10 @@ standard=$(git show "${base}:REVIEW.md" 2>/dev/null) || {
 [ -n "$standard" ] || {
   echo "assemble-review-prompt: REVIEW.md on ${base} is empty" >&2; exit 1; }
 
-here=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 if brief=$(git show "${base}:.github/claude-review/${angle}.md" 2>/dev/null) && [ -n "$brief" ]; then
   brief_from=".github/claude-review/${angle}.md on ${base}"
-elif [ -s "$here/angles/${angle}.md" ]; then
-  brief=$(cat "$here/angles/${angle}.md"); brief_from="the default ${angle} prompt"
 else
-  echo "assemble-review-prompt: no prompt for angle '$angle', neither .github/claude-review/${angle}.md on ${base} nor a default" >&2
+  echo "assemble-review-prompt: no prompt for angle '$angle': .github/claude-review/${angle}.md is not on ${base}" >&2
   exit 2
 fi
 
@@ -70,9 +79,31 @@ if [ -n "$since" ]; then
 else
   range="$(git merge-base "$base" "$head")..${head}"
 fi
+if [ -n "$diff_from" ]; then
+  diff_args=("$diff_from" "$head")
+else
+  diff_args=("$range")
+fi
+
+# The diff goes to a file the reviewer opens with the Read tool, so its size
+# never counts against the prompt. A git failure here is a failure: an empty
+# diff file reads as a change with nothing in it.
+mkdir -p "$input_dir" || exit 1
+git diff -U10 "${diff_args[@]}" > "$diff_file" || {
+  echo "assemble-review-prompt: git diff ${diff_args[*]} failed" >&2; exit 1; }
 
 {
   printf '%s\n' "$brief"
+
+  printf '\n## Where the change is\n\n'
+  if [ -n "$head_dir" ]; then
+    printf 'The change is checked out at %s. Read its code there, not in\n' "$head_dir"
+    printf 'your working directory, which holds the base branch. In every finding,\n'
+    printf 'name "file" relative to the repository root, without the %s prefix.\n' "$head_dir"
+  else
+    printf 'Read the code in place: the change is checked out in your working directory.\n'
+    printf 'In every finding, name "file" relative to the repository root.\n'
+  fi
 
   printf '\n## What matters in this repository\n\n'
   printf 'This is REVIEW.md from %s, the branch this change is judged against.\n\n' "$base"
@@ -104,6 +135,7 @@ Each entry:
 Rules, which the repository's standard above also states:
 - A finding needs a file and a line you opened. A claim reasoned from a file
   name, a function name or a path, without reading it, is dropped.
+- "file" is relative to the repository root, never an absolute path.
 - Tag anything the diff did not introduce as "pre-existing". It will not block.
 - At most three "nit" entries. More is padding, and an agent author fixes a nit
   instead of waving it off, which buys another round.
@@ -135,9 +167,15 @@ TXT
     printf 'you can read, and do not report that the change looks incomplete.\n\n'
   fi
   printf 'Commits in %s:\n\n' "$range"
-  git log --no-merges --format='  %h %s' "$range" 2>/dev/null || true
+  git log --no-merges --format='  %h %s' "$range" || {
+    echo "assemble-review-prompt: git log ${range} failed" >&2; exit 1; }
   printf '\n### Files\n\n'
-  git diff --stat "$range" 2>/dev/null || true
+  git diff --stat "${diff_args[@]}" || {
+    echo "assemble-review-prompt: git diff --stat ${diff_args[*]} failed" >&2; exit 1; }
+  printf '\n### Diff\n\n'
+  printf 'The diff is in %s. Open it with the Read tool, in parts\n' "$diff_file"
+  printf 'with offset and limit if it is long. Every file in the list above is part\n'
+  printf 'of the change. Do not report on a file whose diff you have not read.\n'
 } > "$out"
 
 [ -s "$out" ] || { echo "assemble-review-prompt: produced an empty prompt" >&2; exit 1; }
@@ -145,35 +183,12 @@ TXT
 # claude-code-action copies the prompt, JSON-escaped, into one environment
 # variable, and Linux refuses to start a process when a single variable passes
 # 128 KiB: the agent step dies with "Argument list too long" before any agent
-# runs. So the prompt is measured as that variable will hold it, and a diff
-# that would take it over the budget is left for the reviewer to read itself.
+# runs. So the prompt is measured as that variable will hold it. The diff is
+# never in it, so a prompt over the budget is refused.
 budget="${REVIEW_PROMPT_BUDGET:-120000}"
-escaped_size() { python3 -c 'import json,sys; print(len(json.dumps(sys.stdin.read(), ensure_ascii=False).encode()))' <"$1"; }
-diff_file="$out.diff"
-{
-  printf '\n### Diff\n\n```diff\n'
-  git diff -U10 "$range" 2>/dev/null || true
-  printf '```\n'
-} > "$diff_file"
-without=$(escaped_size "$out")
-if [ "$without" -gt "$budget" ]; then
-  rm -f "$diff_file"
-  echo "assemble-review-prompt: the prompt is $without bytes escaped without its diff, over the budget of $budget, so the action could not start" >&2
+size=$(python3 -c 'import json,sys; print(len(json.dumps(sys.stdin.read(), ensure_ascii=False).encode()))' <"$out")
+if [ "$size" -gt "$budget" ]; then
+  echo "assemble-review-prompt: the prompt is $size bytes escaped, over the budget of $budget, so the action could not start" >&2
   exit 1
 fi
-note=""
-if [ $(( without + $(escaped_size "$diff_file") )) -le "$budget" ]; then
-  cat "$diff_file" >> "$out"
-else
-  {
-    printf '\n### Diff\n\n'
-    printf 'The diff is too large to include here. Read it yourself, file by file\n'
-    printf 'from the list above, with:\n\n'
-    printf '    git diff -U10 %s -- <file>\n\n' "$range"
-    printf 'Every file in the list is part of the change. Do not report on a file\n'
-    printf 'whose diff you have not read.\n'
-  } >> "$out"
-  note=", diff left out: over the budget of $budget"
-fi
-rm -f "$diff_file"
-echo "assemble-review-prompt: ${angle} prompt from ${brief_from}, for ${range} ($(wc -c <"$out") bytes${note})"
+echo "assemble-review-prompt: ${angle} prompt from ${brief_from}, for ${range} ($(wc -c <"$out") bytes, diff in ${diff_file})"
