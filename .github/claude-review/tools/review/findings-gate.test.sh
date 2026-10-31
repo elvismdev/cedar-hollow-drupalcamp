@@ -102,6 +102,8 @@ assert_eq "1" "$(rc "$suffixed")" "the [bot] suffixed login still blocks"
 hundred=()
 for _ in $(seq 100); do hundred+=("$(node false false "$BOT" "nit: x")"); done
 assert_eq "2" "$(rc "$(feed "${hundred[@]}")")" "a possibly truncated feed is not a pass"
+assert_contains "$(run "$(feed "${hundred[@]}")")" "truncated=true" "and says so in a machine line"
+assert_eq "" "$(run "$broken" | grep truncated)" "which an unreadable feed does not print"
 
 # The query asks for what the reader uses, in the same shape as
 # prior-findings.sh's query.

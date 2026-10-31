@@ -16,7 +16,8 @@
 #
 # Machine lines for the gate, on stdout: `open=<N>`, the number of unanswered
 # findings of any tag, then one `thread=<tag> <url>` for each. Exit 1 when one
-# of them is important.
+# of them is important. A feed of 100 threads prints `truncated=true` and exits
+# 2, so the gate can tell it from an unreadable feed.
 #
 # A feed that cannot be read exits 2 rather than 0. An unreadable gate reporting
 # a pass is the failure this repository keeps producing, and the whole point of
@@ -78,6 +79,7 @@ def severity(body):
 # truncated, and a pass computed from a truncated list is the silent miss this
 # gate exists to prevent. Reported as a nit by this workflow's own review.
 if len(threads) >= 100:
+    print('truncated=true')
     print('findings-gate: 100 threads returned, so the list may be truncated '
           'and a pass cannot be computed from it', file=sys.stderr)
     sys.exit(2)
