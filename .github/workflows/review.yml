@@ -76,12 +76,12 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PR: ${{ github.event.pull_request.number }}
-          PR_BODY: ${{ github.event.pull_request.body }}
         run: |
           set -euo pipefail
           gh api --paginate "repos/${GITHUB_REPOSITORY}/pulls/${PR}/files" \
             --jq '.[] | .filename, (.previous_filename // empty)' > "$RUNNER_TEMP/changed-paths.txt"
-          printf '%s\n' "$PR_BODY" > "$RUNNER_TEMP/pr-body.md"
+          # From the event file, not env:, which caps one string at 128 KiB.
+          jq -r '.pull_request.body // ""' "$GITHUB_EVENT_PATH" > "$RUNNER_TEMP/pr-body.md"
           echo "$(wc -l < "$RUNNER_TEMP/changed-paths.txt") changed path(s), previous names included"
       - name: Classify
         id: tier

@@ -86,6 +86,18 @@ for name, job in checked.items():
         if name.startswith("review-") and str(w.get("fetch-depth")) != "0":
             errors.append("%s checkout must set fetch-depth: 0" % name)
 
+# The pull request body reaches no step through env:. The runner passes env to
+# the shell as environment strings, which Linux caps at 128 KiB each, and a
+# body can pass that; it is read from the event file instead.
+for name, job in jobs.items():
+    if not isinstance(job, dict):
+        continue
+    for st in (job.get("steps") or []):
+        env = st.get("env") if isinstance(st, dict) else None
+        for k, v in (env or {}).items():
+            if re.search(r"pull_request\.body", str(v)):
+                errors.append("%s step env %s carries the pull request body" % (name, k))
+
 for e in errors:
     print("FAIL: " + e, file=sys.stderr)
 sys.exit(1 if errors else 0)
@@ -160,11 +172,13 @@ sed 's/^\( *\)fetch-depth: 0 # bugs-depth$/\1fetch-depth: 0\n\1ref: ${{ github.e
 sed 's/^\( *\)persist-credentials: false # classify-persist$/\1persist-credentials: false\n\1repository: ${{ github.event.pull_request.head.repo.full_name }}/' "$tmp/pass.yml" > "$tmp/head-repo.yml"
 # The gate's checkout keeping persist-credentials at its default.
 sed '/persist-credentials: false # gate-persist$/d' "$tmp/pass.yml" > "$tmp/no-persist.yml"
+# A step taking the pull request body through env:.
+sed 's/^\( *\)persist-credentials: false # classify-persist$/\1persist-credentials: false\n      - env:\n          PR_BODY: ${{ github.event.pull_request.body }}\n        run: true/' "$tmp/pass.yml" > "$tmp/body-env.yml"
 # A review job with a shallow checkout.
 sed '/fetch-depth: 0 # security-depth$/d' "$tmp/pass.yml" > "$tmp/shallow.yml"
 
 check "$tmp/pass.yml"; assert_exit 0 "$?" "passing fixture"
-for f in no-always wrong-if wrong-trigger wrong-needs no-draft head-ref head-repo no-persist shallow; do
+for f in no-always wrong-if wrong-trigger wrong-needs no-draft head-ref head-repo no-persist shallow body-env; do
 	out=$(check "$tmp/$f.yml" 2>&1); code=$?
 	assert_exit 1 "$code" "fixture $f must fail"
 	assert_contains "$out" "FAIL:" "fixture $f names its failure"
