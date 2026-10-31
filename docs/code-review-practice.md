@@ -68,8 +68,8 @@ The gate prints one of these messages. `<angle>` is "bugs", "security", or "bugs
 Causes for "Review did not run":
 
 *   `token_or_quota`: the token expired or the subscription's usage is exhausted. Rotate the token (below), or wait for usage to return, or use the bypass for an urgent change.
-*   `no_agent_ran`: the agent step produced nothing. Re-run the job, then read its log.
-*   `tool_violation`: an agent used a tool other than Read, Glob or Grep. Read the job log before anything else; treat it as possible prompt injection through the pull request's content.
+*   `no_agent_ran`: the agent step produced nothing. Re-run the job, then read its log. If the log shows claude-code-action failing on a git command before the agent starts, the checkout of `main` is missing or broken: the action restores `.claude`, `CLAUDE.md` and similar files from `main` with git before every review.
+*   `tool_violation`: an agent used a tool other than Read, Glob or Grep, passed a tool input field outside that tool's schema, or read a path outside the workspace (`.git` excluded), the pull request head or the diff input folder. Read the job log before anything else; treat it as possible prompt injection through the pull request's content.
 *   `secret_screen`: a finding or summary matched one of the job's secrets, so nothing was posted. Read the job log to see which output tripped the screen before re-running, and rotate the token if the log shows it outside the screen.
 *   `head_mismatch`: the fetched head is not the commit the API reports, usually because of a push during the run. Re-run the job.
 *   `empty_diff`: the API reports changed files but the diff was empty. Re-run the job.
