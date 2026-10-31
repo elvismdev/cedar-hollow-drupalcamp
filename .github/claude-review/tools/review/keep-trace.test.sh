@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 set -uo pipefail
-ROOT="$(git rev-parse --show-toplevel)"
+ROOT="$(git rev-parse --show-toplevel)/.github/claude-review"
 . "$ROOT/tools/agent/test/assert.sh"
 K="$ROOT/tools/review/keep-trace.sh"
 tmp=$(mktemp -d); trap 'rm -rf "$tmp"' EXIT
