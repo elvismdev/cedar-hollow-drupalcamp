@@ -133,4 +133,12 @@ Remove the required check first, then revert the workflow that produces it. In t
 
 ## Cost
 
-Filled in after the first gate canary, with its measured durations and agent sessions.
+Measured on the first gate canary, 2026-10-31, on GitHub-hosted `ubuntu-24.04` runners.
+
+*   **A reviewing round** runs both angles in parallel. Each review job took 80 to 99 seconds, including the checkout, the head fetch and installing Claude Code.
+*   **Agent sessions per round.** Each angle starts one reviewer session. When the reviewer reports findings, three verifier sessions follow, so a round costs two sessions when both angles find nothing and up to eight when both report findings. Every session runs on the owner's subscription with a 40-turn budget (60 for a High pull request).
+*   **A round that spends nothing.** A push that only merges `main`, or any push after the cap, starts no agent: the job ends in 8 to 9 seconds.
+*   **At most three reviewing rounds per angle** on one pull request, so at most 24 agent sessions before the cap asks for an owner acknowledgement.
+*   **The gate** takes about 6 seconds and starts no agent.
+
+Token counts are not shown in the job log, because the action's full output stays hidden on a public repository.
