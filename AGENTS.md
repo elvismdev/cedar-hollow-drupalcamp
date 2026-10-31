@@ -40,4 +40,12 @@ Read `docs/designs/cedar-hollow-drupalcamp.md` before changing architecture; it 
 *   Configuration in `config/` is the source of truth: change config in the UI or by script, then `ddev drush config:export -y`.
 *   Tests: `ddev exec vendor/bin/phpunit -c web/core/phpunit.xml.dist web/modules/custom/cedar_hollow_core`. Functional tests build their site from `recipes/cedar_hollow_sessions`, so a change to session config belongs in both `config/` and the recipe.
 *   Commits are small, one concern each, with no AI attribution lines.
-*   Dev is deployed only by `.github/workflows/deploy-dev.yml` after CI passes on `main`. In a local clone, never add a `pantheon` Git remote or push to Pantheon; to change Dev, merge to `main`.
+*   Dev is deployed only by `.github/workflows/deploy-dev.yml` after CI passes on `main`. In a local clone, never add a `pantheon` Git remote or push to Pantheon; to change Dev, open a pull request; the owner merges it to `main`.
+
+## Pull requests and review
+
+*   Every change goes on a branch named for the task and is opened with `gh pr create`, with the pull request template filled in.
+*   Run `/code-review` and `/security-review` on the branch before opening the pull request, and state their result under Testing.
+*   On pull requests you authored, never reply to review findings, re-run the review gate or post "Accepted at".
+*   Never merge a pull request, use the bypass or push to `main`.
+*   `REVIEW.md` is the review contract.
