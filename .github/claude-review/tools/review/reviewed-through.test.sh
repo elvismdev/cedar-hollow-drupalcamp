@@ -20,6 +20,9 @@ printf 'three\n' >> f; git commit -q -am three; C3=$(git rev-parse HEAD)
 git checkout -q -b other "$C1"
 printf 'other\n' >> f; git commit -q -am other; ORPHAN=$(git rev-parse HEAD)
 git checkout -q master 2>/dev/null || git checkout -q main
+# The base the head contains: the review job's checkout of main has it as
+# origin/main.
+git update-ref refs/remotes/origin/main "$C1"
 
 BOT='github-actions[bot]'
 feed () {  # <commit_id> [angle]
@@ -33,10 +36,14 @@ none='printf "[]"'
 assert_eq "0" "$(rc "$none")" "no prior review exits 0"
 assert_contains "$(run "$none")" "state=full" "no prior review asks for a full review"
 assert_contains "$(run "$none")" "since=" "and names no since-sha"
+assert_contains "$(run "$none")" "diff_from=" "and no diff_from"
 
 # The ordinary re-review: the last round was posted against an earlier commit.
 assert_contains "$(run "$(feed "$C2")")" "state=incremental" "a prior review on an ancestor is incremental"
 assert_contains "$(run "$(feed "$C2")")" "since=$C2" "and reports that commit as the since-sha"
+# With no merge from main, the clean merge of the last reviewed commit with the
+# base is that commit's own tree, so the diff is the ordinary since..head one.
+assert_contains "$(run "$(feed "$C2")")" "diff_from=$(git rev-parse "$C2^{tree}")" "and diffs from that commit's tree"
 
 # Nothing new since the last round. Running an agent on an empty diff invents
 # findings out of nothing, so this is its own state rather than a full review.
@@ -58,7 +65,7 @@ assert_contains "$(run "$(feed "$C2" security)" security)" "since=$C2" "and its 
 
 # Only the bot's reviews count. A human's approval is not a review round, and
 # taking its commit_id would silently shrink the next review's surface.
-human='printf "[{\"user\":{\"login\":\"elvismdev\"},\"commit_id\":\"'"$C2"'\",\"submitted_at\":\"2026-01-01T00:00:00Z\",\"body\":\"Claude bugs review: looks fine\"}]"'
+human='printf "[{\"user\":{\"login\":\"repo-owner\"},\"commit_id\":\"'"$C2"'\",\"submitted_at\":\"2026-01-01T00:00:00Z\",\"body\":\"Claude bugs review: looks fine\"}]"'
 assert_contains "$(run "$human")" "state=full" "a human review is not a prior round"
 
 # Newest wins, and the feed is not assumed to arrive in order.
@@ -79,5 +86,51 @@ assert_contains "$(run "$pages")" "since=$C2" "and the newest across pages wins"
 bad='printf "not json"'
 assert_eq "1" "$(rc "$bad")" "an unreadable feed fails"
 assert_contains "$(run "$bad")" "not readable" "and says so"
+
+# Updates that merge main into the branch. The base is the newest main commit
+# the head contains, its merge base with origin/main, and the last reviewed
+# commit merged cleanly with that base is what the head would be with no new
+# work. A separate repository, so main and the branch share a file.
+m="$tmp/merges"; mkdir -p "$m"; cd "$m" || exit 1
+git init -q -b main .
+git config user.email t@example.invalid
+git config user.name T
+seq 1 40 > f; git add f; git commit -q -m base
+git checkout -q -b feature
+sed -i 's/^1$/branch-one/' f; git commit -q -am "branch edit"; P=$(git rev-parse HEAD)
+git checkout -q main
+sed -i 's/^40$/main-forty/' f; git commit -q -am "main edit"; M1=$(git rev-parse HEAD)
+sed -i 's/^30$/main-thirty/' f; git commit -q -am "main moves on"; M2=$(git rev-parse HEAD)
+# A merge of M1 with no edits.
+git checkout -q -b clean-merge "$P"; git merge -q --no-edit "$M1" >/dev/null; H1=$(git rev-parse HEAD)
+# The same merge with a hand edit in it.
+git checkout -q -b edited-merge "$P"; git merge -q --no-commit "$M1" >/dev/null 2>&1
+sed -i 's/^20$/hand-edit/' f; git add f; git commit -q --no-edit; H2=$(git rev-parse HEAD)
+# A merge whose resolution conflicts: main changed the branch's line too.
+git checkout -q -b clash "$M1"; sed -i 's/^1$/main-one/' f; git commit -q -am "main edits line one"; MC=$(git rev-parse HEAD)
+git checkout -q -b conflicted "$P"; git merge -q --no-edit "$MC" >/dev/null 2>&1
+printf 'resolved\n' > f; git add f; git commit -q --no-edit; H3=$(git rev-parse HEAD)
+
+git update-ref refs/remotes/origin/main "$M1"
+out=$(run "$(feed "$P")" bugs "$H1")
+assert_contains "$out" "state=current" "a merge from main with no edits needs no new round"
+
+out=$(run "$(feed "$P")" bugs "$H2")
+assert_contains "$out" "state=incremental" "a hand-edited merge is reviewed"
+assert_contains "$out" "since=$P" "from the last reviewed commit"
+T=$(git merge-tree --write-tree "$M1" "$P")
+assert_contains "$out" "diff_from=$T" "with the diff taken from the clean merge"
+assert_contains "$(git diff "$T" "$H2")" "+hand-edit" "a diff that holds the hand edit"
+case "$(git diff "$T" "$H2")" in *main-forty*) mainc=0;; *) mainc=1;; esac
+assert_exit 1 "$mainc" "and not main's change"
+
+git update-ref refs/remotes/origin/main "$M2"
+out=$(run "$(feed "$P")" bugs "$H1")
+assert_contains "$out" "state=current" "main advancing after the branch's merge does not undo it"
+
+git update-ref refs/remotes/origin/main "$MC"
+out=$(run "$(feed "$P")" bugs "$H3")
+assert_contains "$out" "state=full" "a merge that conflicts falls back to a full review"
+assert_contains "$out" "diff_from=" "with no diff_from"
 
 pass "reviewed-through.test.sh"

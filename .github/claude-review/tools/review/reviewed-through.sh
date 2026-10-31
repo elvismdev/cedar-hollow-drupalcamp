@@ -16,10 +16,19 @@
 # a history that was discarded, and it would silently hide commits rather than
 # fail. Both fall back to a full review, which costs a round and hides nothing.
 #
-# Three states, printed as lines for $GITHUB_OUTPUT:
+# An update that only merged main into the branch is not new work. The base is
+# the newest main commit the head contains, M = merge-base(head, origin/main),
+# not main at run time, and T = merge-tree --write-tree M <last reviewed> is
+# what the head would be with no new work. When T is the head's tree there is
+# nothing to review. Otherwise the diff is taken from T, which holds the
+# branch's new work and any conflict resolution but not what main brought in.
+# A merge-tree that conflicts has no T, so the whole change is reviewed.
+#
+# Three states, printed as lines for $GITHUB_OUTPUT with since and diff_from:
 #   full         no usable prior round, so review the whole change
-#   incremental  review since-sha..head
-#   current      the head has already been reviewed by this angle
+#   incremental  review since-sha..head, with the diff taken from diff_from
+#   current      the head has already been reviewed by this angle, or differs
+#                from it only by a clean merge of main
 #
 # An unreadable feed exits non-zero rather than reporting `full`, because `full`
 # is a plausible outcome and the failure would never be noticed.
@@ -97,6 +106,7 @@ PY
 if [ -z "$prior" ]; then
   echo "state=full"
   echo "since="
+  echo "diff_from="
   echo "reviewed-through: no prior ${ANGLE} review on #${PR}, reviewing the whole change" >&2
   exit 0
 fi
@@ -104,6 +114,7 @@ fi
 if ! git cat-file -e "${prior}^{commit}" 2>/dev/null; then
   echo "state=full"
   echo "since="
+  echo "diff_from="
   echo "reviewed-through: ${prior} is not in this checkout, so it cannot bound a diff; reviewing the whole change" >&2
   exit 0
 fi
@@ -111,6 +122,7 @@ fi
 if ! git merge-base --is-ancestor "$prior" "$HEAD_SHA" 2>/dev/null; then
   echo "state=full"
   echo "since="
+  echo "diff_from="
   echo "reviewed-through: ${prior} is not an ancestor of ${HEAD_SHA}, so the history it was reviewed on was discarded; reviewing the whole change" >&2
   exit 0
 fi
@@ -118,10 +130,38 @@ fi
 if [ "$(git rev-parse "$prior")" = "$(git rev-parse "$HEAD_SHA")" ]; then
   echo "state=current"
   echo "since="
+  echo "diff_from="
   echo "reviewed-through: ${ANGLE} has already reviewed ${HEAD_SHA}" >&2
+  exit 0
+fi
+
+M=$(git merge-base "$HEAD_SHA" origin/main) || {
+  echo "reviewed-through: ${HEAD_SHA} has no merge base with origin/main" >&2; exit 1; }
+set +e
+T=$(git merge-tree --write-tree "$M" "$prior"); mrc=$?
+set -e
+case "$mrc" in
+  0) ;;
+  1)
+    echo "state=full"
+    echo "since="
+    echo "diff_from="
+    echo "reviewed-through: ${prior} does not merge cleanly with ${M}, so the update cannot be told apart from main's changes; reviewing the whole change" >&2
+    exit 0 ;;
+  *)
+    echo "reviewed-through: git merge-tree ${M} ${prior} failed (exit ${mrc})" >&2
+    exit 1 ;;
+esac
+
+if [ "$T" = "$(git rev-parse "${HEAD_SHA}^{tree}")" ]; then
+  echo "state=current"
+  echo "since="
+  echo "diff_from="
+  echo "reviewed-through: ${HEAD_SHA} is ${prior} merged cleanly with ${M}, with no new work" >&2
   exit 0
 fi
 
 echo "state=incremental"
 echo "since=$prior"
-echo "reviewed-through: ${ANGLE} last read through ${prior}, reviewing ${prior}..${HEAD_SHA}" >&2
+echo "diff_from=$T"
+echo "reviewed-through: ${ANGLE} last read through ${prior}, reviewing ${prior}..${HEAD_SHA} with the diff from ${T}" >&2
