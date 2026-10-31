@@ -45,7 +45,10 @@ for i, f in enumerate(items):
 PY
 ) || { echo "assemble-verify-prompt: the candidates at ${candidates} are not a readable list" >&2; exit 1; }
 
-mb=$(git merge-base "$base" "$head" 2>/dev/null) || mb="$base"
+# No fallback to the base itself: base..head would show the base's newer
+# changes reversed, and the verifiers would judge a diff the change never made.
+mb=$(git merge-base "$base" "$head") && [ -n "$mb" ] || {
+  echo "assemble-verify-prompt: no merge base between ${base} and ${head}, so the change cannot be bounded" >&2; exit 1; }
 range="${mb}..${head}"
 if [ -n "$diff_from" ]; then
   diff_args=("$diff_from" "$head"); range="${diff_from}..${head}"

@@ -47,6 +47,13 @@ assert_eq "" "$(cat "$tmp/in-df/verify-diff.patch")" "and its diff runs from tha
 (cd "$d" && bash "$A" main feature "$tmp/c.json" "$tmp/p2.txt" >/dev/null 2>&1)
 assert_exit 1 "$?" "no REVIEW.md on the base is refused"
 
+# With no merge base the verifier would judge base..head, which shows the base's
+# newer changes reversed, so that is a failure rather than a fallback.
+(cd "$d" && git checkout -q --orphan lone && git rm -rqf . && printf 'z\n' > lone.txt && git add -A && git commit -q -m lone && git checkout -q feature)
+(cd "$d" && bash "$A" feature lone "$tmp/c.json" "$tmp/p-nomb.txt" >"$tmp/nomb.out" 2>&1)
+assert_exit 1 "$?" "no merge base between base and head is a failure"
+assert_contains "$(cat "$tmp/nomb.out")" "merge base" "and says so"
+
 printf 'nope' > "$tmp/bad.json"
 (cd "$d" && bash "$A" feature feature "$tmp/bad.json" "$tmp/p3.txt" >/dev/null 2>&1)
 assert_exit 1 "$?" "unreadable candidates are refused"
