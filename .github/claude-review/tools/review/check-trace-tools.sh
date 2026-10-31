@@ -15,27 +15,32 @@
 # The paths those three tools were given are checked too, as a second layer:
 # the review action keeps the workspace's .git, where claude-code-action would
 # write its token, away while the agents run, and replaces the head's symlinks
-# with plain files. This check covers, lexically:
+# with plain files. The token is also in the agent process's environment,
+# readable at /proc/self/environ, which only this check stands in front of.
 #
-#   - Read's file_path, and Glob's and Grep's path, trimmed of surrounding
-#     whitespace as Claude Code trims them, refused when they start with ~
-#     (Claude Code expands it to the home directory), resolved against the
-#     workspace when relative and normalised, so a .. that climbs out is
-#     caught. They must land in $GITHUB_WORKSPACE but not its .git, in
-#     $REVIEW_HEAD_DIR or in $REVIEW_INPUT_DIR (each when set).
-#   - A Glob pattern, treated the same way and resolved against its path.
-#   - A Grep glob, split on whitespace and then on commas outside braces, as
-#     Claude Code splits it. A user glob is passed to ripgrep after Claude
-#     Code's own !.git exclusion and overrides it, so each part must end in a
-#     literal file extension (*.php, *.{php,module}, src/**/*.ts) and must not
-#     name .git.
+# Nothing is normalised. Claude Code trims a path (with JavaScript's trim, which
+# removes characters such as U+FEFF that other trims keep) and expands a
+# leading ~ before reading it, so any reimplementation of that could disagree
+# with it. Instead each raw value must consist only of allowlisted ASCII:
+#
+#   - Read's file_path, and Glob's and Grep's path: [A-Za-z0-9._/@+-], present
+#     and non-empty. Then they are resolved against the workspace when
+#     relative and normalised for .., and must land in $GITHUB_WORKSPACE but not
+#     its .git, in $REVIEW_HEAD_DIR or in $REVIEW_INPUT_DIR (each when set).
+#   - A Glob pattern: the same set plus * { } and comma, then resolved against
+#     its path and held to the same roots.
+#   - A Grep glob: the same set as a Glob pattern. Claude Code passes it to
+#     ripgrep after its own !.git exclusion, where it overrides that exclusion,
+#     so after Claude Code's split on commas (a part holding a brace group is
+#     kept whole) each part must end in a literal file extension (*.php,
+#     *.{php,module}, src/**/*.ts) and must not name .git.
 #
 # A Glob or Grep with no path searches the working directory and is allowed. A
-# Read with no file_path is refused. Nothing is resolved on disk, so a symlink
-# is not followed here; the head's are replaced before any agent runs, and the
-# workspace is the trusted checkout of main. A refusal names the tool and the
-# call's position, never the path: the job log is public and the path is
-# agent-written text.
+# Read with no file_path, and any of these fields present but empty, is
+# refused. Nothing is resolved on disk, so a symlink is not followed here; the
+# head's are replaced before any agent runs, and the workspace is the trusted
+# checkout of main. A refusal names the tool and the call's position, never the
+# path: the job log is public and the path is agent-written text.
 #
 # Fails closed: a missing, empty or unreadable trace, or no workspace to compare
 # against, exits non-zero. The caller decides whether an absent trace means
@@ -83,25 +88,33 @@ roots = [ws] + [posixpath.normpath(os.environ[v])
 def under(p, root):
     return p == root or p.startswith(root.rstrip('/') + '/')
 
+# Matched against the raw value, before anything else, with fullmatch so a
+# trailing newline cannot slip past $. ASCII only, no whitespace, no ~.
+PATH_CHARS = re.compile(r'[A-Za-z0-9._/@+-]+')
+GLOB_CHARS = re.compile(r'[A-Za-z0-9._/@+*{},-]+')
+
+def path_ok(value):
+    return isinstance(value, str) and PATH_CHARS.fullmatch(value) is not None
+
+def glob_ok(value):
+    return isinstance(value, str) and GLOB_CHARS.fullmatch(value) is not None
+
 def resolve(p, base):
     """The path the tool would read, or None when it cannot be judged."""
-    p = p.strip()
     if p.startswith('~'):
         return None
     return posixpath.normpath(p if p.startswith('/') else posixpath.join(base, p))
 
-EXTENSION_GLOB = re.compile(r'^!?\S*\.(\w+|\{\w+(,\w+)*\})$')
+EXTENSION_GLOB = re.compile(r'[^{},]*\.([A-Za-z0-9]+|\{[A-Za-z0-9]+(,[A-Za-z0-9]+)*\})')
 
 def grep_glob_allowed(value):
-    if not isinstance(value, str):
+    if not glob_ok(value):
         return False
-    parts = []
-    for token in value.split():
-        if '{' in token and '}' in token:
-            parts.append(token)
-        else:
-            parts.extend(t for t in token.split(',') if t)
-    return all(EXTENSION_GLOB.match(t) and '.git' not in t.lower() for t in parts)
+    # Claude Code splits on whitespace, which glob_ok has already refused, then
+    # on commas unless a part holds a brace group.
+    parts = [value] if '{' in value and '}' in value else [t for t in value.split(',') if t]
+    return bool(parts) and all(EXTENSION_GLOB.fullmatch(t) and '.git' not in t.lower()
+                               for t in parts)
 
 def inside(p):
     return p is not None and not under(p, git_dir) and any(under(p, r) for r in roots)
@@ -122,23 +135,23 @@ def allowed(call):
         args = {}
     if name == 'Read':
         fp = args.get('file_path')
-        return isinstance(fp, str) and fp.strip() != '' and inside(resolve(fp, ws))
+        return path_ok(fp) and inside(resolve(fp, ws))
     if name in ('Glob', 'Grep'):
         path = args.get('path')
-        if name == 'Grep' and args.get('glob') not in (None, '') \
-                and not grep_glob_allowed(args.get('glob')):
+        if name == 'Grep' and 'glob' in args and args['glob'] is not None \
+                and not grep_glob_allowed(args['glob']):
             return False
-        if path is None or (isinstance(path, str) and path.strip() == ''):
+        if path is None:
             base = ws
-        elif isinstance(path, str):
+        elif path_ok(path):
             base = resolve(path, ws)
             if not inside(base):
                 return False
         else:
             return False
-        pattern = args.get('pattern')
-        if name == 'Glob' and isinstance(pattern, str) and pattern.strip():
-            return inside(resolve(pattern, base))
+        if name == 'Glob' and 'pattern' in args:
+            pattern = args['pattern']
+            return glob_ok(pattern) and inside(resolve(pattern, base))
         return True
     return True  # any other name was refused by the name check above
 
@@ -151,7 +164,7 @@ PY
   exit 1
 }
 if [ -n "$outside_roots" ]; then
-  echo "check-trace-tools: the agent used a path outside the allowed roots (the workspace except .git, the head, the input directory): ${outside_roots}" >&2
+  echo "check-trace-tools: the agent used a path outside the allowed roots (the workspace except .git, the head, the input directory) or with a character outside the allowlist: ${outside_roots}" >&2
   exit 1
 fi
 echo "check-trace-tools: ${total} tool call(s), all Read, Glob or Grep, all inside the allowed roots"

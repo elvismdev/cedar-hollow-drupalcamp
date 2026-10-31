@@ -79,29 +79,48 @@ no_path Glob '{"pattern":"/proc/*"}' "an absolute Glob pattern outside the roots
 no_path Glob '{"pattern":"../../*"}' "a relative Glob pattern that climbs out is refused"
 no_path Read '{}' "a Read with no file_path is refused"
 
-# Forms Claude Code's tools rewrite before they resolve a path: it trims
-# surrounding whitespace and expands a leading ~ to the home directory.
+# Characters. Claude Code trims and expands a path before reading it, and its
+# trim (JavaScript's) removes more than any reimplementation can be shown to,
+# U+FEFF among them. So nothing is normalised: a path or glob must consist only
+# of allowlisted ASCII characters as written, and anything else is refused.
 no_path Read '{"file_path":"~/work/repo/repo/.git/config"}' "a ~ path is refused"
 no_path Grep '{"pattern":"x","path":"~"}' "a Grep path of ~ is refused"
 no_path Read '{"file_path":" /w/repo/.git/config"}' "a path with a leading space is refused"
 no_path Grep '{"pattern":"x","path":" /proc/self"}' "a Grep path with a leading space is refused"
-no_path Read '{"file_path":"\t/proc/self/environ "}' "surrounding tabs and spaces are trimmed first"
-ok_path Read '{"file_path":" /w/repo/REVIEW.md "}' "a padded path inside the roots passes"
+no_path Read '{"file_path":"﻿/proc/self/environ"}' "a Read with a leading U+FEFF is refused"
+no_path Grep '{"pattern":"x","path":"﻿/proc/self"}' "a Grep path with a leading U+FEFF is refused"
+no_path Glob '{"pattern":"﻿/proc/*"}' "a Glob pattern with a leading U+FEFF is refused"
+no_path Grep '{"pattern":"x","glob":"**﻿*.php"}' "a Grep glob containing U+FEFF is refused"
+no_path Read "{\"file_path\":\"$(printf '\xef\xbb\xbf')/proc/self/environ\"}" "a raw UTF-8 U+FEFF is refused too"
+no_path Read '{"file_path":"/w/repo/REVIEW.md "}' "a trailing space is refused"
+no_path Read '{"file_path":"/w/repo/REVIEW.md\t"}' "a tab is refused"
+no_path Read '{"file_path":"/w/repo/REVIEW.md\n"}' "a newline is refused"
+no_path Read '{"file_path":"/w/repo/café.php"}' "a non-ASCII letter is refused"
+no_path Read '{"file_path":"/w/repo/a b.php"}' "a path with a space in it is refused"
+no_path Read '{"file_path":""}' "an empty file_path is refused"
+no_path Grep '{"pattern":"x","path":""}' "an empty Grep path is refused"
+no_path Glob '{"pattern":"**/*.php","path":""}' "an empty Glob path is refused"
+no_path Glob '{"pattern":""}' "an empty Glob pattern is refused"
+no_path Grep '{"pattern":"x","path":"/w/repo/*"}' "a wildcard in a Grep path is refused"
+ok_path Read '{"file_path":"/w/repo/web/themes/custom/cedar_hollow/package.json"}' "a real repository path passes"
+ok_path Read '{"file_path":"/rt/head/web/modules/custom/cedar_hollow_core/cedar_hollow_core.routing.yml"}' "a real head path passes"
+ok_path Read '{"file_path":"/w/repo/node_modules/@scope/pkg+x/a-b.js"}' "@, + and - are allowed"
 
 # A Grep glob overrides Claude Code's own exclusion of .git in ripgrep, because
 # a later glob wins. Only a glob that ends in a file extension is allowed, after
-# the same split on whitespace and commas that Claude Code applies.
+# the same split on commas that Claude Code applies.
 no_path Grep '{"pattern":"x","glob":"**"}' "a Grep glob of ** is refused"
 no_path Grep '{"pattern":"x","glob":"*"}' "a Grep glob of * is refused"
 no_path Grep '{"pattern":"x","glob":"**,*.php"}' "a comma-joined ** is refused"
-no_path Grep '{"pattern":"x","glob":"*.php **"}' "a space-joined ** is refused"
+no_path Grep '{"pattern":"x","glob":"*.php **"}' "a space-joined ** is refused (a space is outside the allowlist)"
 no_path Grep '{"pattern":"x","glob":".git/**"}' "a glob naming .git is refused"
 no_path Grep '{"pattern":"x","glob":"*.{php,*}"}' "a brace group with a wildcard is refused"
 ok_path Grep '{"pattern":"x","glob":"*.php"}' "a Grep glob *.php passes"
 ok_path Grep '{"pattern":"x","glob":"*.{php,module}"}' "a Grep glob *.{php,module} passes"
 ok_path Grep '{"pattern":"x","glob":"src/**/*.ts"}' "a Grep glob src/**/*.ts passes"
 ok_path Grep '{"pattern":"x","glob":"*.php,*.inc"}' "comma-separated extension globs pass"
-ok_path Grep '{"pattern":"x","glob":""}' "an empty Grep glob passes"
+no_path Grep '{"pattern":"x","glob":""}' "an empty Grep glob is refused"
+no_path Grep '{"pattern":"x","glob":"!*.php"}' "a ! outside the allowlist is refused"
 
 # Without the head and input directories set, only the workspace is allowed.
 printf '[%s]' "$(call Read '{"file_path":"/rt/head/a"}')" > "$tmp/p.json"
