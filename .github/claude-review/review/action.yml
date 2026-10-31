@@ -348,10 +348,11 @@ runs:
       run: bash "$TOOLS/review/workspace-git.sh" restore
 
     # The agent step can exit success having run no agent. The trace is the
-    # only evidence one ran.
+    # only evidence one ran. always(), so a failed agent step that left no
+    # trace is reported as no_agent_ran; skipped when the agent step was.
     - name: Prove an agent ran
       id: ran
-      if: steps.go.outputs.run == '1'
+      if: always() && steps.go.outputs.run == '1' && steps.agent.outcome != 'skipped'
       shell: bash
       env:
         TRACE: ${{ steps.agent.outputs.execution_file }}
