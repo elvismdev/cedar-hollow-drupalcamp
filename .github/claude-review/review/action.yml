@@ -307,6 +307,17 @@ runs:
           "$SINCE" "$RUNNER_TEMP/prior-findings.md" "$RUNNER_TEMP/pr-intent.md" "$DIFF_FROM"
         bash "$TOOLS/agent/emit-block.sh" prompt "$RUNNER_TEMP/review-prompt.txt" >> "$GITHUB_OUTPUT"
 
+    # .git leaves the workspace before reviewer starts, so claude-code-action has
+    # no repository to write its token into. Nothing that needs git runs until
+    # it is restored.
+    - name: Move the workspace's .git away (reviewer)
+      id: hide-agent
+      if: steps.go.outputs.run == '1'
+      shell: bash
+      env:
+        TOOLS: ${{ github.workspace }}/.github/claude-review/tools
+      run: bash "$TOOLS/review/workspace-git.sh" hide
+
     # github_token is passed so the action uses it instead of exchanging an OIDC
     # token for its app token. That exchange is where the action skips itself
     # and reports success when it judges the workflow file wrong.
@@ -320,7 +331,23 @@ runs:
         prompt: ${{ steps.prompt.outputs.prompt }}
         claude_args: ${{ steps.args.outputs.claude_args }}
 
-    # The step above can exit success having run no agent. The trace is the
+    - name: No token reached the workspace's .git (reviewer)
+      id: check-agent
+      if: always() && steps.hide-agent.outcome == 'success'
+      shell: bash
+      env:
+        TOOLS: ${{ github.workspace }}/.github/claude-review/tools
+      run: bash "$TOOLS/review/workspace-git.sh" check
+
+    - name: Restore the workspace's .git (reviewer)
+      id: restore-agent
+      if: always() && steps.hide-agent.outcome == 'success'
+      shell: bash
+      env:
+        TOOLS: ${{ github.workspace }}/.github/claude-review/tools
+      run: bash "$TOOLS/review/workspace-git.sh" restore
+
+    # The agent step can exit success having run no agent. The trace is the
     # only evidence one ran.
     - name: Prove an agent ran
       id: ran
@@ -338,9 +365,9 @@ runs:
 
     # The deny list names every tool it knows of; this reads what the agent
     # actually called, and the paths it gave Read, Glob and Grep, which must
-    # stay in the workspace (not its .git, where claude-code-action has written
-    # its token), the head or the input directory. These checks run before the
-    # screen and posting. always(), so a reviewer that failed part-way is still
+    # stay in the workspace (not its .git, which is moved away while the agents
+    # run so claude-code-action cannot write its token there), the head or the
+    # input directory. These checks run before the screen and posting. always(), so a reviewer that failed part-way is still
     # checked. An absent trace is left to the step above.
     - name: The reviewer used only Read, Glob and Grep
       id: tools-agent
@@ -409,6 +436,17 @@ runs:
           "$BASE" "$HEAD" "$RUNNER_TEMP/candidates.json" "$RUNNER_TEMP/verify-prompt.txt" "$DIFF_FROM"
         bash "$TOOLS/agent/emit-block.sh" prompt "$RUNNER_TEMP/verify-prompt.txt" >> "$GITHUB_OUTPUT"
 
+    # .git leaves the workspace before verifier 1 starts, so claude-code-action has
+    # no repository to write its token into. Nothing that needs git runs until
+    # it is restored.
+    - name: Move the workspace's .git away (verifier 1)
+      id: hide-verify1
+      if: steps.verify-prompt.outcome == 'success'
+      shell: bash
+      env:
+        TOOLS: ${{ github.workspace }}/.github/claude-review/tools
+      run: bash "$TOOLS/review/workspace-git.sh" hide
+
     - name: Verify the findings (1 of 3)
       id: verify1
       if: steps.verify-prompt.outcome == 'success'
@@ -419,6 +457,22 @@ runs:
         github_token: ${{ inputs.github_token }}
         prompt: ${{ steps.verify-prompt.outputs.prompt }}
         claude_args: ${{ steps.args.outputs.claude_args }}
+
+    - name: No token reached the workspace's .git (verifier 1)
+      id: check-verify1
+      if: always() && steps.hide-verify1.outcome == 'success'
+      shell: bash
+      env:
+        TOOLS: ${{ github.workspace }}/.github/claude-review/tools
+      run: bash "$TOOLS/review/workspace-git.sh" check
+
+    - name: Restore the workspace's .git (verifier 1)
+      id: restore-verify1
+      if: always() && steps.hide-verify1.outcome == 'success'
+      shell: bash
+      env:
+        TOOLS: ${{ github.workspace }}/.github/claude-review/tools
+      run: bash "$TOOLS/review/workspace-git.sh" restore
 
     - name: Verifier 1 used only Read, Glob and Grep
       id: tools-verify1
@@ -435,6 +489,17 @@ runs:
         fi
         bash "$TOOLS/review/check-trace-tools.sh" "$TRACE"
 
+    # .git leaves the workspace before verifier 2 starts, so claude-code-action has
+    # no repository to write its token into. Nothing that needs git runs until
+    # it is restored.
+    - name: Move the workspace's .git away (verifier 2)
+      id: hide-verify2
+      if: steps.verify-prompt.outcome == 'success'
+      shell: bash
+      env:
+        TOOLS: ${{ github.workspace }}/.github/claude-review/tools
+      run: bash "$TOOLS/review/workspace-git.sh" hide
+
     - name: Verify the findings (2 of 3)
       id: verify2
       if: steps.verify-prompt.outcome == 'success'
@@ -445,6 +510,22 @@ runs:
         github_token: ${{ inputs.github_token }}
         prompt: ${{ steps.verify-prompt.outputs.prompt }}
         claude_args: ${{ steps.args.outputs.claude_args }}
+
+    - name: No token reached the workspace's .git (verifier 2)
+      id: check-verify2
+      if: always() && steps.hide-verify2.outcome == 'success'
+      shell: bash
+      env:
+        TOOLS: ${{ github.workspace }}/.github/claude-review/tools
+      run: bash "$TOOLS/review/workspace-git.sh" check
+
+    - name: Restore the workspace's .git (verifier 2)
+      id: restore-verify2
+      if: always() && steps.hide-verify2.outcome == 'success'
+      shell: bash
+      env:
+        TOOLS: ${{ github.workspace }}/.github/claude-review/tools
+      run: bash "$TOOLS/review/workspace-git.sh" restore
 
     - name: Verifier 2 used only Read, Glob and Grep
       id: tools-verify2
@@ -461,6 +542,17 @@ runs:
         fi
         bash "$TOOLS/review/check-trace-tools.sh" "$TRACE"
 
+    # .git leaves the workspace before verifier 3 starts, so claude-code-action has
+    # no repository to write its token into. Nothing that needs git runs until
+    # it is restored.
+    - name: Move the workspace's .git away (verifier 3)
+      id: hide-verify3
+      if: steps.verify-prompt.outcome == 'success'
+      shell: bash
+      env:
+        TOOLS: ${{ github.workspace }}/.github/claude-review/tools
+      run: bash "$TOOLS/review/workspace-git.sh" hide
+
     - name: Verify the findings (3 of 3)
       id: verify3
       if: steps.verify-prompt.outcome == 'success'
@@ -471,6 +563,22 @@ runs:
         github_token: ${{ inputs.github_token }}
         prompt: ${{ steps.verify-prompt.outputs.prompt }}
         claude_args: ${{ steps.args.outputs.claude_args }}
+
+    - name: No token reached the workspace's .git (verifier 3)
+      id: check-verify3
+      if: always() && steps.hide-verify3.outcome == 'success'
+      shell: bash
+      env:
+        TOOLS: ${{ github.workspace }}/.github/claude-review/tools
+      run: bash "$TOOLS/review/workspace-git.sh" check
+
+    - name: Restore the workspace's .git (verifier 3)
+      id: restore-verify3
+      if: always() && steps.hide-verify3.outcome == 'success'
+      shell: bash
+      env:
+        TOOLS: ${{ github.workspace }}/.github/claude-review/tools
+      run: bash "$TOOLS/review/workspace-git.sh" restore
 
     - name: Verifier 3 used only Read, Glob and Grep
       id: tools-verify3
@@ -617,12 +725,17 @@ runs:
           ${{ steps.cap.conclusion }} ${{ steps.seen.conclusion }}
           ${{ steps.go.conclusion }} ${{ steps.prior.conclusion }}
           ${{ steps.args.conclusion }} ${{ steps.prompt.conclusion }}
-          ${{ steps.agent.conclusion }} ${{ steps.ran.conclusion }}
+          ${{ steps.hide-agent.conclusion }} ${{ steps.agent.conclusion }}
+          ${{ steps.check-agent.conclusion }} ${{ steps.restore-agent.conclusion }}
+          ${{ steps.ran.conclusion }}
           ${{ steps.tools-agent.conclusion }} ${{ steps.unchanged.conclusion }}
           ${{ steps.candidates.conclusion }} ${{ steps.verify-prompt.conclusion }}
-          ${{ steps.verify1.conclusion }} ${{ steps.tools-verify1.conclusion }}
-          ${{ steps.verify2.conclusion }} ${{ steps.tools-verify2.conclusion }}
-          ${{ steps.verify3.conclusion }} ${{ steps.tools-verify3.conclusion }}
+          ${{ steps.hide-verify1.conclusion }} ${{ steps.verify1.conclusion }}
+          ${{ steps.check-verify1.conclusion }} ${{ steps.restore-verify1.conclusion }} ${{ steps.tools-verify1.conclusion }}
+          ${{ steps.hide-verify2.conclusion }} ${{ steps.verify2.conclusion }}
+          ${{ steps.check-verify2.conclusion }} ${{ steps.restore-verify2.conclusion }} ${{ steps.tools-verify2.conclusion }}
+          ${{ steps.hide-verify3.conclusion }} ${{ steps.verify3.conclusion }}
+          ${{ steps.check-verify3.conclusion }} ${{ steps.restore-verify3.conclusion }} ${{ steps.tools-verify3.conclusion }}
           ${{ steps.unchanged-verify.conclusion }} ${{ steps.vote.conclusion }}
           ${{ steps.screen.conclusion }} ${{ steps.post.conclusion }}
           ${{ steps.summary.conclusion }}
