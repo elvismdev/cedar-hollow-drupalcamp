@@ -200,6 +200,14 @@ assert_contains "$(cat "$tmp/p-nohead")" "the change is checked out in your work
 (cd "$d" && bash "$A" bugs main feature "$tmp/p-gitfail" 0123456789abcdef0123456789abcdef01234567 >"$tmp/gitfail.out" 2>&1)
 assert_exit 1 "$?" "a git failure exits non-zero"
 
+# With no merge base the full-review range cannot be computed. git would read
+# "..<head>" as HEAD..<head>, a different range, so this is a failure.
+d6=$(mkrepo nomergebase)
+(cd "$d6" && git checkout -q --orphan lone && git rm -rqf . && printf 'z\n' > lone.txt && git add -A && git commit -q -m lone)
+(cd "$d6" && bash "$A" bugs main lone "$tmp/p-nomb" >"$tmp/nomb.out" 2>&1)
+assert_exit 1 "$?" "no merge base between base and head is a failure"
+assert_contains "$(cat "$tmp/nomb.out")" "merge base" "and says so"
+
 # diff_from: after a clean merge from main, the diff is taken from the clean
 # merge of the last reviewed commit, so a file both main and the branch changed
 # shows only the branch's change. The log still lists the branch's commits.

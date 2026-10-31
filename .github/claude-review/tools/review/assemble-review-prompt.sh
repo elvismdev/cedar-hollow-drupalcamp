@@ -77,7 +77,11 @@ fi
 if [ -n "$since" ]; then
   range="${since}..${head}"
 else
-  range="$(git merge-base "$base" "$head")..${head}"
+  # A failed or empty merge base would leave "..<head>", which git reads as
+  # HEAD..<head>: a review of the wrong range that looks like a review.
+  mb=$(git merge-base "$base" "$head") && [ -n "$mb" ] || {
+    echo "assemble-review-prompt: no merge base between ${base} and ${head}, so the change cannot be bounded" >&2; exit 1; }
+  range="${mb}..${head}"
 fi
 if [ -n "$diff_from" ]; then
   diff_args=("$diff_from" "$head")
