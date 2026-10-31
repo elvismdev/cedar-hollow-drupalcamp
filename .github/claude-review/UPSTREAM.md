@@ -60,6 +60,7 @@ Every file below is a copy; the Changed section lists the ones edited.
 
 ## Changed
 
+- `gate/action.yml`: rewritten as a composite action that passes the guard, draft, review, tier and pull request inputs to `tools/review/gate-decide.sh`.
 - `tools/agent/compose-agent-args.sh`: review phase only, read-only tool list, extended deny list, optional `--add-dir` for the head and input directories.
 - `tools/agent/compose-agent-args.test.sh`: rewritten for the review-only builder.
 - `tools/agent/emit-block.sh`: wording about the error tracker removed.
@@ -75,8 +76,10 @@ Every file below is a copy; the Changed section lists the ones edited.
 - `tools/review/assemble-verify-prompt.test.sh`: `ROOT` points at `.github/claude-review`; cases for the diff file, the head directory and `diff_from`.
 - `tools/review/findings-from-trace.mjs`: strips a leading `$REVIEW_HEAD_DIR/` from each finding's `file`.
 - `tools/review/findings-from-trace.test.sh`: `ROOT` points at `.github/claude-review`; cases for the head directory.
-- `tools/review/findings-gate.sh`: a thread is answered only by a later comment from `REVIEW_OWNER_LOGIN`; prints `open=<N>` and `thread=<tag> <url>`; refuses an unset owner login.
-- `tools/review/findings-gate.test.sh`: `ROOT` points at `.github/claude-review`; rewritten for owner replies and the machine lines; owner fixture `repo-owner`.
+- `tools/review/findings-gate.sh`: a thread is answered only by a later comment from `REVIEW_OWNER_LOGIN`; prints `open=<N>` and `thread=<tag> <url>`; refuses an unset owner login; prints `truncated=true` for a feed of 100 threads.
+- `tools/review/findings-gate.test.sh`: `ROOT` points at `.github/claude-review`; rewritten for owner replies and the machine lines; owner fixture `repo-owner`; a case for `truncated=true`.
+- `tools/review/gate-decide.sh`: new; the Review gate's decision order, acknowledgement check, step summary and re-run hint.
+- `tools/review/gate-decide.test.sh`: new; every decision step and their order, angles, drafts, missing states and acknowledgements in a real repository.
 - `tools/review/keep-trace.sh`: screen-only mode, `REVIEW_SCREEN_ONLY=1`, screening the given files and copying nothing.
 - `tools/review/keep-trace.test.sh`: `ROOT` points at `.github/claude-review`; screen-only cases with a planted secret.
 - `tools/review/post-findings.test.sh`: `ROOT` points at `.github/claude-review`.
@@ -84,6 +87,8 @@ Every file below is a copy; the Changed section lists the ones edited.
 - `tools/review/prior-findings.test.sh`: `ROOT` points at `.github/claude-review`; cases for owner replies; owner fixture `repo-owner`.
 - `tools/review/reviewed-through.sh`: outputs `diff_from`; a head equal to the clean merge of the last reviewed commit with its merge base with `origin/main` is `current`; a conflicting merge is a full review.
 - `tools/review/reviewed-through.test.sh`: `ROOT` points at `.github/claude-review`; merge cases; human fixture `repo-owner`.
+- `tools/review/risk-tier.sh`: new; the High or Normal tier from the changed paths, the path count and the ticked Risk box.
+- `tools/review/risk-tier.test.sh`: new; one path per High pattern, renames, declared boxes, HTML comments and 3000 paths.
 - `tools/review/vote-findings.test.sh`: `ROOT` points at `.github/claude-review`.
 
 Rename of the private helper folder, its variable prefix and a private-name comment, applied in the copy commit (one line per file touched):
