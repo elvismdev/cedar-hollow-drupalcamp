@@ -93,7 +93,8 @@ Every file below is a copy; the Changed section lists the ones edited.
 - `tools/review/reviewed-through.test.sh`: `ROOT` points at `.github/claude-review`; merge cases; human fixture `repo-owner`.
 - `tools/review/risk-tier.sh`: new; the High or Normal tier from the changed paths, the path count and the ticked Risk box.
 - `tools/review/risk-tier.test.sh`: new; one path per High pattern, renames, declared boxes, HTML comments and 3000 paths.
-- `tools/review/vote-findings.test.sh`: `ROOT` points at `.github/claude-review`.
+- `tools/review/vote-findings.mjs`: the log gives counts only, with the refutations behind the dropped findings in aggregate; no finding title, file or parse error text is printed.
+- `tools/review/vote-findings.test.sh`: `ROOT` points at `.github/claude-review`; the log repeats no agent-written text.
 
 Rename of the private helper folder, its variable prefix and a private-name comment, applied in the copy commit (one line per file touched):
 

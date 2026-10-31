@@ -23,11 +23,24 @@ assert_eq "style only,disputed" "$dropped" "and the dropped ones are recorded, s
 assert_contains "$out" "3 candidate(s), 1 kept, 2 dropped" "the log gives the counts"
 assert_contains "$(cat "$tmp/dropped.json")" "guarded" "a dropped finding carries the verifiers' reasons"
 
+# The job log is public and is written before the secret screen, so it carries
+# counts only: no title, file or reason an agent wrote.
+for agent_text in "style only" "disputed" "b.ts" "c.ts" "naming" "guarded"; do
+  case "$out" in *"$agent_text"*) echo "FAIL: the log repeats agent-written text [$agent_text]" >&2; exit 1;; esac
+done
+assert_contains "$out" "refutations behind the dropped: 3 false, 2 style" "the reasons are given in aggregate"
+
 # A verifier that failed or answered nothing readable is a vote to keep: a
 # broken verifier must never be able to hide a real bug.
 printf 'not json' > "$tmp/bad.json"
 node "$V" "$tmp/c.json" "$tmp/k2.json" "$tmp/d2.json" 3 "$tmp/v3.json" "$tmp/bad.json" "$tmp/absent.json" >/dev/null 2>&1
 assert_eq "0" "$?" "missing and unreadable verdict files do not fail the vote"
+
+# An unreadable verdict file is not quoted either: a JSON parse error carries a
+# snippet of the text it failed on.
+printf 'agent-wrote-this {' > "$tmp/bad2.json"
+out2=$(node "$V" "$tmp/c.json" "$tmp/k3.json" "$tmp/d3.json" 3 "$tmp/bad2.json" 2>&1)
+case "$out2" in *agent-wrote-this*) echo "FAIL: a parse error repeats the verdict file's text" >&2; exit 1;; esac
 assert_eq "3" "$(python3 -c 'import json,sys; print(len(json.load(open(sys.argv[1]))))' "$tmp/k2.json")" "and one refutation out of three keeps everything"
 
 # Verdicts are matched by index, and an index that names no candidate, or a

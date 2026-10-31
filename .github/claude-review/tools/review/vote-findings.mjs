@@ -34,7 +34,7 @@ try {
   candidates = JSON.parse(readFileSync(candidatesPath, 'utf8'));
   if (!Array.isArray(candidates)) throw new Error('not a list');
 } catch (err) {
-  console.error(`vote-findings: the candidates at ${candidatesPath} are not readable (${err.message}); refusing to post a review built on nothing`);
+  console.error(`vote-findings: the candidates at ${candidatesPath} are not readable (${err.name}); refusing to post a review built on nothing`);
   process.exit(1);
 }
 
@@ -51,7 +51,8 @@ for (const path of verdictPaths) {
     verdicts = JSON.parse(readFileSync(path, 'utf8'));
     if (!Array.isArray(verdicts)) throw new Error('not a list');
   } catch (err) {
-    console.log(`vote-findings: verdicts at ${path} are not readable (${err.message}), counted as keeping every finding`);
+    // The parse error is not printed: it quotes the text it failed on.
+    console.log(`vote-findings: verdicts at ${path} are not readable (${err.name}), counted as keeping every finding`);
     continue;
   }
   // One vote per verifier per finding, even if it answered the same index twice.
@@ -83,6 +84,12 @@ console.log(`vote-findings: ${candidates.length} candidate(s), ${kept.length} ke
   + (verifiers > 0
     ? `(a finding is dropped when ${needed} of ${verifiers} verifier(s) refute it)`
     : '(not verified: every candidate is posted)'));
-for (const d of dropped) {
-  console.log(`  dropped: ${d.file}:${d.line} ${String(d.title || '').slice(0, 100)}`);
+// Counts only. The job log is public and is written before the secret screen,
+// so no title, file or reason an agent wrote is printed here; they reach the
+// pull request and the job summary only after the screen.
+if (dropped.length > 0) {
+  const byVerdict = {};
+  for (const d of dropped) for (const r of d.refuted_by) byVerdict[r.verdict] = (byVerdict[r.verdict] || 0) + 1;
+  const reasons = Object.keys(byVerdict).sort().map((v) => `${byVerdict[v]} ${v}`).join(', ');
+  console.log(`vote-findings: refutations behind the dropped: ${reasons}`);
 }
