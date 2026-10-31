@@ -21,7 +21,10 @@ export PATH="$tmp/bin:$PATH"
 
 r="$tmp/repo"; mkdir -p "$r/cases"
 (cd "$r" && git init -q -b main . && git config user.email t@t && git config user.name t
- printf '# standard\n' > REVIEW.md && printf 'ok\n' > gate.sh && git add -A && git commit -q -m base
+ printf '# standard\n' > REVIEW.md && printf 'ok\n' > gate.sh
+ # The repository's own angle prompt, read from the base: there is no default.
+ mkdir -p .github/claude-review && printf 'You are reviewing for CORRECTNESS.\n' > .github/claude-review/bugs.md
+ git add -A && git commit -q -m base
  printf 'exit 0 # fails open\n' > gate.sh && git commit -q -am "introduce the bug"
  printf 'docs\n' > README && git add README && git commit -q -m "a clean change")
 bug=$(git -C "$r" rev-parse HEAD~1); clean=$(git -C "$r" rev-parse HEAD)
