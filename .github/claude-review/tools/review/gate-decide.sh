@@ -187,8 +187,9 @@ if [ -n "$cap_bugs$cap_sec" ] && ! acknowledged; then
   red "Round cap reached for $(angles "$cap_bugs" "$cap_sec")." hint
 fi
 
-# 5 to 7. The review threads.
-gate_out=$(bash "$FINDINGS_GATE" "${PR_NUMBER:-}" 2>/dev/null); grc=$?
+# 5 to 7. The review threads. findings-gate.sh's stderr stays in the log: it
+# names why the threads could not be read and carries no thread text.
+gate_out=$(bash "$FINDINGS_GATE" "${PR_NUMBER:-}"); grc=$?
 important=0
 while IFS= read -r line; do
   case "$line" in

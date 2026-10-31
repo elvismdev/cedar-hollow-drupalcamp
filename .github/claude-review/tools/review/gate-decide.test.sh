@@ -104,6 +104,10 @@ assert_eq "1" "$(rc REVIEW_OWNER_LOGIN=)" "and is red"
 assert_contains "$(run REVIEW_THREADS_CMD="$unreadable")" "Review threads could not be read." "an unreadable feed"
 assert_contains "$(run REVIEW_THREADS_CMD='exit 3')" "Review threads could not be read." "a failing feed command"
 assert_eq "1" "$(rc REVIEW_THREADS_CMD="$unreadable")" "is red"
+# The cause reaches the log on stderr: findings-gate.sh's own reason.
+err () { : > "$SUMMARY"; { env "$@" bash "$G" >/dev/null; } 2>&1; }
+assert_contains "$(err REVIEW_THREADS_CMD="$unreadable")" "findings-gate: the thread feed is not readable JSON" "an unreadable feed's cause is on stderr"
+assert_contains "$(err REVIEW_THREADS_CMD='exit 3')" "findings-gate: could not read the review threads" "a failing feed command's cause is on stderr"
 
 # 6. 100 or more threads.
 assert_contains "$(run REVIEW_THREADS_CMD="$too_many")" "100 or more review threads; the gate cannot decide." "100 threads"
