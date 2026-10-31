@@ -71,7 +71,7 @@ Every file below is a copy; the Changed section lists the ones edited.
 - `tools/check-actions.test.sh`: `ROOT` points at `.github/claude-review`.
 - `tools/check-cli-version.sh`: action paths rooted at `.github/claude-review/`.
 - `tools/eval/review-eval.mjs`: a per-case input directory exported as `REVIEW_INPUT_DIR` to the argument builder and both prompt scripts; quoted `--add-dir` values accepted.
-- `tools/eval/review-eval.test.sh`: `ROOT` points at `.github/claude-review`; its repository commits a `bugs` angle prompt, as no default exists; asserts the agent's `--add-dir` holds the review diff.
+- `tools/eval/review-eval.test.sh`: `ROOT` points at `.github/claude-review`; its repository commits a `bugs` angle prompt, as no default exists; asserts the agent's `--add-dir` holds the review diff; two cases on the `deploy-dev-config-status` incident, its `expect_any` read from the real case file: a reviewer reporting nothing regresses it against a baseline where it passes, and an important finding about a different Drush issue in `deploy-dev.yml` does not catch it.
 - `tools/review/assemble-review-prompt.sh`: optional `diff_from` argument; git failures exit non-zero; diff written to `$REVIEW_INPUT_DIR/review-diff.patch` for the Read tool; names `$REVIEW_HEAD_DIR` or the working directory; repository-relative `file` required; no default angle prompt; no merge base fails.
 - `tools/review/assemble-review-prompt.test.sh`: `ROOT` points at `.github/claude-review`; angle prompts on the base; cases for the head directory, a git failure and `diff_from`.
 - `tools/review/assemble-verify-prompt.sh`: no git instructions; diff written to `$REVIEW_INPUT_DIR/verify-diff.patch` for the Read tool; optional `diff_from`; names `$REVIEW_HEAD_DIR` or the working directory; no merge base fails instead of falling back to the base.
@@ -127,6 +127,11 @@ Rename of the private helper folder, its variable prefix and a private-name comm
 - `tools/review/prior-findings.test.sh`: helper paths and variable names
 - `tools/review/reviewed-through.test.sh`: helper paths and variable names
 - `tools/review/vote-findings.test.sh`: helper paths and variable names
+
+The eval's calling workflow and cases are this repository's own:
+
+- `.github/workflows/review-eval.yml`: new; runs `eval/action.yml` on a push to main that changes `.github/claude-review/**`, `REVIEW.md` or `review.yml`, weekly and by hand, in the `claude-agents` environment, with the baseline only when `evals/eval-baseline.json` exists; on failure it opens or comments on the open `reviewer-eval` issue, naming a regression, a failure with no baseline yet, or a case that could not run.
+- `evals/cases/`: new; the incident `deploy-dev-config-status` and three clean cases from merged commits.
 
 Test steps, ported from upstream's `test.yml` into `.github/workflows/ci.yml` as job `reviewer-tools` (paths changed to `.github/claude-review/tools` and `.claude/hooks`):
 

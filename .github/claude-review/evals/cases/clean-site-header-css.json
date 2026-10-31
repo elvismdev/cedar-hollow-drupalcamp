@@ -1,0 +1,7 @@
+{
+  "name": "clean-site-header-css",
+  "kind": "clean",
+  "commit": "36a6771f",
+  "angle": "bugs",
+  "why": "Aligns the site header's items to the top and gives the brand link the target size, so the site name stays in place when the phone menu opens. Its only file, site-header.css, has no commit after it on main, so no later commit fixes its lines."
+}

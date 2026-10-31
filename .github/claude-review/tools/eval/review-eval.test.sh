@@ -83,6 +83,25 @@ assert_contains "$(cat "$tmp/out")" "improved  gate-fails-open" "while the newly
 printf '{"cases":{"docs-only":"pass"}}' > "$r/partial.json"
 run REVIEW_JSON='[]' -- cases --base main --no-verify --baseline partial.json >/dev/null
 assert_contains "$(cat "$tmp/out")" "new       gate-fails-open" "a case with no baseline entry is reported as new"
+# The repository's own incident, with its expect_any read from the real case
+# file, replayed against a fixture commit to deploy-dev.yml.
+real_case="$ROOT/evals/cases/deploy-dev-config-status.json"
+(cd "$r" && mkdir -p .github/workflows \
+ && printf 'run: config=$(terminus drush "$SITE.dev" -- config:status --format=json)\n' > .github/workflows/deploy-dev.yml \
+ && git add .github/workflows/deploy-dev.yml && git commit -q -m "compare drush output as json")
+deploy=$(git -C "$r" rev-parse HEAD)
+mkdir -p "$r/deploy-cases"
+python3 -c 'import json,sys; c=json.load(open(sys.argv[1])); c["introduced"]=sys.argv[2]; print(json.dumps(c))' \
+  "$real_case" "$deploy" > "$r/deploy-cases/deploy-dev-config-status.json"
+printf '{"cases":{"deploy-dev-config-status":"pass"}}' > "$r/deploy-baseline.json"
+assert_eq "1" "$(run REVIEW_JSON='[]' -- deploy-cases --base main --no-verify --baseline deploy-baseline.json)" "a reviewer that reports nothing regresses an incident the baseline records as passing"
+assert_contains "$(cat "$tmp/out")" "REGRESSED deploy-dev-config-status" "and names the incident"
+other='[{"severity":"important","file":".github/workflows/deploy-dev.yml","line":1,"title":"drush deploy runs before the database backup, so a failed update cannot be rolled back"}]'
+assert_eq "1" "$(run REVIEW_JSON="$other" -- deploy-cases --base main --no-verify)" "an important finding about a different Drush issue in deploy-dev.yml does not catch the incident"
+assert_contains "$(cat "$tmp/out")" "none naming the incident" "and the reason says the finding does not name it"
+caught='[{"severity":"important","file":".github/workflows/deploy-dev.yml","line":1,"title":"Drush log lines on stdout make the config:status output not valid JSON"}]'
+assert_eq "0" "$(run REVIEW_JSON="$caught" -- deploy-cases --base main --no-verify)" "while a finding naming the log lines on stdout catches it"
+
 printf 'nope' > "$r/bad-baseline.json"
 assert_eq "2" "$(run REVIEW_JSON='[]' -- cases --base main --no-verify --baseline bad-baseline.json)" "an unreadable baseline is refused, not ignored"
 

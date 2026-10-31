@@ -1,0 +1,7 @@
+{
+  "name": "clean-menu-landmarks",
+  "kind": "clean",
+  "commit": "3ca8748e",
+  "angle": "bugs",
+  "why": "Names the main and footer menu landmarks and stops menu--main.html.twig nesting one nav in another, with an end-to-end test and the header story updated. None of its five files (the two menu block configs, tests/e2e/menu.spec.ts, site-header.stories.js, menu--main.html.twig) has any commit after it on main, so no later commit fixes its lines."
+}
