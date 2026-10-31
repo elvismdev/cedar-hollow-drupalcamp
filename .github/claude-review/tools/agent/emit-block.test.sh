@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 set -uo pipefail
-ROOT="$(git rev-parse --show-toplevel)"
+ROOT="$(git rev-parse --show-toplevel)/.github/claude-review"
 . "$ROOT/tools/agent/test/assert.sh"
 E="$ROOT/tools/agent/emit-block.sh"
 P="$ROOT/tools/agent/test/helpers/parse-env-file.py"

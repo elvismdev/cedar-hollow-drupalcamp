@@ -6,7 +6,7 @@
 # delimiter and never checks whether the value contains it, so a hardcoded
 # delimiter is a value the content can be written to match: the assignment ends
 # early and the lines after it are parsed as further assignments. Every prompt
-# here carries untrusted text, a Sentry issue body or a dispatch input, so a
+# here carries untrusted text, such as a pull request body or a dispatch input, so a
 # fixed delimiter let that text replace the whole prompt, contract included.
 # A delimiter drawn from /dev/urandom per call cannot be matched by content
 # written before it existed.
