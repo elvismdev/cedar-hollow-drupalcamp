@@ -642,7 +642,7 @@ runs:
         fi
         node "$TOOLS/review/vote-findings.mjs" "$RUNNER_TEMP/candidates.json" \
           "$RUNNER_TEMP/findings.json" "$RUNNER_TEMP/dropped.json" "$verifiers" ${votes[@]+"${votes[@]}"}
-        bash "$TOOLS/review/diff-addressable-lines.sh" "${BASE}..${HEAD}" > "$RUNNER_TEMP/addressable.txt"
+        bash "$TOOLS/review/diff-addressable-lines.sh" "$BASE" "$HEAD" > "$RUNNER_TEMP/addressable.txt"
 
     # Nothing an agent wrote is published until it has been compared with the
     # two secrets the job holds: the reviewer's trace, the findings to post and

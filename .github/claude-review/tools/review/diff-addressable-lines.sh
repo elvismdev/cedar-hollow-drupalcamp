@@ -9,11 +9,19 @@
 # map is indistinguishable from a parse failure and would silently push every
 # finding into the summary.
 #
-# Usage: diff-addressable-lines.sh <range>
+# GitHub validates review comments against the pull request's merge-base
+# diff, so the map is built from the merge base of base and head. A two-dot
+# base..head diff would also name every line the base changed after the branch
+# point, and a finding anchored there makes GitHub reject the review.
+#
+# Usage: diff-addressable-lines.sh <base-ref> <head-ref>
 set -uo pipefail
-RANGE="${1:?usage: diff-addressable-lines.sh <base..head>}"
+[ "$#" -eq 2 ] || { echo "usage: diff-addressable-lines.sh <base-ref> <head-ref>" >&2; exit 2; }
+base="$1"; head="$2"
 
-diff=$(git diff --unified=0 "$RANGE") || { echo "diff-addressable-lines: git diff failed" >&2; exit 1; }
+mb=$(git merge-base "$base" "$head") && [ -n "$mb" ] || {
+  echo "diff-addressable-lines: no merge base between ${base} and ${head}, so the change cannot be bounded" >&2; exit 1; }
+diff=$(git diff --unified=0 "${mb}..${head}") || { echo "diff-addressable-lines: git diff failed" >&2; exit 1; }
 
 printf '%s' "$diff" | python3 -c '
 import re, sys
