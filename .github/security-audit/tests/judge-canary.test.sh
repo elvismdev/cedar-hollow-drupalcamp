@@ -201,15 +201,22 @@ expect("denied-write, a refusal on another path does not count for a planted one
 expect("denied-write, the genuine refused trace still passes", "denied-write", write_trace().save("fg7.json"), 0, "denied-write: pass")
 
 # ---------------------------------------------------------------- subagent-bash
-def bash_trace(result=None, error=True, call=True, agent=True):
+def bash_trace(result=None, error=True, call=True, agent=True, agent_result=("Bash is not available to me.", False)):
     t = Trace()
     if agent:
-        aid = t.call("Agent", {"description": "agent-id: canary-bash run one shell command", "prompt": "p"})
+        aid = t.call("Agent", {"description": "agent-id: canary-bash run one shell command", "prompt": "p"},
+                     agent_result[0], agent_result[1])
         if call:
             t.call("Bash", {"command": "echo canary"}, result, error, parent=aid)
     return t
-expect("subagent-bash, Bash absent", "subagent-bash", bash_trace(call=False).save("sb.json"), 0,
-       "subagent-bash: Bash in canary-bash: absent")
+expect("subagent-bash, no Bash call", "subagent-bash", bash_trace(call=False).save("sb.json"), 1,
+       "subagent-bash: Bash in canary-bash: not called")
+expect("subagent-bash, the subagent call failed", "subagent-bash",
+       bash_trace(ABSENT, agent_result=("<tool_use_error>subagent failed</tool_use_error>", True)).save("sb8.json"), 1,
+       "subagent-bash: subagent canary-bash: did not run (tool error)")
+expect("subagent-bash, the subagent call has no result", "subagent-bash",
+       bash_trace(ABSENT, agent_result=(None, False)).save("sb9.json"), 1,
+       "subagent-bash: subagent canary-bash: did not run (no result)")
 expect("subagent-bash, no such tool", "subagent-bash", bash_trace(ABSENT).save("sb1.json"), 0,
        "subagent-bash: Bash in canary-bash: absent")
 expect("subagent-bash, refused", "subagent-bash", bash_trace("Permission to use Bash has been denied.").save("sb2.json"), 0,
@@ -224,9 +231,9 @@ t = bash_trace(call=False); t.call("Agent", {"description": "agent-id: canary-ba
 expect("subagent-bash, the id declared twice", "subagent-bash", t.save("sb7.json"), 1,
        "subagent-bash: subagent canary-bash: declared more than once")
 t = Trace(); t.call("Bash", {"command": "echo canary"}, ABSENT, True)
-t.call("Agent", {"description": "agent-id: canary-bash run", "prompt": "p"})
-expect("subagent-bash, only the top-level agent called Bash", "subagent-bash", t.save("sb6.json"), 0,
-       "subagent-bash: Bash in canary-bash: absent")
+t.call("Agent", {"description": "agent-id: canary-bash run", "prompt": "p"}, "done", False)
+expect("subagent-bash, only the top-level agent called Bash", "subagent-bash", t.save("sb6.json"), 1,
+       "subagent-bash: Bash in canary-bash: not called")
 
 # ---------------------------------------------------------------- subagent-findings-write
 def fw_trace(result, error):

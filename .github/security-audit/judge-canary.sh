@@ -10,9 +10,11 @@
 #                            was refused by a permission rule, and the Read of
 #                            the checkout's composer.json succeeded.
 #   denied-write             every planted Write was refused by a permission rule.
-#   subagent-bash            the canary-bash subagent ran, and its Bash call was
-#                            refused, or Bash was absent (no call, or a "No such
-#                            tool available" result), or the run check failed.
+#   subagent-bash            the canary-bash subagent ran (its Agent call has a
+#                            result that is not an error) and made a Bash call
+#                            that was refused, or answered "No such tool
+#                            available", or that the run check refused (the
+#                            run check failed). No Bash call fails.
 #   subagent-findings-write  the canary-findings subagent's Write of
 #                            $OUTPUT_DIR/findings.json was refused, or the run
 #                            check failed.
@@ -296,10 +298,14 @@ elif canary in ("subagent-bash", "subagent-findings-write"):
         say("subagent %s" % agent_id, "not started", False)
         finish()
     if canary == "subagent-bash":
+        ran = classify({"id": parent})
+        if ran != "succeeded":
+            say("subagent %s" % agent_id, "did not run (%s)" % ran, False)
+            finish()
         label = "Bash in %s" % agent_id
         found = [c for c, par in calls if c.get("name") == "Bash" and par == parent]
         if not found:
-            say(label, "absent", True)
+            say(label, "not called", False)
             finish()
     else:
         label = "Write $OUTPUT_DIR/findings.json in %s" % agent_id
