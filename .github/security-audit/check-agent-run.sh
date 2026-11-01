@@ -29,13 +29,24 @@
 #     one of the shared or combined files that only the top-level agent or the
 #     trusted scripts write (SHARED below), wherever it is.
 #   - No agent, the top-level one included, writes a file named as one of
-#     merge-records.py's trusted outputs (TRUSTED below), wherever it is. In
-#     poc-write the top-level agent writes nothing under agents/, so each
+#     merge-records.py's trusted outputs (TRUSTED below), wherever it is.
+#   - Outside the source job (whose source and repair agents are the skill's
+#     parent), no agent, the top-level one included, writes a file named as
+#     one of the run's state files (STATE below), wherever it is: after the
+#     source job only merge-records.py changes them.
+#   - In poc-write the top-level agent writes nothing under agents/, so each
 #     proof-of-concept script can only come from the subagent whose scratch
 #     holds it.
-#   - In poc-write only, a subagent's Read, Glob or Grep may not reach another
+#   - In poc-write, a subagent's Read, Glob or Grep may not reach another
 #     agent's agents/<id>/: a target inside one fails, and so does a Glob or Grep
-#     rooted at agents/ or above it, which would search them all. Every brace
+#     rooted at agents/ or above it, which would search them all. In poc-decide
+#     and cross-check the same holds for the agents/<id>/ of every other
+#     subagent declared in the same trace, so no verifier sees another's
+#     entry; other directories under agents/ (the source job's agents, the
+#     decider's promoted artifacts) stay readable, and a Glob or Grep rooted
+#     at agents/ or above fails only when another subagent is declared. The
+#     scripts and run records the deciders read sit under the input
+#     directory, outside the output root's agents/. Every brace
 #     group in the path, the Glob pattern and the Grep glob is expanded first
 #     and each expansion is judged, so {.,}./x is judged as ../x and ./x. A
 #     Glob pattern with a .. segment at or after its first wildcard, or a Grep
@@ -180,6 +191,8 @@ const SHARED = new Set([
 ]);
 // merge-records.py's trusted outputs, which no agent writes.
 const TRUSTED = new Set(['trusted-meta.json', 'tie-break-inputs.json', 'select.json', 'list.json']);
+// The run's state files, which only the source job's agents write.
+const STATE = new Set(['findings.json', 'coverage-ledger.json', 'run-metadata.json', 'disputed.json', 'audit-history.json']);
 const MODELS = new Set([model, helper].filter(Boolean));
 
 const isObj = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
@@ -295,16 +308,23 @@ function readTargets(c) {
 }
 
 // The label for the first target that reaches another agent, else null.
-function isolationRefusal(name, targets, id) {
+// blocked(t) says whether a target inside agents/ belongs to an agent this
+// subagent may not reach; anyOther whether any such agent exists, which
+// decides whether a search of agents/ or above it reaches one.
+function isolationRefusal(name, targets, blocked, anyOther) {
   if (targets === null) return 'a subagent search cannot be judged (.. or braces), so its reach is unknown';
   for (const t of targets) {
-    if (name !== 'Read' && under(agentsDir, t)) return 'a subagent searches agents/ or above it, reaching other agents';
-    if (under(t, agentsDir) && t !== agentsDir && (id === null || !under(t, path.join(agentsDir, id)))) {
+    if (name !== 'Read' && under(agentsDir, t) && anyOther) return 'a subagent searches agents/ or above it, reaching other agents';
+    if (under(t, agentsDir) && t !== agentsDir && blocked(t)) {
       return "a subagent reads another agent's agents/<id>/";
     }
   }
   return null;
 }
+
+// The agent directory a target under agents/ lies in, by id.
+const agentOf = (t) => path.relative(agentsDir, t).split('/')[0];
+const declared = new Set([...subagents.values()].filter((v) => v !== null));
 
 // The absolute, normalised path a Write or Edit names, or null when
 // check-trace-tools.sh has refused its path already.
@@ -312,12 +332,22 @@ const writePath = (c) => ((c.name === 'Write' || c.name === 'Edit') && isObj(c.i
   && typeof c.input.file_path === 'string' && c.input.file_path.startsWith('/')
   ? path.normalize(c.input.file_path) : null);
 
+// The refusal for a write by any agent to a reserved file name, else null:
+// a trusted output anywhere, or a state file outside the source job.
+function reservedRefusal(p) {
+  const name = path.basename(p);
+  if (TRUSTED.has(name)) return "an agent writes one of merge-records.py's trusted outputs";
+  if (job !== 'source' && STATE.has(name)) return 'an agent writes a state file outside the source job';
+  return null;
+}
+
 // Rules for every agent's writes.
 for (const call of calls) {
   const p = writePath(call.c);
   if (p === null) continue;
-  if (TRUSTED.has(path.basename(p))) {
-    refuse(call, "an agent writes one of merge-records.py's trusted outputs");
+  const reserved = reservedRefusal(p);
+  if (reserved) {
+    refuse(call, reserved);
   } else if (job === 'poc-write' && call.parent === null && under(p, agentsDir)) {
     refuse(call, 'the top-level agent writes under agents/, where only each subagent writes its own script');
   }
@@ -340,7 +370,7 @@ for (const call of calls) {
   if (c.name === 'Write' || c.name === 'Edit') {
     if (typeof a.file_path !== 'string' || !a.file_path.startsWith('/')) continue; // refused by check-trace-tools
     const p = path.normalize(a.file_path);
-    if (TRUSTED.has(path.basename(p))) {
+    if (reservedRefusal(p)) {
       // refused above
     } else if (SHARED.has(path.basename(p))) {
       refuse(call, 'a subagent writes a shared or combined file');
@@ -349,8 +379,15 @@ for (const call of calls) {
     }
   }
 
-  if (job === 'poc-write' && ['Read', 'Glob', 'Grep'].includes(c.name)) {
-    const why = isolationRefusal(c.name, readTargets(c), id);
+  if (['Read', 'Glob', 'Grep'].includes(c.name)) {
+    let why = null;
+    if (job === 'poc-write') {
+      why = isolationRefusal(c.name, readTargets(c), (t) => id === null || agentOf(t) !== id, true);
+    } else if (job === 'poc-decide' || job === 'cross-check') {
+      const others = [...declared].filter((d) => d !== id);
+      why = isolationRefusal(c.name, readTargets(c),
+        (t) => others.includes(agentOf(t)) || (id === null && declared.has(agentOf(t))), others.length > 0 || id === null);
+    }
     if (why) refuse(call, why);
   }
 }

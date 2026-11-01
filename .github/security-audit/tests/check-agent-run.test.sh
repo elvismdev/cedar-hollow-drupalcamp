@@ -145,6 +145,22 @@ trace "$tmp/t.json" "${CLEAN[@]}" "$(top Edit "{\"file_path\":\"$OUT/state/list.
 assert_eq "1" "$(rc cross-check "$tmp/t.json")" "a top-level Edit of list.json in a subdirectory fails"
 trace "$tmp/t.json" "${CLEAN[@]}" "$(sub ta1 Write "{\"file_path\":\"$OUT/agents/h01/scratch/trusted-meta.json\",\"content\":\"{}\"}")" "$(result "$M")"
 assert_eq "1" "$(rc source "$tmp/t.json")" "a subagent writing trusted-meta.json in its own scratch fails"
+# The state files: the source job's agents (source and repair) write them;
+# in every later job no agent does, the top-level one included.
+for f in findings.json coverage-ledger.json run-metadata.json disputed.json audit-history.json; do
+  trace "$tmp/t.json" "$INIT" "$(top Write "{\"file_path\":\"$OUT/$f\",\"content\":\"[]\"}")" "$(result "$M")"
+  assert_eq "0" "$(rc source "$tmp/t.json")" "in source, the top-level agent writing $f passes"
+  for job in poc-write poc-decide cross-check; do
+    assert_eq "1" "$(rc "$job" "$tmp/t.json")" "in $job (cross-check covers the tie-break step), the top-level agent writing $f fails"
+  done
+  assert_contains "$(run poc-decide "$tmp/t.json")" "state file outside the source job" "and says why for $f"
+  trace "$tmp/t.json" "$INIT" "$(top Edit "{\"file_path\":\"$OUT/sub/$f\",\"old_string\":\"a\",\"new_string\":\"b\"}")" "$(result "$M")"
+  assert_eq "1" "$(rc cross-check "$tmp/t.json")" "in cross-check, a top-level Edit of $f in a subdirectory fails"
+done
+# The clean run for the later jobs: without the top-level writes under
+# agents/ and of the state files, which only the source job's agents make.
+CLEAN_POC=("${CLEAN[@]:0:2}" "${CLEAN[@]:4:4}")
+assert_eq "0" "$(trace "$tmp/t.json" "${CLEAN_POC[@]}" "$(result "$M")"; rc poc-write "$tmp/t.json")" "the later jobs' clean baseline passes in poc-write"
 # In poc-write the top-level agent writes nothing under agents/.
 trace "$tmp/t.json" "${CLEAN_POC[@]}" "$(top Write "{\"file_path\":\"$OUT/agents/h01/scratch/poc.php\",\"content\":\"x\"}")" "$(result "$M")"
 assert_eq "1" "$(rc poc-write "$tmp/t.json")" "in poc-write, a top-level write under agents/ fails"
@@ -177,9 +193,6 @@ trace "$tmp/t.json" "$INIT" "$(top Task '{"description":"agent-id: v1 verify","p
 assert_eq "0" "$(rc cross-check "$tmp/t.json")" "a Task call binds its subagent like an Agent call"
 
 # Isolation: in poc-write a subagent may not reach another agent's directory.
-# The clean run without the top-level agent's write under agents/, which
-# poc-write refuses.
-CLEAN_POC=("${CLEAN[@]:0:3}" "${CLEAN[@]:4}")
 iso () { # job tool input expected-rc message
   trace "$tmp/t.json" "${CLEAN_POC[@]}" "$(sub ta1 "$2" "$3")" "$(result "$M")"
   assert_eq "$4" "$(rc "$1" "$tmp/t.json")" "$5"
@@ -198,6 +211,39 @@ iso poc-write Glob "{\"pattern\":\"scratch/*/../../../h02/scratch/poc.php\",\"pa
 assert_contains "$(run poc-write "$tmp/t.json")" "cannot be judged" "and says its reach cannot be judged"
 # Brace groups are expanded before judging, so a brace-spelled .. is a ..
 H01="$OUT/agents/h01"
+
+# In poc-decide and cross-check a subagent may not reach the directory of
+# another subagent declared in the same trace; other directories stay open.
+IN=/mnt/audit/job/in
+TWO=("${CLEAN_POC[@]}" "$(agent ta2 "agent-id: h02 decide item 2")"
+     "$(sub ta2 Write "{\"file_path\":\"$OUT/agents/h02/scratch/entry.json\",\"content\":\"{}\"}")")
+peer () { # job tool input expected-rc message
+  trace "$tmp/t.json" "${TWO[@]}" "$(sub ta1 "$2" "$3")" "$(result "$M")"
+  assert_eq "$4" "$(AUDIT_INPUT_DIR="$IN" rc "$1" "$tmp/t.json")" "$5"
+}
+for job in poc-decide cross-check; do
+  peer "$job" Read "{\"file_path\":\"$OUT/agents/h02/scratch/entry.json\"}" 1 "in $job, a subagent reading another declared subagent's entry fails"
+  peer "$job" Glob "{\"pattern\":\"*.json\",\"path\":\"$OUT/agents/h02/scratch\"}" 1 "in $job, a subagent Glob in another declared subagent's directory fails"
+  peer "$job" Grep "{\"pattern\":\"x\",\"path\":\"$OUT\"}" 1 "in $job, a subagent Grep over the output root reaches the other subagent and fails"
+  peer "$job" Glob "{\"pattern\":\"agents/*/scratch/entry.json\",\"path\":\"$OUT\"}" 1 "in $job, a subagent Glob across agents/ fails"
+  peer "$job" Read "{\"file_path\":\"$OUT/agents/h01/scratch/entry.json\"}" 0 "in $job, a subagent reading its own directory passes"
+  peer "$job" Read "{\"file_path\":\"$OUT/agents/hunter-x/scratch/notes.md\"}" 0 "in $job, a subagent reading an undeclared (source job) agent's directory passes"
+  peer "$job" Read "{\"file_path\":\"$IN/scripts/agents/poc-1-a/scratch/poc.php\"}" 0 "in $job, a subagent reading poc-write's script passes"
+  peer "$job" Read "{\"file_path\":\"$IN/records/poc-run-1-a.json\"}" 0 "in $job, a subagent reading a run record passes"
+  peer "$job" Grep "{\"pattern\":\"x\",\"path\":\"$OUT/findings.json\"}" 0 "in $job, a subagent Grep of findings.json passes"
+done
+trace "$tmp/t.json" "${TWO[@]}" "$(sub ta1 Read "{\"file_path\":\"$OUT/agents/h02/scratch/entry.json\"}")" "$(result "$M")"
+assert_contains "$(run cross-check "$tmp/t.json")" "another agent's agents/<id>/" "and says why"
+assert_eq "0" "$(rc source "$tmp/t.json")" "in source, the same read passes"
+# With one subagent declared, a Grep over the output root reaches no other.
+iso poc-decide Grep "{\"pattern\":\"x\",\"path\":\"$OUT\"}" 0 "in poc-decide, a lone subagent's Grep over the output root passes"
+
+# A subagent in a later job writing a state or shared file inside its own
+# scratch fails.
+for job in poc-decide cross-check; do
+  trace "$tmp/t.json" "${CLEAN_POC[@]}" "$(sub ta1 Write "{\"file_path\":\"$OUT/agents/h01/scratch/findings.json\",\"content\":\"[]\"}")" "$(result "$M")"
+  assert_eq "1" "$(rc "$job" "$tmp/t.json")" "in $job, a subagent writing findings.json in its own scratch fails"
+done
 iso poc-write Glob "{\"pattern\":\"{.,}./h02/scratch/*\",\"path\":\"$H01\"}" 1 "in poc-write, {.,}./h02 from agents/h01 fails"
 assert_contains "$(run poc-write "$tmp/t.json")" "reads another agent's" "and is judged as ../h02"
 iso poc-write Glob "{\"pattern\":\".{.,}/h02/scratch/*\",\"path\":\"$H01\"}" 1 "in poc-write, .{.,}/h02 from agents/h01 fails"

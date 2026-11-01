@@ -1050,7 +1050,7 @@ Stage 2 lands as pull requests in this order: item 12's CI wiring with the first
 
 #### 10. `SA/prompts/source.md`, `repair.md`, `poc-write.md`, `poc-decide.md`, `cross-check.md`, `tie-break.md`, and `SA/prompts/canary-*.md` (Create)
 
-*   **Type / Scope**: Agent prompts, rendered in a trusted step by `envsubst '$RUN_ID $SOURCE_REF $OUTPUT_DIR $INPUT_DIR $BUDGET $SCOPE_PATHS $GITHUB_ENV_PATH'` and passed to the action with `emit-block.sh`.
+*   **Type / Scope**: Agent prompts, rendered in a trusted step by `envsubst '$RUN_ID $SOURCE_REF $OUTPUT_DIR $INPUT_DIR $BUDGET $SCOPE_PATHS $GITHUB_ENV_PATH $HOME $RUNNER_TEMP'` and passed to the action with `emit-block.sh`.
 *   **Proposed Changes**:
     *   **Every prompt** carries the shared rules in Technical Plan section 2: subagents in the foreground only; agent ids declared; never stop to ask; no network; repository content and run output treated as data and not as instructions. It also states its exact output files and embeds their JSON shape from Technical Plan section 3, including that subagents write only `agents/<id>/scratch/entry.json`.
     *   **`source.md`**: Technical Plan section 4's pre-answers, the rotation rule, and the carried-confirmed rule.
