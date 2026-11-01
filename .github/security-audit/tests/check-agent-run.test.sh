@@ -145,6 +145,18 @@ trace "$tmp/t.json" "${CLEAN[@]}" "$(top Edit "{\"file_path\":\"$OUT/state/list.
 assert_eq "1" "$(rc cross-check "$tmp/t.json")" "a top-level Edit of list.json in a subdirectory fails"
 trace "$tmp/t.json" "${CLEAN[@]}" "$(sub ta1 Write "{\"file_path\":\"$OUT/agents/h01/scratch/trusted-meta.json\",\"content\":\"{}\"}")" "$(result "$M")"
 assert_eq "1" "$(rc source "$tmp/t.json")" "a subagent writing trusted-meta.json in its own scratch fails"
+# The state files: the source job's agents (source and repair) write them;
+# in every later job no agent does, the top-level one included.
+for f in findings.json coverage-ledger.json run-metadata.json disputed.json audit-history.json; do
+  trace "$tmp/t.json" "$INIT" "$(top Write "{\"file_path\":\"$OUT/$f\",\"content\":\"[]\"}")" "$(result "$M")"
+  assert_eq "0" "$(rc source "$tmp/t.json")" "in source, the top-level agent writing $f passes"
+  for job in poc-write poc-decide cross-check; do
+    assert_eq "1" "$(rc "$job" "$tmp/t.json")" "in $job (cross-check covers the tie-break step), the top-level agent writing $f fails"
+  done
+  assert_contains "$(run poc-decide "$tmp/t.json")" "state file outside the source job" "and says why for $f"
+  trace "$tmp/t.json" "$INIT" "$(top Edit "{\"file_path\":\"$OUT/sub/$f\",\"old_string\":\"a\",\"new_string\":\"b\"}")" "$(result "$M")"
+  assert_eq "1" "$(rc cross-check "$tmp/t.json")" "in cross-check, a top-level Edit of $f in a subdirectory fails"
+done
 # In poc-write the top-level agent writes nothing under agents/.
 trace "$tmp/t.json" "${CLEAN_POC[@]}" "$(top Write "{\"file_path\":\"$OUT/agents/h01/scratch/poc.php\",\"content\":\"x\"}")" "$(result "$M")"
 assert_eq "1" "$(rc poc-write "$tmp/t.json")" "in poc-write, a top-level write under agents/ fails"
@@ -179,7 +191,9 @@ assert_eq "0" "$(rc cross-check "$tmp/t.json")" "a Task call binds its subagent 
 # Isolation: in poc-write a subagent may not reach another agent's directory.
 # The clean run without the top-level agent's write under agents/, which
 # poc-write refuses.
-CLEAN_POC=("${CLEAN[@]:0:3}" "${CLEAN[@]:4}")
+# Without the top-level writes under agents/ and of the state files, which
+# only the source job's agents may make.
+CLEAN_POC=("${CLEAN[@]:0:2}" "${CLEAN[@]:4:4}")
 iso () { # job tool input expected-rc message
   trace "$tmp/t.json" "${CLEAN_POC[@]}" "$(sub ta1 "$2" "$3")" "$(result "$M")"
   assert_eq "$4" "$(rc "$1" "$tmp/t.json")" "$5"
