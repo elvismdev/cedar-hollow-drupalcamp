@@ -104,10 +104,18 @@ assert_contains "$(run source "$tmp/t.json")" "Bash call 10: tool not allowed" "
 trace "$tmp/t.json" "${CLEAN[@]}" "$(sub ta1 Bash '{"command":"id"}')" "$(result "$M")"
 assert_eq "1" "$(rc source "$tmp/t.json")" "a subagent Bash call fails"
 
-# Background subagents, however Claude Code records them.
-trace "$tmp/t.json" "${CLEAN[@]}" "$(agent ta2 "agent-id: h02 hunt" true)" "$(sub ta2 Read "{\"file_path\":\"$WS/tracked.txt\"}")" "$(result "$M")"
-assert_eq "1" "$(rc source "$tmp/t.json")" "a background subagent fails"
-assert_contains "$(run source "$tmp/t.json")" "starts a background subagent" "and says why"
+# The run check judges what happened, not the run_in_background value asked
+# for: a call asking for the background whose subagent ran in the foreground,
+# with its calls in the trace, passes.
+for flag in true '"false"' '"yes"'; do
+  trace "$tmp/t.json" "${CLEAN[@]}" "$(agent ta2 "agent-id: h02 hunt" "$flag")" "$(sub ta2 Read "{\"file_path\":\"$WS/tracked.txt\"}")" "$(result "$M")"
+  assert_eq "0" "$(rc source "$tmp/t.json")" "run_in_background $flag with a foreground subagent and its calls passes"
+done
+# Background subagents, as Claude Code records them happening.
+trace "$tmp/t.json" "${CLEAN[@]}" "$(agent ta2 "agent-id: h02 hunt" true)" '{"type":"system","subtype":"task_started","tool_use_id":"ta2","is_backgrounded":true}' "$(sub ta2 Read "{\"file_path\":\"$WS/tracked.txt\"}")" "$(result "$M")"
+assert_eq "1" "$(rc source "$tmp/t.json")" "a call whose task_started event is backgrounded fails, whatever it asked for"
+trace "$tmp/t.json" "${CLEAN[@]}" "$(agent ta2 "agent-id: h02 hunt" true)" "$(result "$M")"
+assert_eq "1" "$(rc source "$tmp/t.json")" "a subagent whose calls are missing from the trace fails"
 trace "$tmp/t.json" "${CLEAN[@]}" '{"type":"system","subtype":"task_started","tool_use_id":"ta1","is_backgrounded":true}' "$(result "$M")"
 assert_eq "1" "$(rc source "$tmp/t.json")" "a task_started event marked backgrounded fails"
 trace "$tmp/t.json" "${CLEAN[@]}" '{"type":"result","subtype":"success","modelUsage":{},"subagent_stats":{"spawned":1,"started_in_background":1}}'

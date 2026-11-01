@@ -21,9 +21,12 @@
 #     A message whose parent_tool_use_id is that call's id belongs to that
 #     subagent. A call in a message whose parent matches no subagent call
 #     cannot be attributed and fails.
-#   - A subagent runs in the foreground: run_in_background absent or false, no
-#     task_started event marked is_backgrounded, and no background count in
-#     the result's subagent_stats.
+#   - A subagent ran in the foreground, judged by what happened rather than
+#     by the run_in_background value its call asked for (any value is
+#     accepted, since CLAUDE_CODE_DISABLE_BACKGROUND_TASKS keeps every
+#     subagent in the foreground): no task_started event marked
+#     is_backgrounded, no background count in the result's subagent_stats,
+#     and its calls in the trace (below).
 #   - A subagent's Write or Edit lands under
 #     <output-root>/agents/<its-id>/scratch/, and never on a file whose name is
 #     one of the shared or combined files that only the top-level agent or the
@@ -248,9 +251,6 @@ for (const call of calls) {
   } else {
     id = ids[0];
     seenIds.add(id);
-  }
-  if ('run_in_background' in input && input.run_in_background !== false) {
-    refuse(call, 'starts a background subagent');
   }
   if (typeof c.id !== 'string' || c.id === '') {
     refuse(call, 'has no call id, so its subagent cannot be attributed');
