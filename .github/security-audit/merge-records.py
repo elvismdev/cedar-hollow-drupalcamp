@@ -50,6 +50,22 @@
 # previous record's blockers and gains the new lead's blockers. A failed poc
 # phase (fail-poc) adds "poc phase failed: <job>" to the lead and its units.
 #
+# run-metadata.json keys this script adds:
+#   usage.<job>          {"invocations", "cap"}, summed over the job's steps
+#   incomplete_reasons   every reason in order, the source agent's own first;
+#                        incomplete_reason is them joined with "; "
+#   poc                  {selected, not_tried, not_rechecked, confirmed,
+#                        decided, failed}
+#   cross_check          {selected, not_cross_checked, settled, refused,
+#                        disputes, cross_checked, tie_breaks, removed,
+#                        applied, pending}
+#   merge_discarded      [{job, agent_id, reason}] with fixed reason labels
+#   dispute_rate         {disputes, cross_checked, rate}
+# Incomplete reasons it sets: cap_exceeded:<job>, cross_check_cap,
+# cross_check_missing (a selected record with no valid cross-check entry, or
+# a cross-check that never applied), cross_check_dispute, cross_check_not_run
+# and source_run_not_finished (status found run_status still in_progress).
+#
 # Run ids are the GitHub run id from run-metadata.json, stored as numbers.
 # Fails closed: a state file that cannot be read safely stops the subcommand
 # with exit status 1 before anything is written.
