@@ -1055,12 +1055,12 @@ jobs:
 
       - name: Record when the poc-decide agent ended
         id: after-poc-decide
-        if: always()
+        if: always() && steps.agent-poc-decide.outcome != 'skipped'
         run: echo "ended=$(date +%s)" >> "$GITHUB_OUTPUT"
 
       - name: Run check (poc-decide agent)
         id: check-poc-decide
-        if: always()
+        if: always() && steps.agent-poc-decide.outcome != 'skipped'
         env:
           TRACE: ${{ steps.agent-poc-decide.outputs.execution_file }}
           MODEL: ${{ steps.args-poc-decide.outputs.CLAUDE_CODE_SUBAGENT_MODEL }}
@@ -1068,7 +1068,7 @@ jobs:
 
       - name: Outcome (poc-decide agent)
         id: outcome-poc-decide
-        if: always()
+        if: always() && steps.agent-poc-decide.outcome != 'skipped'
         env:
           TRACE: ${{ steps.agent-poc-decide.outputs.execution_file }}
           OUTCOME: ${{ steps.agent-poc-decide.outcome }}
@@ -1134,3 +1134,348 @@ jobs:
           fi
           echo "cause=$cause" >> "$GITHUB_OUTPUT"
           echo "poc-decide job: $cause"
+
+  # Runs whenever the source job succeeded, so a failed proof-of-concept
+  # phase still ends in cross-checked records: its selected items are marked
+  # with the failed phase and stay leads.
+  cross-check:
+    needs: [prepare, source, poc-write, poc-run, poc-decide]
+    if: always() && needs.prepare.outputs.go == 'true' && github.ref == 'refs/heads/main' && needs.source.result == 'success' && contains(fromJSON(needs.prepare.outputs.run_jobs), 'cross-check')
+    runs-on: ubuntu-24.04
+    environment: claude-agents
+    timeout-minutes: 75
+    permissions:
+      contents: read
+    env:
+      AUDIT_INPUT_DIR: /mnt/audit/cross-check/in
+      AUDIT_OUTPUT_DIR: /mnt/audit/cross-check/out
+    outputs:
+      sha256: ${{ steps.handoff.outputs.sha256 }}
+      validators: ${{ steps.validators.outputs.validators }}
+      cause: ${{ steps.cause.outputs.cause }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Install age, and envsubst where the image lacks it
+        run: |
+          pkgs=(age)
+          command -v envsubst >/dev/null || pkgs+=(gettext-base)
+          sudo apt-get install -y "${pkgs[@]}"
+
+      - name: Create the working directories
+        run: |
+          sudo mkdir -p "$AUDIT_INPUT_DIR/scripts" "$AUDIT_INPUT_DIR/records" "$AUDIT_OUTPUT_DIR"
+          sudo chown -R "$(id -u):$(id -g)" /mnt/audit/cross-check
+
+      # The state is audit-poc when poc-decide succeeded and its records pass
+      # the validators; otherwise the last state before it, audit-poc-write
+      # or audit-source. failed names the first proof-of-concept phase that
+      # did not succeed, for fail-poc.
+      - name: Choose the input state
+        id: choose
+        env:
+          BUILD_SITE: ${{ needs.build-site.result }}
+          POC_WRITE: ${{ needs.poc-write.result }}
+          POC_RUN: ${{ needs.poc-run.result }}
+          POC_DECIDE: ${{ needs.poc-decide.result }}
+          DECIDE_VALIDATORS: ${{ needs.poc-decide.outputs.validators }}
+          DECIDE_SHA256: ${{ needs.poc-decide.outputs.sha256 }}
+          WRITE_SHA256: ${{ needs.poc-write.outputs.state_sha256 }}
+          SOURCE_SHA256: ${{ needs.source.outputs.sha256 }}
+          RECORDS: ${{ needs.poc-run.outputs.records }}
+        run: |
+          failed=""
+          if [ "$POC_DECIDE" = success ] && [ "$DECIDE_VALIDATORS" = pass ]; then
+            name=audit-poc sha="$DECIDE_SHA256"
+          else
+            for job in build-site:"$BUILD_SITE" poc-write:"$POC_WRITE" poc-run:"$POC_RUN" poc-decide:"$POC_DECIDE"; do
+              if [ "${job#*:}" != success ]; then failed="${job%%:*}"; break; fi
+            done
+            failed="${failed:-poc-decide}"
+            if [ "$POC_WRITE" = success ] && [ -n "$WRITE_SHA256" ]; then
+              name=audit-poc-write sha="$WRITE_SHA256"
+            else
+              name=audit-source sha="$SOURCE_SHA256"
+            fi
+          fi
+          scripts=false records=false
+          if [ "$POC_WRITE" = success ]; then scripts=true; fi
+          if [ "$POC_RUN" = success ] && [ -n "$RECORDS" ] && [ "$RECORDS" != '{}' ]; then records=true; fi
+          printf 'name=%s\nsha256=%s\nfailed=%s\nscripts=%s\nrecords=%s\n' "$name" "$sha" "$failed" "$scripts" "$records" >> "$GITHUB_OUTPUT"
+          echo "input state: $name${failed:+, failed phase: $failed}"
+
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
+        with:
+          name: ${{ steps.choose.outputs.name }}
+          path: ${{ runner.temp }}/handoff
+
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
+        if: steps.choose.outputs.scripts == 'true'
+        with:
+          name: poc-scripts
+          path: ${{ runner.temp }}/handoff
+
+      - name: Check and open the state and the scripts
+        env:
+          AUDIT_AGENTS_AGE_KEY: ${{ secrets.AUDIT_AGENTS_AGE_KEY }}
+          NAME: ${{ steps.choose.outputs.name }}
+          SHA256: ${{ steps.choose.outputs.sha256 }}
+          SCRIPTS: ${{ steps.choose.outputs.scripts }}
+          SCRIPTS_SHA256: ${{ needs.poc-write.outputs.scripts_sha256 }}
+        run: |
+          bash .github/security-audit/seal.sh open AUDIT_AGENTS_AGE_KEY "$SHA256" "$RUNNER_TEMP/handoff/$NAME.age" "$AUDIT_OUTPUT_DIR"
+          if [ "$SCRIPTS" = true ]; then
+            bash .github/security-audit/seal.sh open AUDIT_AGENTS_AGE_KEY "$SCRIPTS_SHA256" "$RUNNER_TEMP/handoff/poc-scripts.age" "$AUDIT_INPUT_DIR/scripts"
+          fi
+
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
+        if: steps.choose.outputs.records == 'true'
+        with:
+          name: poc-run-records
+          path: ${{ runner.temp }}/handoff/records
+
+      - name: Check and open the run records
+        if: steps.choose.outputs.records == 'true'
+        env:
+          AUDIT_AGENTS_AGE_KEY: ${{ secrets.AUDIT_AGENTS_AGE_KEY }}
+          RECORDS: ${{ needs.poc-run.outputs.records }}
+        run: |
+          jq -r 'to_entries[] | "\(.key) \(.value)"' <<<"$RECORDS" | while read -r name sum; do
+            if ! [[ "$name" =~ ^poc-run-[1-9][0-9]*-[ab]$ && "$sum" =~ ^[0-9a-f]{64}$ ]]; then
+              echo "::error::malformed entry in the run record map"
+              exit 1
+            fi
+            dir=$(mktemp -d)
+            bash .github/security-audit/seal.sh open AUDIT_AGENTS_AGE_KEY "$sum" "$RUNNER_TEMP/handoff/records/$name.age" "$dir"
+            if [ "$(find "$dir" -mindepth 1 -printf '%P\n')" != "$name.json" ] || [ -L "$dir/$name.json" ] || [ ! -f "$dir/$name.json" ]; then
+              echo "::error::$name does not hold exactly one regular file $name.json"
+              exit 1
+            fi
+            mv "$dir/$name.json" "$AUDIT_INPUT_DIR/records/"
+            rmdir "$dir"
+          done
+
+      - name: Mark the selected items with the failed proof-of-concept phase
+        if: steps.choose.outputs.failed != ''
+        env:
+          FAILED: ${{ steps.choose.outputs.failed }}
+        run: python3 -I .github/security-audit/merge-records.py --state "$AUDIT_OUTPUT_DIR" fail-poc --select "$AUDIT_OUTPUT_DIR/select.json" --job "$FAILED"
+
+      - name: Select the records to cross-check
+        run: python3 -I .github/security-audit/merge-records.py --state "$AUDIT_OUTPUT_DIR" select-cross-check --out "$AUDIT_OUTPUT_DIR/list.json"
+
+      - name: Compose the cross-check agent's arguments
+        id: args-cross-check
+        run: |
+          bash .github/claude-review/tools/agent/compose-agent-args.sh --audit > "$RUNNER_TEMP/agent-args"
+          line=$(grep '^AGENT_ARGS_AUDIT_CROSS_CHECK=' "$RUNNER_TEMP/agent-args")
+          echo "claude_args=${line#AGENT_ARGS_AUDIT_CROSS_CHECK=}" >> "$GITHUB_OUTPUT"
+          bash .github/claude-review/tools/agent/compose-agent-args.sh --audit-models cross_check >> "$GITHUB_OUTPUT"
+
+      - name: Render the cross-check prompt
+        id: prompt-cross-check
+        run: |
+          export RUN_ID="$GITHUB_RUN_ID" SOURCE_REF="$GITHUB_SHA" GITHUB_ENV_PATH="$GITHUB_ENV"
+          export OUTPUT_DIR="$AUDIT_OUTPUT_DIR" INPUT_DIR="$AUDIT_INPUT_DIR"
+          envsubst "$PROMPT_VARS" < .github/security-audit/prompts/cross-check.md > "$RUNNER_TEMP/prompt-cross-check.md"
+          bash .github/claude-review/tools/agent/emit-block.sh prompt "$RUNNER_TEMP/prompt-cross-check.md" >> "$GITHUB_OUTPUT"
+
+      - name: Fingerprint the checkout and ~/.claude before the cross-check agent
+        id: before-cross-check
+        run: |
+          bash .github/security-audit/check-agent-run.sh --fingerprint "$RUNNER_TEMP/fingerprint-cross-check"
+          echo "started=$(date +%s)" >> "$GITHUB_OUTPUT"
+
+      - name: Cross-check agent
+        id: agent-cross-check
+        continue-on-error: true
+        timeout-minutes: 45
+        uses: anthropics/claude-code-action@ae68417a745a5df4b2124873632bd73a2255e6f6 # v1.0.259
+        env:
+          ANTHROPIC_DEFAULT_SONNET_MODEL: ${{ steps.args-cross-check.outputs.ANTHROPIC_DEFAULT_SONNET_MODEL }}
+          ANTHROPIC_DEFAULT_HAIKU_MODEL: ${{ steps.args-cross-check.outputs.ANTHROPIC_DEFAULT_HAIKU_MODEL }}
+          CLAUDE_CODE_SUBAGENT_MODEL: ${{ steps.args-cross-check.outputs.CLAUDE_CODE_SUBAGENT_MODEL }}
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          github_token: ${{ github.token }}
+          prompt: ${{ steps.prompt-cross-check.outputs.prompt }}
+          claude_args: ${{ steps.args-cross-check.outputs.claude_args }}
+          show_full_output: 'false'
+          display_report: 'false'
+
+      - name: Record when the cross-check agent ended
+        id: after-cross-check
+        if: always() && steps.agent-cross-check.outcome != 'skipped'
+        run: echo "ended=$(date +%s)" >> "$GITHUB_OUTPUT"
+
+      - name: Run check (cross-check agent)
+        id: check-cross-check
+        if: always() && steps.agent-cross-check.outcome != 'skipped'
+        env:
+          TRACE: ${{ steps.agent-cross-check.outputs.execution_file }}
+          MODEL: ${{ steps.args-cross-check.outputs.CLAUDE_CODE_SUBAGENT_MODEL }}
+        run: bash .github/security-audit/check-agent-run.sh cross-check "$TRACE" "$AGENT_TOOLS" "$AUDIT_OUTPUT_DIR" "$RUNNER_TEMP/fingerprint-cross-check" "$MODEL"
+
+      - name: Outcome (cross-check agent)
+        id: outcome-cross-check
+        if: always() && steps.agent-cross-check.outcome != 'skipped'
+        env:
+          TRACE: ${{ steps.agent-cross-check.outputs.execution_file }}
+          OUTCOME: ${{ steps.agent-cross-check.outcome }}
+          STARTED: ${{ steps.before-cross-check.outputs.started }}
+          ENDED: ${{ steps.after-cross-check.outputs.ended }}
+        run: |
+          cause=$(bash .github/security-audit/agent-outcome.sh "$TRACE" "$OUTCOME" "$STARTED" "$ENDED" 45)
+          echo "cause=$cause" >> "$GITHUB_OUTPUT"
+          echo "cross-check agent: $cause"
+
+      - name: Count the cross-check agent's subagents
+        if: always() && steps.check-cross-check.outcome == 'success'
+        env:
+          TRACE: ${{ steps.agent-cross-check.outputs.execution_file }}
+        run: python3 -I .github/security-audit/merge-records.py --state "$AUDIT_OUTPUT_DIR" count --job cross-check --cap 30 --trace "$TRACE"
+
+      - name: Apply the cross-check
+        id: apply-cross-check
+        if: always() && steps.check-cross-check.outcome == 'success'
+        env:
+          TRACE: ${{ steps.agent-cross-check.outputs.execution_file }}
+        run: |
+          python3 -I .github/security-audit/merge-records.py --state "$AUDIT_OUTPUT_DIR" apply-cross-check --entries "$AUDIT_OUTPUT_DIR" --trace "$TRACE" --out "$AUDIT_OUTPUT_DIR/tie-break-inputs.json"
+          disputes=$(jq '.disputes | length' "$AUDIT_OUTPUT_DIR/tie-break-inputs.json")
+          if [ "$disputes" -gt 0 ]; then tie_break=true; else tie_break=false; fi
+          echo "tie_break=$tie_break" >> "$GITHUB_OUTPUT"
+          echo "$disputes dispute(s) for the tie-break"
+
+      - name: Compose the tie-break agent's arguments
+        id: args-tie-break
+        if: steps.apply-cross-check.outputs.tie_break == 'true'
+        run: |
+          bash .github/claude-review/tools/agent/compose-agent-args.sh --audit > "$RUNNER_TEMP/agent-args"
+          line=$(grep '^AGENT_ARGS_AUDIT_TIE_BREAK=' "$RUNNER_TEMP/agent-args")
+          echo "claude_args=${line#AGENT_ARGS_AUDIT_TIE_BREAK=}" >> "$GITHUB_OUTPUT"
+          bash .github/claude-review/tools/agent/compose-agent-args.sh --audit-models tie_break >> "$GITHUB_OUTPUT"
+
+      - name: Render the tie-break prompt
+        id: prompt-tie-break
+        if: steps.apply-cross-check.outputs.tie_break == 'true'
+        run: |
+          export RUN_ID="$GITHUB_RUN_ID" SOURCE_REF="$GITHUB_SHA" GITHUB_ENV_PATH="$GITHUB_ENV"
+          export OUTPUT_DIR="$AUDIT_OUTPUT_DIR" INPUT_DIR="$AUDIT_INPUT_DIR"
+          envsubst "$PROMPT_VARS" < .github/security-audit/prompts/tie-break.md > "$RUNNER_TEMP/prompt-tie-break.md"
+          bash .github/claude-review/tools/agent/emit-block.sh prompt "$RUNNER_TEMP/prompt-tie-break.md" >> "$GITHUB_OUTPUT"
+
+      - name: Fingerprint the checkout and ~/.claude before the tie-break agent
+        id: before-tie-break
+        if: steps.apply-cross-check.outputs.tie_break == 'true'
+        run: |
+          bash .github/security-audit/check-agent-run.sh --fingerprint "$RUNNER_TEMP/fingerprint-tie-break"
+          echo "started=$(date +%s)" >> "$GITHUB_OUTPUT"
+
+      - name: Tie-break agent
+        id: agent-tie-break
+        if: steps.apply-cross-check.outputs.tie_break == 'true'
+        continue-on-error: true
+        timeout-minutes: 20
+        uses: anthropics/claude-code-action@ae68417a745a5df4b2124873632bd73a2255e6f6 # v1.0.259
+        env:
+          ANTHROPIC_DEFAULT_SONNET_MODEL: ${{ steps.args-tie-break.outputs.ANTHROPIC_DEFAULT_SONNET_MODEL }}
+          ANTHROPIC_DEFAULT_HAIKU_MODEL: ${{ steps.args-tie-break.outputs.ANTHROPIC_DEFAULT_HAIKU_MODEL }}
+          CLAUDE_CODE_SUBAGENT_MODEL: ${{ steps.args-tie-break.outputs.CLAUDE_CODE_SUBAGENT_MODEL }}
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          github_token: ${{ github.token }}
+          prompt: ${{ steps.prompt-tie-break.outputs.prompt }}
+          claude_args: ${{ steps.args-tie-break.outputs.claude_args }}
+          show_full_output: 'false'
+          display_report: 'false'
+
+      - name: Record when the tie-break agent ended
+        id: after-tie-break
+        if: always() && steps.apply-cross-check.outputs.tie_break == 'true'
+        run: echo "ended=$(date +%s)" >> "$GITHUB_OUTPUT"
+
+      - name: Run check (tie-break agent)
+        id: check-tie-break
+        if: always() && steps.apply-cross-check.outputs.tie_break == 'true'
+        env:
+          TRACE: ${{ steps.agent-tie-break.outputs.execution_file }}
+          MODEL: ${{ steps.args-tie-break.outputs.CLAUDE_CODE_SUBAGENT_MODEL }}
+        run: bash .github/security-audit/check-agent-run.sh cross-check "$TRACE" "$AGENT_TOOLS" "$AUDIT_OUTPUT_DIR" "$RUNNER_TEMP/fingerprint-tie-break" "$MODEL"
+
+      - name: Outcome (tie-break agent)
+        id: outcome-tie-break
+        if: always() && steps.apply-cross-check.outputs.tie_break == 'true'
+        env:
+          TRACE: ${{ steps.agent-tie-break.outputs.execution_file }}
+          OUTCOME: ${{ steps.agent-tie-break.outcome }}
+          STARTED: ${{ steps.before-tie-break.outputs.started }}
+          ENDED: ${{ steps.after-tie-break.outputs.ended }}
+        run: |
+          cause=$(bash .github/security-audit/agent-outcome.sh "$TRACE" "$OUTCOME" "$STARTED" "$ENDED" 20)
+          echo "cause=$cause" >> "$GITHUB_OUTPUT"
+          echo "tie-break agent: $cause"
+
+      - name: Count the tie-break agent's subagents
+        if: always() && steps.check-tie-break.outcome == 'success'
+        env:
+          TRACE: ${{ steps.agent-tie-break.outputs.execution_file }}
+        run: python3 -I .github/security-audit/merge-records.py --state "$AUDIT_OUTPUT_DIR" count --job tie-break --cap 3 --trace "$TRACE"
+
+      - name: Apply the tie-breaks
+        if: always() && steps.check-tie-break.outcome == 'success'
+        env:
+          TRACE: ${{ steps.agent-tie-break.outputs.execution_file }}
+        run: python3 -I .github/security-audit/merge-records.py --state "$AUDIT_OUTPUT_DIR" apply-tie-break --inputs "$AUDIT_OUTPUT_DIR/tie-break-inputs.json" --entries "$AUDIT_OUTPUT_DIR" --trace "$TRACE"
+
+      # Without always(): after a failed run check or a refused merge the job
+      # is failing, and nothing more is recorded or handed off.
+      - name: Record the run status
+        run: python3 -I .github/security-audit/merge-records.py --state "$AUDIT_OUTPUT_DIR" status
+
+      - name: Validators (after the cross-check)
+        id: validators
+        run: |
+          errors="$AUDIT_OUTPUT_DIR/validator-errors.txt"
+          f=0 l=0
+          node .github/security-audit/skill/validate-findings.cjs "$AUDIT_OUTPUT_DIR/findings.json" > "$errors" 2>&1 || f=$?
+          node .github/security-audit/skill/validate-coverage-ledger.cjs "$AUDIT_OUTPUT_DIR/coverage-ledger.json" >> "$errors" 2>&1 || l=$?
+          echo "validate-findings exit $f, validate-coverage-ledger exit $l, $(grep -c '^ERROR' "$errors" || true) error line(s)"
+          if [ "$f" -eq 0 ] && [ "$l" -eq 0 ]; then result=pass; else result=fail; fi
+          echo "validators=$result" >> "$GITHUB_OUTPUT"
+
+      - name: Seal audit-final to the agents key
+        id: handoff
+        run: |
+          mkdir -p "$RUNNER_TEMP/handoff-out"
+          sum=$(bash .github/security-audit/seal.sh seal .github/security-audit/keys/agents.pub "$AUDIT_OUTPUT_DIR" "$RUNNER_TEMP/handoff-out/audit-final.age")
+          echo "sha256=$sum" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        if: steps.handoff.outcome == 'success'
+        with:
+          name: audit-final
+          path: ${{ runner.temp }}/handoff-out/audit-final.age
+          retention-days: 1
+          if-no-files-found: error
+
+      - name: Name the job's cause
+        id: cause
+        if: always()
+        env:
+          CHECK: ${{ steps.check-cross-check.outcome }}
+          CHECK_TIE_BREAK: ${{ steps.check-tie-break.outcome }}
+          OUTCOME: ${{ steps.outcome-cross-check.outputs.cause }}
+          OUTCOME_TIE_BREAK: ${{ steps.outcome-tie-break.outputs.cause }}
+        run: |
+          if [ "$CHECK" = failure ] || [ "$CHECK_TIE_BREAK" = failure ]; then cause=run_check_failed
+          elif [ -n "$OUTCOME" ] && [ "$OUTCOME" != ok ]; then cause="$OUTCOME"
+          elif [ -n "$OUTCOME_TIE_BREAK" ]; then cause="$OUTCOME_TIE_BREAK"
+          elif [ -n "$OUTCOME" ]; then cause="$OUTCOME"
+          else cause=job_failed
+          fi
+          echo "cause=$cause" >> "$GITHUB_OUTPUT"
+          echo "cross-check job: $cause"
