@@ -5,12 +5,13 @@
 # this run (run-metadata.json poc.confirmed) and the cross-check settled it
 # (cross_check.settled), and a lead only when the cross-check settled it.
 # Rejected, disputed, unvalidated and unchecked records appear only as counts,
-# and leads never carry a severity. Every piece of record or agent text is
-# NFKC-normalised, has control and format characters removed, and has
-# http(s)://, www. and protocol-relative //host links, Markdown link and
-# image targets and reference definitions, word@word addresses and @ mentions
-# removed, repeated until it stops changing; < and > are then escaped. So it
-# can neither ping anyone, link anywhere, nor open an HTML comment.
+# and leads never carry a severity. Every piece of record or agent text has
+# its HTML entities decoded, is NFKC-normalised, has control and format
+# characters removed, and has http(s)://, www. and protocol-relative //host
+# links, Markdown link and image targets and reference definitions, word@word
+# addresses and @ mentions removed, repeated until it stops changing; &, < and
+# > are then escaped in prose. So it can neither ping anyone, link anywhere,
+# nor open an HTML comment.
 #
 # A confirmed finding's section shows the record's one execution.instructions
 # list (the decider's reproduction steps), its payloads and observed result,
@@ -48,6 +49,7 @@
 import argparse
 import errno
 import functools
+import html
 import json
 import os
 import re
@@ -179,6 +181,7 @@ def read_artifact(state_dir, relative):
 
 
 def clean_pass(text):
+    text = html.unescape(text)
     text = unicodedata.normalize("NFKC", text)
     text = "".join(ch for ch in text if ch in "\n\t" or unicodedata.category(ch) not in ("Cc", "Cf", "Cs"))
     for pattern, replacement in STRIPS:
@@ -188,7 +191,8 @@ def clean_pass(text):
 
 def clean(text):
     """Record or agent text made safe to publish, before any Markdown escaping:
-    NFKC normalisation, then every Cc, Cf and Cs character but newline and tab
+    HTML entities decoded (GitHub decodes them before it finds mentions and
+    addresses), NFKC normalisation, then every Cc, Cf and Cs character but newline and tab
     removed, then links, addresses and mentions stripped, repeated until the
     text stops changing, so a character removed by one step cannot join the
     pieces of a link or a mention another step already passed over."""
@@ -208,7 +212,9 @@ def clean_str(text):
 
 
 def inline(text):
-    text = clean(text).replace("<", "&lt;").replace(">", "&gt;")
+    """Cleaned text for prose and table cells. Every & left is escaped first,
+    so no character reference survives for GitHub to decode."""
+    text = clean(text).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
     return " ".join(text.split())
 
 

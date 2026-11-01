@@ -294,6 +294,27 @@ class SizeTest(RenderTest):
         self.assertEqual(len(self.marker(body)["fingerprints"]), 40)
 
 
+class EntityTest(RenderTest):
+    """Character references GitHub decodes before it finds mentions, addresses
+    and links, from the re-review probe."""
+
+    CASES = ["&#64;octocat", "&#x40;octocat", "&commat;octocat", "user&#64;example.com", "&amp;#64;octocat",
+             "https&#58;//x", "www&#46;x", "&amp;amp;#x40;deep"]
+
+    def test_entity_encoded_mentions_and_links_are_removed(self):
+        text = " ".join("X %s Y" % case for case in self.CASES)
+        record = lead("fp-1", title=text)
+        record["description"] = text
+        self.seed([record], final_meta(settled=["fp-1"]))
+        body = self.render()
+        published = body.split("<!-- security-audit-state")[0]
+        self.assertNotRegex(published, r"@[A-Za-z0-9_]")
+        self.assertNotIn("://", published)
+        self.assertNotIn("www.", published.lower())
+        self.assertNotRegex(published, r"&(?!amp;|lt;|gt;)")
+        self.assertIn("X octocat Y", published)
+
+
 class BoundTest(RenderTest):
     def test_the_body_never_exceeds_the_limit(self):
         units = [unit("d%04d" % i, status="deferred") for i in range(2000)]
