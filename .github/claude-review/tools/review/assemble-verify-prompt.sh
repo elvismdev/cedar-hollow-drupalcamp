@@ -25,6 +25,8 @@ base="$1"; head="$2"; candidates="$3"; out="$4"; diff_from="${5:-}"
 head_dir="${REVIEW_HEAD_DIR:-}"
 input_dir="${REVIEW_INPUT_DIR:-$(dirname "$out")}"
 diff_file="$input_dir/verify-diff.patch"
+search_rules="${BASH_SOURCE[0]%/*}/search-rules.md"
+[ -s "$search_rules" ] || { echo "assemble-verify-prompt: $search_rules is missing; refusing to assemble a prompt without the search rules the trace check enforces" >&2; exit 1; }
 
 standard=$(git show "${base}:REVIEW.md" 2>/dev/null) || {
   echo "assemble-verify-prompt: no REVIEW.md on ${base}; refusing to verify against no standard" >&2; exit 1; }
@@ -98,7 +100,8 @@ TXT
   printf '\n## The change\n\n%s\n\n' "$where"
   printf 'The diff is in %s. Open it with the Read tool, in parts with\n' "$diff_file"
   printf 'offset and limit if it is long.\n\n'
-  printf '## The findings\n\n%s\n' "$listing"
+  cat "$search_rules"
+  printf '\n## The findings\n\n%s\n' "$listing"
   cat <<'TXT'
 ## Your answer
 
