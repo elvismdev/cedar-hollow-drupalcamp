@@ -106,7 +106,8 @@
 #                        (repeatable). With none, every Write and Edit is refused.
 #   --grep-any-glob-in-subfolders
 #                        a Grep whose path is a valid path inside the allowed
-#                        roots, other than the workspace's top level, takes any
+#                        roots, neither the workspace's top level nor a
+#                        directory above it (an added root can be), takes any
 #                        glob: the character allowlist gains !, so negated
 #                        globs and brace lists of folders pass, and the
 #                        extension-shaped rule is skipped. A glob with a ..
@@ -380,12 +381,13 @@ def write_refusal(value):
 
 def subfolder_search(path):
     """True when --grep-any-glob-in-subfolders is on and a Grep path is a
-    valid path inside the roots other than the workspace's top level."""
+    valid path inside the roots that neither is nor contains the workspace's
+    top level, whose search could reach .git/config."""
     if not any_glob_in_subfolders or not isinstance(path, str):
         return False
     if path_refusal('path', path, ws):
         return False
-    return resolve(path, ws) != ws
+    return not under(ws, resolve(path, ws))
 
 def refusal(call):
     """(label, field or None) for the first rule that refuses the call, else None.

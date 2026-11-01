@@ -301,6 +301,11 @@ grep_glob '"/w/repo/web/"' '**' 0 "a trailing slash on a subfolder path passes" 
 grep_glob '"web"' '../.git/**' 1 "a .. glob from a subfolder still fails" "${G[@]}"
 grep_glob '"web"' '!../x' 1 "a negated .. glob from a subfolder still fails" "${G[@]}"
 grep_glob '"web"' '* *' 1 "a space in the glob still fails" "${G[@]}"
+# A path above the checkout, inside an added root, reaches .git/config too.
+W=(--tools "Read,Glob,Grep" --root /w --grep-any-glob-in-subfolders)
+grep_glob '"/w"' '**/.git/config' 1 "a Grep rooted above the checkout in an added root keeps the extension rule" "${W[@]}"
+grep_glob '"/w/repo/.."' '**/.git/config' 1 "and so does one that climbs there with .." "${W[@]}"
+grep_glob '"/w/repo/web"' '!**/node_modules/**' 0 "a real subfolder under the same options still passes" "${W[@]}"
 grep_glob '"web/modules/custom"' '!**/node_modules/**' 1 "without the option the negated glob fails as before"
 grep_glob '"web/modules/custom"' '{web/**,tests/**}' 1 "without the option a brace folder list in the workspace fails as before"
 
