@@ -17,6 +17,12 @@
 # completed runs on main one at a time and stops at the first that
 # qualifies, inspecting at most 10.
 #
+# While the workflow file has no schedule trigger the audit runs only when
+# dispatched, so the age check is skipped with a ::notice:: instead of a
+# warning. The file is .github/workflows/security-audit.yml in this checkout,
+# or AUDIT_WORKFLOW_FILE; one that cannot be read is warned about and the
+# age is still checked.
+#
 # It prints a ::warning:: annotation when the state is not active, when none
 # of those runs is an audit whose report succeeded, or when the newest such
 # audit started more than 40 days ago (first Saturdays can be 35 days apart).
@@ -29,6 +35,7 @@
 set -euo pipefail
 
 WORKFLOW=security-audit.yml
+WORKFLOW_FILE="${AUDIT_WORKFLOW_FILE:-$(cd "$(dirname "$0")/../workflows" 2>/dev/null && pwd)/$WORKFLOW}"
 MAX_AGE_DAYS=40
 MAX_RUNS=10
 REPORT_JOB=report
@@ -56,6 +63,22 @@ fi
 if [ "$state" != active ]; then
   warn "$WORKFLOW is not active (state: ${state:-unknown}); re-enable it in the repository's Actions settings"
 fi
+
+# PyYAML reads the bare key on as True.
+scheduled="$(python3 -I -c '
+import sys, yaml
+wf = yaml.safe_load(open(sys.argv[1]))
+on = wf.get(True, wf.get("on")) if isinstance(wf, dict) else None
+events = [on] if isinstance(on, str) else list(on or [])
+print("yes" if "schedule" in events else "no")' "$WORKFLOW_FILE" 2>/dev/null)" || scheduled=""
+case "$scheduled" in
+  no)
+    echo "::notice title=Security audit::$WORKFLOW has no schedule yet, so the age of its last audit is not checked"
+    exit 0
+    ;;
+  yes) ;;
+  *) warn "could not read the triggers of $WORKFLOW_FILE; checking the age of the last audit anyway" ;;
+esac
 
 rc=0
 runs="$(gh run list -R "$repo" --workflow "$WORKFLOW" --branch main --status completed --limit "$MAX_RUNS" --json databaseId,createdAt,conclusion 2>"$err")" || rc=$?

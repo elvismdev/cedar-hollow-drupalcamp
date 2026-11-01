@@ -3,7 +3,8 @@
 # active and disabled_inactivity, a 404, no audit run, an audit 41 days old,
 # quiet runs whose report job was skipped, a run whose report job failed, a
 # failed run whose report succeeded, a schedule whose recent runs all failed,
-# and errors, each exiting 0.
+# a workflow with no schedule (a notice, no age check), an unreadable
+# workflow file, and errors, each exiting 0.
 set -euo pipefail
 # shellcheck source=../../claude-review/tools/agent/test/assert.sh
 . "$(dirname "$0")/../../claude-review/tools/agent/test/assert.sh"
@@ -16,6 +17,10 @@ mkdir -p "$WORK/bin"
 cp "$TESTS/fake-gh.sh" "$WORK/bin/gh"
 chmod +x "$WORK/bin/gh"
 export PATH="$WORK/bin:$PATH"
+# The workflow file the check reads for its triggers: scheduled by default.
+printf 'on:\n  schedule:\n    - cron: "0 6 * * 6"\n  workflow_dispatch:\njobs: {}\n' > "$WORK/scheduled.yml"
+printf 'on:\n  workflow_dispatch:\njobs: {}\n' > "$WORK/dispatch-only.yml"
+export AUDIT_WORKFLOW_FILE="$WORK/scheduled.yml"
 
 # fake-gh.sh prints a fixture as it stands, so the state fixture holds what
 # gh prints after --jq .state.
@@ -107,6 +112,26 @@ runs 2:failure:success 60:success:success
 check "$REPO"
 no_warning "a failed run whose report succeeded counts as an audit"
 assert_contains "$OUT" "2 days ago" "its age is the failed run's"
+
+# No schedule yet: a notice, and no age check.
+new_fixture unscheduled active
+runs 90:success:success
+AUDIT_WORKFLOW_FILE="$WORK/dispatch-only.yml" check "$REPO"
+assert_exit 0 "$RC" "an unscheduled workflow exits 0"
+no_warning "an unscheduled workflow's old audit is not warned about"
+assert_contains "$OUT" "::notice" "an unscheduled workflow gets a notice"
+case "$(cat "$FIX/calls.log")" in *"run list"*) echo "FAIL: run history was read without a schedule" >&2; exit 1;; esac
+# A schedule, the same history: warned.
+new_fixture scheduled-stale active
+runs 90:success:success
+check "$REPO"
+assert_contains "$OUT" "::warning" "a scheduled workflow's 90-day-old audit is warned about"
+# An unreadable workflow file: warned, and the age is still checked.
+new_fixture unreadable-file active
+runs 90:success:success
+AUDIT_WORKFLOW_FILE="$WORK/no-such.yml" check "$REPO"
+assert_contains "$OUT" "could not read the triggers" "an unreadable workflow file is warned about"
+assert_contains "$OUT" "90 days ago" "the age is still checked when the file cannot be read"
 
 # At most 10 runs are inspected.
 new_fixture bounded active
