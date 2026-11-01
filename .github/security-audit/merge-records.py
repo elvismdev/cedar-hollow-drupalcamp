@@ -101,6 +101,7 @@ SOURCE_BLOCKER = "no sandbox in the source job"
 DECISION_DISCARDED = "poc decision discarded"
 PROMOTION_FAILED = "poc evidence promotion failed"
 DISPUTE_UNRESOLVED = "cross-check dispute unresolved"
+NOT_INDEPENDENT = "poc scripts not independent"
 
 FINGERPRINT = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:/@+-]*$")
 AGENT_ID = re.compile(r"^[a-z0-9][a-z0-9_-]{0,63}$")
@@ -788,12 +789,21 @@ def read_manifest(state, path):
         for script in scripts:
             if (isinstance(script, dict) and script.get("slot") in ("a", "b")
                     and script.get("mode") in ("http", "drush") and script["slot"] not in slots):
-                slots[script["slot"]] = (script["mode"], script.get("script"))
+                slots[script["slot"]] = (script["mode"], script.get("script"), script.get("agent_id"))
         if set(slots) != {"a", "b"} or len(scripts) != 2:
             state.discard("poc-decide", None, "manifest item malformed or repeated")
             continue
         modes[fp] = slots
     return modes
+
+
+def manifest_independent(slots):
+    """D28 as the manifest states it: the two slots name different agent ids
+    and different script paths."""
+    (_, path_a, agent_a), (_, path_b, agent_b) = slots["a"], slots["b"]
+    if not all(isinstance(v, str) for v in (path_a, path_b, agent_a, agent_b)):
+        return False
+    return agent_a != agent_b and os.path.normpath(path_a) != os.path.normpath(path_b)
 
 
 def run_record_valid(record):
@@ -872,7 +882,7 @@ def read_run_records(state, directory, modes, scripts):
             key = (record["fingerprint"], record["slot"])
             if key in found:
                 dup.add(key)
-            found[key] = (data, record)
+            found[key] = (data, record, digest)
     finally:
         os.close(dir_fd)
     for key in dup:
@@ -992,6 +1002,12 @@ def cmd_apply_decide(state, args):
         if entry["decision"] == "confirmed" and len(checks) != 2:
             add_blocker(state, fp, PROMOTION_FAILED)
             state.discard("poc-decide", agent_id, "confirmed without both run records promoted")
+            continue
+        # Both records were promoted, so both exist and the item is in the manifest.
+        if entry["decision"] == "confirmed" and not (
+                manifest_independent(modes[fp]) and records[(fp, "a")][2] != records[(fp, "b")][2]):
+            add_blocker(state, fp, NOT_INDEPENDENT)
+            state.discard("poc-decide", agent_id, "confirmed with scripts that are not independent")
             continue
         plans[fp] = (agent_id, entry, checks)
 

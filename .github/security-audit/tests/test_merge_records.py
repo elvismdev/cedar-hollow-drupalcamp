@@ -649,6 +649,41 @@ class HostileEntryTest(MergeTest):
                 self.assertEqual(result.returncode, 1)
                 self.assertNotIn("Traceback", result.stderr)
 
+    def independence_case(self, slots, contents):
+        self.seed([lead("fp-1")], [unit("u1", fps=["fp-1"])])
+        self.select()
+        items = [{"fingerprint": "fp-1", "scripts": [
+            {"slot": s, "agent_id": slots[s][0], "mode": "http", "script": slots[s][1], "fixture": None}
+            for s in "ab"]}]
+        manifest = os.path.join(self.tmp, "m.json")
+        self.write(manifest, {"items": items})
+        for i, s in enumerate("ab"):
+            path = os.path.join(self.scripts, slots[s][1])
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+            self.write(path, contents[s])
+            self.run_record("fp-1", s, 0, sha=hashlib.sha256(contents[s].encode()).hexdigest())
+        self.subagent("decider-1", self.decided("fp-1", "confirmed", confirmed("fp-1")))
+        self.decide(manifest)
+        return self.record("fp-1")
+
+    def test_confirmation_needs_two_independent_scripts(self):
+        same = {"a": ("w-a", "agents/w-a/scratch/poc.php"), "b": ("w-a", "agents/w-a/scratch/poc.php")}
+        one_agent = {"a": ("w-a", "agents/w-a/scratch/poc.php"), "b": ("w-a", "agents/w-a/scratch/poc2.php")}
+        one_path = {"a": ("w-a", "agents/w-a/scratch/poc.php"), "b": ("w-b", "agents/w-a/scratch/poc.php")}
+        apart = {"a": ("w-a", "agents/w-a/scratch/poc.php"), "b": ("w-b", "agents/w-b/scratch/poc.php")}
+        for name, slots, contents, verdict in (
+                ("same script and agent", same, {"a": "<?php 1", "b": "<?php 1"}, "needs_validation"),
+                ("same agent id", one_agent, {"a": "<?php 1", "b": "<?php 2"}, "needs_validation"),
+                ("same script path", one_path, {"a": "<?php 1", "b": "<?php 1"}, "needs_validation"),
+                ("same sha256", apart, {"a": "<?php 1", "b": "<?php 1"}, "needs_validation"),
+                ("independent", apart, {"a": "<?php 1", "b": "<?php 2"}, "confirmed")):
+            with self.subTest(name):
+                self.tearDown()
+                self.setUp()
+                record = self.independence_case(slots, contents)
+                self.assertEqual(record["verdict"], verdict)
+                if verdict != "confirmed":
+                    self.assertIn("poc scripts not independent", record["blockers"])
 
 
 class HistoryTest(MergeTest):
