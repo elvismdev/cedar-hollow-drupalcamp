@@ -86,3 +86,373 @@ jobs:
           path: ${{ runner.temp }}/meta/run-metadata.json
           retention-days: 1
           if-no-files-found: error
+
+  source:
+    needs: prepare
+    if: needs.prepare.outputs.go == 'true' && github.ref == 'refs/heads/main' && contains(fromJSON(needs.prepare.outputs.run_jobs), 'source')
+    runs-on: ubuntu-24.04
+    environment: claude-agents
+    timeout-minutes: 330
+    permissions:
+      contents: read
+      actions: read
+      issues: read
+    env:
+      AUDIT_INPUT_DIR: /mnt/audit/source/in
+      AUDIT_OUTPUT_DIR: /mnt/audit/source/out
+    outputs:
+      sha256: ${{ steps.handoff.outputs.sha256 }}
+      validators: ${{ steps.validators-final.outputs.validators }}
+      cause: ${{ steps.cause.outputs.cause }}
+      prior_marker: ${{ steps.marker.outputs.json }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Install age, and envsubst where the image lacks it
+        run: |
+          pkgs=(age)
+          command -v envsubst >/dev/null || pkgs+=(gettext-base)
+          sudo apt-get install -y "${pkgs[@]}"
+
+      # A canary that tests the source agent runs the agent with its canary
+      # prompt and no merge or hand-off; a canary that tests a later job skips
+      # the source agent and hands off run-metadata.json alone.
+      - name: Decide which parts of this job run
+        id: plan
+        env:
+          CANARY: ${{ needs.prepare.outputs.canary }}
+        run: |
+          case "$CANARY" in
+            none) agent=true merge=true handoff=true ;;
+            denied-read|denied-write|subagent-bash|subagent-findings-write) agent=true merge=false handoff=false ;;
+            script-isolation|sandbox-secrets|reopen-records) agent=false merge=false handoff=true ;;
+            *) echo "::error::unknown canary"; exit 1 ;;
+          esac
+          printf 'agent=%s\nmerge=%s\nhandoff=%s\n' "$agent" "$merge" "$handoff" >> "$GITHUB_OUTPUT"
+
+      - name: Create the working directories
+        run: |
+          sudo mkdir -p "$AUDIT_INPUT_DIR" "$AUDIT_OUTPUT_DIR"
+          sudo chown -R "$(id -u):$(id -g)" /mnt/audit/source
+
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
+        with:
+          name: run-metadata
+          path: ${{ runner.temp }}/meta
+
+      - name: Check run-metadata.json and place it in the output directory
+        env:
+          SHA256: ${{ needs.prepare.outputs.metadata_sha256 }}
+        run: |
+          actual=$(sha256sum "$RUNNER_TEMP/meta/run-metadata.json" | cut -d' ' -f1)
+          if [ "$actual" != "$SHA256" ]; then
+            echo "::error::run-metadata.json is not the file prepare wrote (expected $SHA256, got $actual)"
+            exit 1
+          fi
+          cp "$RUNNER_TEMP/meta/run-metadata.json" "$AUDIT_OUTPUT_DIR/run-metadata.json"
+
+      - name: Fetch the prior audit state
+        id: prior
+        if: steps.plan.outputs.merge == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: bash .github/security-audit/fetch-prior-state.sh "$REPO" "$RUNNER_TEMP/prior" >> "$GITHUB_OUTPUT"
+
+      # The marker, public in the issue already, is what the report lists as
+      # "not re-checked this run" when this run cannot re-check it.
+      - name: Pass the prior state marker to the report
+        id: marker
+        if: steps.prior.outputs.marker != ''
+        env:
+          MARKER: ${{ steps.prior.outputs.marker }}
+        run: echo "json=$(jq -c . "$MARKER")" >> "$GITHUB_OUTPUT"
+
+      # The opened files are named in run-metadata.json before the agent
+      # starts, and the prior findings.json is passed to select-poc --prior
+      # by this step's output, never read back from a file an agent can write.
+      - name: Open the prior state and name it in run-metadata.json
+        id: prior-open
+        if: steps.prior.outputs.found == 'true'
+        env:
+          AUDIT_AGENTS_AGE_KEY: ${{ secrets.AUDIT_AGENTS_AGE_KEY }}
+          SHA256: ${{ steps.prior.outputs.sha256 }}
+          STATE: ${{ steps.prior.outputs.state }}
+        run: |
+          bash .github/security-audit/seal.sh open AUDIT_AGENTS_AGE_KEY "$SHA256" "$STATE" "$AUDIT_INPUT_DIR"
+          paths=()
+          for name in findings.json coverage-ledger.json disputed.json audit-history.json; do
+            if [ -f "$AUDIT_INPUT_DIR/$name" ] && [ ! -L "$AUDIT_INPUT_DIR/$name" ]; then
+              paths+=("$AUDIT_INPUT_DIR/$name")
+            fi
+          done
+          meta="$AUDIT_OUTPUT_DIR/run-metadata.json"
+          jq '.prior_run_paths = $ARGS.positional' "$meta" --args "${paths[@]}" > "$RUNNER_TEMP/run-metadata.json"
+          cat "$RUNNER_TEMP/run-metadata.json" > "$meta"
+          if [ -f "$AUDIT_INPUT_DIR/findings.json" ] && [ ! -L "$AUDIT_INPUT_DIR/findings.json" ]; then
+            echo "findings=$AUDIT_INPUT_DIR/findings.json" >> "$GITHUB_OUTPUT"
+          fi
+          echo "prior state opened: ${#paths[@]} file(s)"
+
+      - name: Compose the source agent's arguments
+        id: args-source
+        if: steps.plan.outputs.agent == 'true'
+        run: |
+          bash .github/claude-review/tools/agent/compose-agent-args.sh --audit > "$RUNNER_TEMP/agent-args"
+          line=$(grep '^AGENT_ARGS_AUDIT_SOURCE=' "$RUNNER_TEMP/agent-args")
+          echo "claude_args=${line#AGENT_ARGS_AUDIT_SOURCE=}" >> "$GITHUB_OUTPUT"
+          bash .github/claude-review/tools/agent/compose-agent-args.sh --audit-models source >> "$GITHUB_OUTPUT"
+
+      - name: Render the source prompt
+        id: prompt-source
+        if: steps.plan.outputs.agent == 'true'
+        env:
+          CANARY: ${{ needs.prepare.outputs.canary }}
+        run: |
+          meta="$RUNNER_TEMP/meta/run-metadata.json"
+          export RUN_ID="$GITHUB_RUN_ID" SOURCE_REF="$GITHUB_SHA" GITHUB_ENV_PATH="$GITHUB_ENV"
+          export OUTPUT_DIR="$AUDIT_OUTPUT_DIR" INPUT_DIR="$AUDIT_INPUT_DIR"
+          BUDGET=$(jq -r .budget "$meta")
+          SCOPE_PATHS=$(jq -r '.scope_paths | join(", ")' "$meta")
+          export BUDGET SCOPE_PATHS
+          envsubst "$PROMPT_VARS" < .github/security-audit/prompts/source.md > "$RUNNER_TEMP/prompt-source.md"
+          if [ "$CANARY" != none ]; then
+            envsubst "$PROMPT_VARS" < ".github/security-audit/prompts/canary-$CANARY.md" >> "$RUNNER_TEMP/prompt-source.md"
+          fi
+          bash .github/claude-review/tools/agent/emit-block.sh prompt "$RUNNER_TEMP/prompt-source.md" >> "$GITHUB_OUTPUT"
+
+      - name: Fingerprint the checkout and ~/.claude before the source agent
+        id: before-source
+        if: steps.plan.outputs.agent == 'true'
+        run: |
+          bash .github/security-audit/check-agent-run.sh --fingerprint "$RUNNER_TEMP/fingerprint-source"
+          echo "started=$(date +%s)" >> "$GITHUB_OUTPUT"
+
+      # github_token is passed so the action uses it instead of exchanging an
+      # OIDC token for its app token. show_full_output and display_report stay
+      # false: either would put agent output in the public log or summary.
+      - name: Source agent
+        id: agent-source
+        if: steps.plan.outputs.agent == 'true'
+        continue-on-error: true
+        timeout-minutes: 280
+        uses: anthropics/claude-code-action@ae68417a745a5df4b2124873632bd73a2255e6f6 # v1.0.259
+        env:
+          ANTHROPIC_DEFAULT_SONNET_MODEL: ${{ steps.args-source.outputs.ANTHROPIC_DEFAULT_SONNET_MODEL }}
+          ANTHROPIC_DEFAULT_HAIKU_MODEL: ${{ steps.args-source.outputs.ANTHROPIC_DEFAULT_HAIKU_MODEL }}
+          CLAUDE_CODE_SUBAGENT_MODEL: ${{ steps.args-source.outputs.CLAUDE_CODE_SUBAGENT_MODEL }}
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          github_token: ${{ github.token }}
+          prompt: ${{ steps.prompt-source.outputs.prompt }}
+          claude_args: ${{ steps.args-source.outputs.claude_args }}
+          show_full_output: 'false'
+          display_report: 'false'
+
+      - name: Record when the source agent ended
+        id: after-source
+        if: always() && steps.plan.outputs.agent == 'true'
+        run: echo "ended=$(date +%s)" >> "$GITHUB_OUTPUT"
+
+      # A failed run check fails the job, so every later step without
+      # always() is skipped and nothing is handed off.
+      - name: Run check (source agent)
+        id: check-source
+        if: always() && steps.plan.outputs.agent == 'true'
+        env:
+          TRACE: ${{ steps.agent-source.outputs.execution_file }}
+          MODEL: ${{ steps.args-source.outputs.CLAUDE_CODE_SUBAGENT_MODEL }}
+        run: bash .github/security-audit/check-agent-run.sh source "$TRACE" "$AGENT_TOOLS" "$AUDIT_OUTPUT_DIR" "$RUNNER_TEMP/fingerprint-source" "$MODEL"
+
+      - name: Outcome (source agent)
+        id: outcome-source
+        if: always() && steps.plan.outputs.agent == 'true'
+        env:
+          TRACE: ${{ steps.agent-source.outputs.execution_file }}
+          OUTCOME: ${{ steps.agent-source.outcome }}
+          STARTED: ${{ steps.before-source.outputs.started }}
+          ENDED: ${{ steps.after-source.outputs.ended }}
+        run: |
+          cause=$(bash .github/security-audit/agent-outcome.sh "$TRACE" "$OUTCOME" "$STARTED" "$ENDED" 280 "$AUDIT_OUTPUT_DIR/findings.json" "$AUDIT_OUTPUT_DIR/coverage-ledger.json")
+          echo "cause=$cause" >> "$GITHUB_OUTPUT"
+          echo "source agent: $cause"
+
+      # count --job source runs first: it creates trusted-meta.json, which
+      # every later subcommand reads instead of anything the agent wrote.
+      - name: Count the source agent's subagents
+        if: always() && steps.check-source.outcome == 'success' && steps.plan.outputs.merge == 'true'
+        env:
+          TRACE: ${{ steps.agent-source.outputs.execution_file }}
+        run: python3 -I .github/security-audit/merge-records.py --state "$AUDIT_OUTPUT_DIR" count --job source --cap 60 --trace "$TRACE"
+
+      # The validators' output can quote record text, so it goes only to
+      # validator-errors.txt, which the repair agent reads and the hand-off
+      # seals; the log shows exit codes and a count.
+      - name: Validators (after the source agent)
+        id: validators-source
+        if: always() && steps.check-source.outcome == 'success' && steps.plan.outputs.merge == 'true'
+        run: |
+          errors="$AUDIT_OUTPUT_DIR/validator-errors.txt"
+          f=0 l=0
+          node .github/security-audit/skill/validate-findings.cjs "$AUDIT_OUTPUT_DIR/findings.json" > "$errors" 2>&1 || f=$?
+          node .github/security-audit/skill/validate-coverage-ledger.cjs "$AUDIT_OUTPUT_DIR/coverage-ledger.json" >> "$errors" 2>&1 || l=$?
+          echo "validate-findings exit $f, validate-coverage-ledger exit $l, $(grep -c '^ERROR' "$errors" || true) error line(s)"
+          if [ "$f" -eq 0 ] && [ "$l" -eq 0 ]; then result=pass; else result=fail; fi
+          echo "validators=$result" >> "$GITHUB_OUTPUT"
+
+      - name: Compose the repair agent's arguments
+        id: args-repair
+        if: steps.validators-source.outputs.validators == 'fail'
+        run: |
+          bash .github/claude-review/tools/agent/compose-agent-args.sh --audit > "$RUNNER_TEMP/agent-args"
+          line=$(grep '^AGENT_ARGS_AUDIT_REPAIR=' "$RUNNER_TEMP/agent-args")
+          echo "claude_args=${line#AGENT_ARGS_AUDIT_REPAIR=}" >> "$GITHUB_OUTPUT"
+          bash .github/claude-review/tools/agent/compose-agent-args.sh --audit-models repair >> "$GITHUB_OUTPUT"
+
+      - name: Render the repair prompt
+        id: prompt-repair
+        if: steps.validators-source.outputs.validators == 'fail'
+        run: |
+          meta="$RUNNER_TEMP/meta/run-metadata.json"
+          export RUN_ID="$GITHUB_RUN_ID" SOURCE_REF="$GITHUB_SHA" GITHUB_ENV_PATH="$GITHUB_ENV"
+          export OUTPUT_DIR="$AUDIT_OUTPUT_DIR" INPUT_DIR="$AUDIT_INPUT_DIR"
+          BUDGET=$(jq -r .budget "$meta")
+          SCOPE_PATHS=$(jq -r '.scope_paths | join(", ")' "$meta")
+          export BUDGET SCOPE_PATHS
+          envsubst "$PROMPT_VARS" < .github/security-audit/prompts/repair.md > "$RUNNER_TEMP/prompt-repair.md"
+          bash .github/claude-review/tools/agent/emit-block.sh prompt "$RUNNER_TEMP/prompt-repair.md" >> "$GITHUB_OUTPUT"
+
+      - name: Fingerprint the checkout and ~/.claude before the repair agent
+        id: before-repair
+        if: steps.validators-source.outputs.validators == 'fail'
+        run: |
+          bash .github/security-audit/check-agent-run.sh --fingerprint "$RUNNER_TEMP/fingerprint-repair"
+          echo "started=$(date +%s)" >> "$GITHUB_OUTPUT"
+
+      - name: Repair agent
+        id: agent-repair
+        if: steps.validators-source.outputs.validators == 'fail'
+        continue-on-error: true
+        timeout-minutes: 30
+        uses: anthropics/claude-code-action@ae68417a745a5df4b2124873632bd73a2255e6f6 # v1.0.259
+        env:
+          ANTHROPIC_DEFAULT_SONNET_MODEL: ${{ steps.args-repair.outputs.ANTHROPIC_DEFAULT_SONNET_MODEL }}
+          ANTHROPIC_DEFAULT_HAIKU_MODEL: ${{ steps.args-repair.outputs.ANTHROPIC_DEFAULT_HAIKU_MODEL }}
+          CLAUDE_CODE_SUBAGENT_MODEL: ${{ steps.args-repair.outputs.CLAUDE_CODE_SUBAGENT_MODEL }}
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          github_token: ${{ github.token }}
+          prompt: ${{ steps.prompt-repair.outputs.prompt }}
+          claude_args: ${{ steps.args-repair.outputs.claude_args }}
+          show_full_output: 'false'
+          display_report: 'false'
+
+      - name: Record when the repair agent ended
+        id: after-repair
+        if: always() && steps.validators-source.outputs.validators == 'fail'
+        run: echo "ended=$(date +%s)" >> "$GITHUB_OUTPUT"
+
+      - name: Run check (repair agent)
+        id: check-repair
+        if: always() && steps.validators-source.outputs.validators == 'fail'
+        env:
+          TRACE: ${{ steps.agent-repair.outputs.execution_file }}
+          MODEL: ${{ steps.args-repair.outputs.CLAUDE_CODE_SUBAGENT_MODEL }}
+        run: bash .github/security-audit/check-agent-run.sh source "$TRACE" "$REPAIR_TOOLS" "$AUDIT_OUTPUT_DIR" "$RUNNER_TEMP/fingerprint-repair" "$MODEL"
+
+      - name: Outcome (repair agent)
+        id: outcome-repair
+        if: always() && steps.validators-source.outputs.validators == 'fail'
+        env:
+          TRACE: ${{ steps.agent-repair.outputs.execution_file }}
+          OUTCOME: ${{ steps.agent-repair.outcome }}
+          STARTED: ${{ steps.before-repair.outputs.started }}
+          ENDED: ${{ steps.after-repair.outputs.ended }}
+        run: |
+          cause=$(bash .github/security-audit/agent-outcome.sh "$TRACE" "$OUTCOME" "$STARTED" "$ENDED" 30 "$AUDIT_OUTPUT_DIR/findings.json" "$AUDIT_OUTPUT_DIR/coverage-ledger.json")
+          echo "cause=$cause" >> "$GITHUB_OUTPUT"
+          echo "repair agent: $cause"
+
+      - name: Count the repair agent's subagents
+        if: always() && steps.check-repair.outcome == 'success'
+        env:
+          TRACE: ${{ steps.agent-repair.outputs.execution_file }}
+        run: python3 -I .github/security-audit/merge-records.py --state "$AUDIT_OUTPUT_DIR" count --job source_repair --cap 0 --trace "$TRACE"
+
+      - name: Validators (after the repair agent)
+        id: validators-repair
+        if: always() && steps.check-repair.outcome == 'success'
+        run: |
+          errors="$AUDIT_OUTPUT_DIR/validator-errors.txt"
+          f=0 l=0
+          node .github/security-audit/skill/validate-findings.cjs "$AUDIT_OUTPUT_DIR/findings.json" > "$errors" 2>&1 || f=$?
+          node .github/security-audit/skill/validate-coverage-ledger.cjs "$AUDIT_OUTPUT_DIR/coverage-ledger.json" >> "$errors" 2>&1 || l=$?
+          echo "validate-findings exit $f, validate-coverage-ledger exit $l, $(grep -c '^ERROR' "$errors" || true) error line(s)"
+          if [ "$f" -eq 0 ] && [ "$l" -eq 0 ]; then result=pass; else result=fail; fi
+          echo "validators=$result" >> "$GITHUB_OUTPUT"
+
+      - name: Stop when the records still fail the validators
+        id: validators-final
+        if: steps.plan.outputs.merge == 'true'
+        env:
+          FIRST: ${{ steps.validators-source.outputs.validators }}
+          SECOND: ${{ steps.validators-repair.outputs.validators }}
+        run: |
+          result="${SECOND:-$FIRST}"
+          echo "validators=$result" >> "$GITHUB_OUTPUT"
+          if [ "$result" != pass ]; then
+            echo "::error::the records fail the validators after the repair step (validators_failed)"
+            exit 1
+          fi
+
+      - name: Select the proof-of-concept items
+        if: steps.plan.outputs.merge == 'true'
+        env:
+          PRIOR_FINDINGS: ${{ steps.prior-open.outputs.findings }}
+        run: |
+          if [ -n "$PRIOR_FINDINGS" ]; then
+            python3 -I .github/security-audit/merge-records.py --state "$AUDIT_OUTPUT_DIR" select-poc --out "$AUDIT_OUTPUT_DIR/select.json" --prior "$PRIOR_FINDINGS"
+          else
+            python3 -I .github/security-audit/merge-records.py --state "$AUDIT_OUTPUT_DIR" select-poc --out "$AUDIT_OUTPUT_DIR/select.json"
+          fi
+
+      - name: Seal audit-source to the agents key
+        id: handoff
+        if: steps.plan.outputs.handoff == 'true'
+        run: |
+          mkdir -p "$RUNNER_TEMP/handoff"
+          sum=$(bash .github/security-audit/seal.sh seal .github/security-audit/keys/agents.pub "$AUDIT_OUTPUT_DIR" "$RUNNER_TEMP/handoff/audit-source.age")
+          echo "sha256=$sum" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        if: steps.handoff.outcome == 'success'
+        with:
+          name: audit-source
+          path: ${{ runner.temp }}/handoff/audit-source.age
+          retention-days: 1
+          if-no-files-found: error
+
+      # One fixed label for the report: a failed run check first, then
+      # records that never passed the validators, then the last agent step's
+      # outcome.
+      - name: Name the job's cause
+        id: cause
+        if: always()
+        env:
+          CHECK_SOURCE: ${{ steps.check-source.outcome }}
+          CHECK_REPAIR: ${{ steps.check-repair.outcome }}
+          VALIDATORS: ${{ steps.validators-final.outputs.validators }}
+          OUTCOME_SOURCE: ${{ steps.outcome-source.outputs.cause }}
+          OUTCOME_REPAIR: ${{ steps.outcome-repair.outputs.cause }}
+        run: |
+          if [ "$CHECK_SOURCE" = failure ] || [ "$CHECK_REPAIR" = failure ]; then cause=run_check_failed
+          elif [ "$VALIDATORS" = fail ]; then cause=validators_failed
+          elif [ -n "$OUTCOME_REPAIR" ]; then cause="$OUTCOME_REPAIR"
+          elif [ -n "$OUTCOME_SOURCE" ]; then cause="$OUTCOME_SOURCE"
+          else cause=job_failed
+          fi
+          echo "cause=$cause" >> "$GITHUB_OUTPUT"
+          echo "source job: $cause"
