@@ -233,6 +233,49 @@ for input in \
   case "$out" in *"$canary"*) echo "FAIL: a value reached the log for ${input%% *}" >&2; exit 1;; esac
 done
 
+# Options. The security audit's agents also write and delegate, so the tool
+# list, the read roots and the write roots can be widened, each a closed set.
+A=(--tools "Read,Glob,Grep,Write,Edit,Agent,Task" --root /mnt/a/in --root /mnt/a/out --write-root /mnt/a/out)
+ok_opt () { printf '[%s]' "$(call "$1" "$2")" > "$tmp/o.json"; assert_eq "0" "$(rc "$tmp/o.json" "${A[@]}")" "$3"; }
+no_opt () { # name input-json label message
+  printf '[%s]' "$(call "$1" "$2")" > "$tmp/o.json"
+  assert_eq "1" "$(rc "$tmp/o.json" "${A[@]}")" "$4"
+  assert_contains "$(run "$tmp/o.json" "${A[@]}")" "$1 call 1: $3" "$4 says why"
+}
+ok_opt Read '{"file_path":"/mnt/a/in/state/findings.json"}' "a read in an added root passes"
+ok_opt Read '{"file_path":"/w/repo/web/index.php"}' "the workspace stays a root"
+ok_opt Write '{"file_path":"/mnt/a/out/agents/h1/scratch/entry.json","content":"{\"x\":\"a b ~ ..\"}"}' "a Write under a write root passes, whatever its content"
+ok_opt Edit '{"file_path":"/mnt/a/out/run-metadata.json","old_string":"a","new_string":"b","replace_all":false}' "an Edit with every field passes"
+ok_opt Agent '{"description":"agent-id: h1 hunt","prompt":"p","subagent_type":"general-purpose","run_in_background":false}' "an Agent call with every field passes"
+ok_opt Task '{"description":"agent-id: h1 hunt","prompt":"p"}' "the subagent tool's other name passes"
+ok_opt Grep '{"pattern":"x","path":"/mnt/a/out","glob":"**"}' "a Grep glob of ** in an added root outside the workspace passes"
+no_opt Read '{"file_path":"/mnt/a/other/x"}' "path outside the allowed roots (field file_path)" "a read beside the added roots is refused"
+no_opt Write '{"file_path":"agents/h1/scratch/entry.json","content":""}' "write path is relative (field file_path)" "a relative Write is refused"
+no_opt Write '{"file_path":"/mnt/a/out/agents/../x.json","content":""}' "write path contains .. (field file_path)" "a Write with .. is refused even when it stays inside"
+no_opt Edit '{"file_path":"/mnt/a/out/x/../../in/y","old_string":"a","new_string":"b"}' "write path contains .. (field file_path)" "an Edit with .. is refused"
+no_opt Write '{"file_path":"/mnt/a/in/x.json","content":""}' "path outside the write roots (field file_path)" "a Write in a read-only root is refused"
+no_opt Write '{"file_path":"/w/repo/web/index.php","content":""}' "path outside the write roots (field file_path)" "a Write in the workspace is refused"
+no_opt Write '{"file_path":"/w/repo/.git/config","content":""}' "path under .git (field file_path)" "a Write into .git is refused"
+no_opt Write '{"file_path":"/mnt/a/out-other/x","content":""}' "path outside the write roots (field file_path)" "a sibling sharing the write root's prefix is refused"
+no_opt Write '{"file_path":" /mnt/a/out/x","content":""}' "character outside the allowlist (field file_path)" "a Write path with a leading space is refused"
+no_opt Write '{"content":"x"}' "empty field (field file_path)" "a Write with no file_path is refused"
+no_opt Agent '{"description":"agent-id: h1","prompt":"p","model":"other"}' "unknown field" "an Agent call naming a model is refused"
+no_opt Bash '{"command":"id"}' "tool not allowed" "a tool outside --tools is still refused"
+assert_contains "$(run "$tmp/o.json" "${A[@]}")" "outside Read, Glob, Grep, Write, Edit, Agent and Task" "and the message names the allowed list"
+printf '[%s]' "$(call Write '{"file_path":"/mnt/a/out/x","content":""}')" > "$tmp/o.json"
+assert_eq "1" "$(rc "$tmp/o.json" --tools Read,Write --root /mnt/a/out)" "with no write root every Write is refused"
+assert_eq "2" "$(rc "$tmp/o.json" --tools Read,Bash)" "--tools may name only tools whose fields are checked"
+assert_eq "2" "$(rc "$tmp/o.json" --root mnt/a)" "a relative --root is a usage error"
+assert_eq "2" "$(rc "$tmp/o.json" --write-root)" "a --write-root with no directory is a usage error"
+assert_eq "2" "$(rc "$tmp/o.json" --bogus x)" "an unknown option is a usage error"
+assert_eq "2" "$(rc)" "no trace argument is a usage error"
+wcanary="Wq$(od -An -N8 -tx1 /dev/urandom | tr -d ' \n')"
+printf '[%s]' "$(call Write "{\"file_path\":\"/tmp/$wcanary\",\"content\":\"$wcanary\"}")" > "$tmp/o.json"
+case "$(run "$tmp/o.json" "${A[@]}")" in *"$wcanary"*) echo "FAIL: a Write value reached the log" >&2; exit 1;; esac
+# An added root inside the workspace does not lift the Grep glob rule there.
+printf '[%s]' "$(call Grep '{"pattern":"x","path":"/w/repo/web","glob":"**"}')" > "$tmp/o.json"
+assert_eq "1" "$(rc "$tmp/o.json" --root /w/repo/web)" "an added root inside the workspace keeps the glob rule"
+
 # It fails closed on what it cannot read.
 assert_eq "1" "$(rc "$tmp/absent.json")" "a missing trace fails"
 : > "$tmp/empty.json"

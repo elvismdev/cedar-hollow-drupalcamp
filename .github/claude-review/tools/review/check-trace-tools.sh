@@ -80,12 +80,89 @@
 # against, exits non-zero. The caller decides whether an absent trace means
 # there is nothing to check.
 #
-# Usage: check-trace-tools.sh <trace.json>
+# With no options it checks the review agents exactly as described above. The
+# security audit's agents also write and delegate, so three options widen it
+# for them, each still a closed set:
+#
+#   --tools <names>      comma-separated allowed tools, replacing Read,Glob,Grep.
+#                        Only tools whose input fields are listed here may be
+#                        named: Read, Glob, Grep, Write, Edit, and the subagent
+#                        tool under both of its names, Agent and Task.
+#   --root <dir>         an absolute directory added to the read roots
+#                        (repeatable). A Grep whose path lies in one outside the
+#                        workspace is treated as the head and input directory
+#                        are: its glob only has to pass the character allowlist.
+#   --write-root <dir>   an absolute directory Write and Edit may write under
+#                        (repeatable). With none, every Write and Edit is refused.
+#
+# Their input fields, from the same schemas:
+#
+#   - Write: file_path, content.
+#   - Edit: file_path, old_string, new_string, replace_all.
+#   - Agent and Task: description, prompt, subagent_type, run_in_background.
+#     A model field is refused with the rest, so a subagent cannot be given
+#     another model through its call.
+#
+# A Write or Edit file_path passes the same character allowlist, must be
+# absolute, must hold no .. segment even when it would normalise back inside,
+# and must land under a write root and outside the workspace's .git. Content
+# and the subagent tool's text fields are not paths and are not checked.
+#
+# Usage: check-trace-tools.sh <trace.json> [--tools <names>] [--root <dir>]...
+#                             [--write-root <dir>]...
 #        GITHUB_WORKSPACE, REVIEW_HEAD_DIR, REVIEW_INPUT_DIR  the allowed roots
 set -uo pipefail
 
-TRACE="${1:?usage: check-trace-tools.sh <trace.json>}"
-ALLOWED='["Read","Glob","Grep"]'
+usage () {
+  echo "usage: check-trace-tools.sh <trace.json> [--tools <names>] [--root <dir>]... [--write-root <dir>]..." >&2
+  exit 2
+}
+
+TRACE="${1:-}"
+[ -n "$TRACE" ] || usage
+shift
+# The tools whose input fields the path check below knows.
+SUPPORTED=" Read Glob Grep Write Edit Agent Task "
+allowed_names=(Read Glob Grep)
+extra_roots=()
+write_roots=()
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --tools)
+      [ "$#" -ge 2 ] && [ -n "$2" ] || usage
+      IFS=, read -r -a allowed_names <<<"$2"
+      shift 2 ;;
+    --root|--write-root)
+      [ "$#" -ge 2 ] || usage
+      case "$2" in /*) ;; *) echo "check-trace-tools: $1 must be an absolute directory" >&2; exit 2 ;; esac
+      if [ "$1" = "--root" ]; then extra_roots+=("$2"); else write_roots+=("$2"); fi
+      shift 2 ;;
+    *) usage ;;
+  esac
+done
+for n in "${allowed_names[@]}"; do
+  case "$SUPPORTED" in
+    *" $n "*) ;;
+    *) echo "check-trace-tools: --tools names a tool whose input fields are not checked here" >&2; exit 2 ;;
+  esac
+done
+
+# "Read, Glob and Grep" for the default list: the names joined for a message.
+join_names () { # conjunction name...
+  local conj="$1"; shift
+  local out="" i
+  for ((i = 1; i <= $#; i++)); do
+    if [ "$i" -eq 1 ]; then out="${!i}"
+    elif [ "$i" -eq $# ]; then out="$out $conj ${!i}"
+    else out="$out, ${!i}"; fi
+  done
+  printf '%s' "$out"
+}
+ALLOWED_AND=$(join_names and "${allowed_names[@]}")
+ALLOWED_OR=$(join_names or "${allowed_names[@]}")
+ALLOWED=$(printf '%s\n' "${allowed_names[@]}" | jq -R . | jq -sc .)
+ROOT_ARGS=$(jq -nc '$ARGS.positional' --args "${extra_roots[@]}")
+WRITE_ROOT_ARGS=$(jq -nc '$ARGS.positional' --args "${write_roots[@]}")
 # Claude Code's real tool names. The name in a trace is agent-written text, so
 # only one of these (or the fixed <unnamed>) is ever printed.
 KNOWN='["Read","Glob","Grep","Bash","Edit","Write","MultiEdit","NotebookEdit","WebFetch","WebSearch","Skill","Agent","Task","TodoWrite","ListAgents","ScheduleWakeup","Monitor","SendMessage","CronCreate","TaskCreate","AskUserQuestion","EnterPlanMode","ExitPlanMode","EnterWorktree","ToolSearch","<unnamed>"]'
@@ -112,7 +189,7 @@ if [ -n "${outside:-}" ]; then
     | if .value as $n | $known | index($n)
       then "check-trace-tools: \(.value) call \(.key + 1): tool not allowed"
       else "check-trace-tools: call \(.key + 1): tool not allowed (unlisted name)" end' "$TRACE" >&2
-  echo "check-trace-tools: the agent used a tool outside Read, Glob and Grep: ${outside}" >&2
+  echo "check-trace-tools: the agent used a tool outside ${ALLOWED_AND}: ${outside}" >&2
   exit 1
 fi
 
@@ -121,13 +198,15 @@ fi
   exit 1
 }
 
-outside_roots=$(python3 -I - "$TRACE" <<'PY'
+outside_roots=$(python3 -I - "$TRACE" "$ROOT_ARGS" "$WRITE_ROOT_ARGS" <<'PY'
 import json, os, posixpath, re, sys
 
 ws = posixpath.normpath(os.environ['GITHUB_WORKSPACE'])
 git_dir = posixpath.join(ws, '.git')
+extra_roots = [posixpath.normpath(r) for r in json.loads(sys.argv[2])]
+write_roots = [posixpath.normpath(r) for r in json.loads(sys.argv[3])]
 roots = [ws] + [posixpath.normpath(os.environ[v])
-                for v in ('REVIEW_HEAD_DIR', 'REVIEW_INPUT_DIR') if os.environ.get(v)]
+                for v in ('REVIEW_HEAD_DIR', 'REVIEW_INPUT_DIR') if os.environ.get(v)] + extra_roots
 
 # The input fields of each tool's schema in Claude Code 2.1.309, the version
 # claude-code-action ae68417 installs. Anything else is refused, aliases
@@ -138,6 +217,10 @@ FIELDS = {
     'Glob': {'pattern', 'path'},
     'Grep': {'pattern', 'path', 'glob', 'type', 'output_mode', '-B', '-A', '-C',
              'context', '-n', '-i', '-o', 'head_limit', 'offset', 'multiline'},
+    'Write': {'file_path', 'content'},
+    'Edit': {'file_path', 'old_string', 'new_string', 'replace_all'},
+    'Agent': {'description', 'prompt', 'subagent_type', 'run_in_background'},
+    'Task': {'description', 'prompt', 'subagent_type', 'run_in_background'},
 }
 
 def under(p, root):
@@ -185,8 +268,11 @@ def away_from_workspace(path):
     if not isinstance(path, str) or path_refusal('path', path, ws):
         return False
     resolved = resolve(path, ws)
-    return any(under(resolved, posixpath.normpath(os.environ[v]))
-               for v in ('REVIEW_HEAD_DIR', 'REVIEW_INPUT_DIR') if os.environ.get(v))
+    away = [posixpath.normpath(os.environ[v])
+            for v in ('REVIEW_HEAD_DIR', 'REVIEW_INPUT_DIR') if os.environ.get(v)]
+    # An added root counts only where it cannot reach the workspace.
+    away += [r for r in extra_roots if not under(r, ws) and not under(ws, r)]
+    return any(under(resolved, r) for r in away)
 
 def calls(node):
     if isinstance(node, dict):
@@ -215,6 +301,28 @@ def path_refusal(field, value, base):
         return ('path outside the allowed roots', field)
     return None
 
+def write_refusal(value):
+    """The label for a Write or Edit file_path the check refuses, else None."""
+    field = 'file_path'
+    if value is None or value == '':
+        return ('empty field', field)
+    if not isinstance(value, str):
+        return ('field not a string', field)
+    if value.startswith('~'):
+        return ('path starts with ~', field)
+    if not path_ok(value):
+        return ('character outside the allowlist', field)
+    if not value.startswith('/'):
+        return ('write path is relative', field)
+    if '..' in value.split('/'):
+        return ('write path contains ..', field)
+    resolved = posixpath.normpath(value)
+    if under(resolved, git_dir):
+        return ('path under .git', field)
+    if not any(under(resolved, r) for r in write_roots):
+        return ('path outside the write roots', field)
+    return None
+
 def refusal(call):
     """(label, field or None) for the first rule that refuses the call, else None.
     A field name is returned only when it is in the tool's own field set."""
@@ -227,6 +335,10 @@ def refusal(call):
         return ('unknown field', None)
     if name == 'Read':
         return path_refusal('file_path', args.get('file_path'), ws)
+    if name in ('Write', 'Edit'):
+        return write_refusal(args.get('file_path'))
+    if name in ('Agent', 'Task'):
+        return None
     if name == 'Grep' and 'glob' in args and args['glob'] is not None:
         g = args['glob']
         if g == '':
@@ -283,7 +395,7 @@ PY
   exit 1
 }
 if [ -n "$outside_roots" ]; then
-  echo "check-trace-tools: the agent called Read, Glob or Grep with a field outside that tool's input fields, a path outside the allowed roots (the workspace except .git, the head, the input directory), or a character outside the allowlist: ${outside_roots}" >&2
+  echo "check-trace-tools: the agent called ${ALLOWED_OR} with a field outside that tool's input fields, a path outside the allowed roots (the workspace except .git, the head, the input directory, any added root), a write outside the write roots, or a character outside the allowlist: ${outside_roots}" >&2
   exit 1
 fi
-echo "check-trace-tools: ${total} tool call(s), all Read, Glob or Grep, all inside the allowed roots"
+echo "check-trace-tools: ${total} tool call(s), all ${ALLOWED_OR}, all inside the allowed roots"
