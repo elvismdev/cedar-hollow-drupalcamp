@@ -36,6 +36,14 @@
 # them. Grep's pattern is a regular expression and type a ripgrep type name;
 # the rest are numbers, flags and a mode.
 #
+# Brace groups are expanded before the paths are judged, by expand-braces.cjs
+# (shared with the security audit's run check): every expansion of a Read
+# file_path, a Glob or Grep path, a Glob pattern and a Grep glob must pass the
+# rules below on its own, so {.,}./x is judged as both ../x and ./x. A value
+# whose braces cannot be expanded with confidence (a backslash, a nested,
+# unbalanced or stray brace, or too many expansions) is refused with the label
+# "braces cannot be expanded". The raw value is still held to every rule.
+#
 # Nothing is normalised. Claude Code trims a path (with JavaScript's trim, which
 # removes characters such as U+FEFF that other trims keep) and expands a
 # leading ~ before reading it, so any reimplementation of that could disagree
@@ -217,7 +225,18 @@ fi
   exit 1
 }
 
-outside_roots=$(python3 -I - "$TRACE" "$ROOT_ARGS" "$WRITE_ROOT_ARGS" "$any_glob_in_subfolders" <<'PY'
+# Every path-bearing string in the trace, mapped to its brace expansions.
+HERE="$(cd "$(dirname "$0")" && pwd)"
+EXPANSIONS=$(mktemp)
+trap 'rm -f "$EXPANSIONS"' EXIT
+if ! jq -c '[.. | objects | select(.type? == "tool_use") | .input? | objects
+      | (.file_path?, .path?, .pattern?, .glob?) | strings] | unique' "$TRACE" \
+    | node "$HERE/expand-braces.cjs" > "$EXPANSIONS"; then
+  echo "check-trace-tools: the brace groups in '$TRACE' could not be expanded" >&2
+  exit 1
+fi
+
+outside_roots=$(python3 -I - "$TRACE" "$ROOT_ARGS" "$WRITE_ROOT_ARGS" "$any_glob_in_subfolders" "$EXPANSIONS" <<'PY'
 import json, os, posixpath, re, sys
 
 ws = posixpath.normpath(os.environ['GITHUB_WORKSPACE'])
@@ -225,6 +244,13 @@ git_dir = posixpath.join(ws, '.git')
 extra_roots = [posixpath.normpath(r) for r in json.loads(sys.argv[2])]
 write_roots = [posixpath.normpath(r) for r in json.loads(sys.argv[3])]
 any_glob_in_subfolders = sys.argv[4] == '1'
+EXPANDED = json.load(open(sys.argv[5]))
+
+def expansions(value):
+    """The brace expansions of a path-bearing value, or None when they could
+    not be computed with confidence (or the value was never expanded)."""
+    e = EXPANDED.get(value) if isinstance(value, str) else None
+    return e if isinstance(e, list) and all(isinstance(x, str) for x in e) else None
 roots = [ws] + [posixpath.normpath(os.environ[v])
                 for v in ('REVIEW_HEAD_DIR', 'REVIEW_INPUT_DIR') if os.environ.get(v)] + extra_roots
 
@@ -315,11 +341,17 @@ def path_refusal(field, value, base):
         return ('path starts with ~', field)
     if not path_ok(value):
         return ('character outside the allowlist', field)
-    resolved = resolve(value, base)
-    if resolved is not None and under(resolved, git_dir):
-        return ('path under .git', field)
-    if not inside(resolved):
-        return ('path outside the allowed roots', field)
+    exps = expansions(value)
+    if exps is None:
+        return ('braces cannot be expanded', field)
+    for e in exps:
+        if e.startswith('~'):
+            return ('path starts with ~', field)
+        resolved = resolve(e, base)
+        if resolved is not None and under(resolved, git_dir):
+            return ('path under .git', field)
+        if not inside(resolved):
+            return ('path outside the allowed roots', field)
     return None
 
 def write_refusal(value):
@@ -380,12 +412,23 @@ def refusal(call):
                 return ('character outside the allowlist', 'glob')
             if '..' in re.split(r'[/{},!]', g):
                 return ('Grep glob is not extension-shaped', 'glob')
+            exps = expansions(g)
+            if exps is None:
+                return ('braces cannot be expanded', 'glob')
+            if any('..' in re.split(r'[/{},!]', e) for e in exps):
+                return ('Grep glob is not extension-shaped', 'glob')
         else:
             if not glob_ok(g):
                 return ('character outside the allowlist', 'glob')
             if '..' in re.split(r'[/{},]', g):
                 return ('Grep glob is not extension-shaped', 'glob')
-            if not away_from_workspace(args.get('path')) and not grep_glob_allowed(g):
+            exps = expansions(g)
+            if exps is None:
+                return ('braces cannot be expanded', 'glob')
+            if any('..' in re.split(r'[/{},]', e) for e in exps):
+                return ('Grep glob is not extension-shaped', 'glob')
+            if not away_from_workspace(args.get('path')) and not (
+                    grep_glob_allowed(g) and all(grep_glob_allowed(e) for e in exps)):
                 return ('Grep glob is not extension-shaped', 'glob')
     path = args.get('path')
     if path is None:
@@ -408,11 +451,17 @@ def refusal(call):
         # directory this check would compute.
         if pattern.startswith('/'):
             return ('Glob pattern is absolute', 'pattern')
-        resolved = resolve(pattern, base)
-        if resolved is not None and under(resolved, git_dir):
-            return ('path under .git', 'pattern')
-        if not inside(resolved):
-            return ('path outside the allowed roots', 'pattern')
+        exps = expansions(pattern)
+        if exps is None:
+            return ('braces cannot be expanded', 'pattern')
+        for e in exps:
+            if e.startswith('/'):
+                return ('Glob pattern is absolute', 'pattern')
+            resolved = resolve(e, base)
+            if resolved is not None and under(resolved, git_dir):
+                return ('path under .git', 'pattern')
+            if not inside(resolved):
+                return ('path outside the allowed roots', 'pattern')
     return None
 
 trace = json.load(open(sys.argv[1]))

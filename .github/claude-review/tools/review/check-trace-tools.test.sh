@@ -304,6 +304,29 @@ grep_glob '"web"' '* *' 1 "a space in the glob still fails" "${G[@]}"
 grep_glob '"web/modules/custom"' '!**/node_modules/**' 1 "without the option the negated glob fails as before"
 grep_glob '"web/modules/custom"' '{web/**,tests/**}' 1 "without the option a brace folder list in the workspace fails as before"
 
+# Brace groups are expanded and every expansion judged, with no options too:
+# {.,}. spells .. without a literal .. segment.
+no_path Glob '{"pattern":"{.,}./{.,}./etc/*"}' "a brace-spelled .. Glob pattern from the workspace is refused"
+no_path Glob '{"pattern":".gi{t,x}/config"}' "a brace-spelled .git Glob pattern is refused"
+label_is Glob '{"pattern":".gi{t,x}/config"}' "path under .git (field pattern)" "label: brace-spelled .git"
+printf '[%s]' "$(call Grep '{"pattern":"x","path":"/rt/head","glob":"{.,}./**"}')" > "$tmp/b.json"
+assert_eq "1" "$(rc "$tmp/b.json")" "a brace-spelled .. Grep glob in the head is refused"
+ok_path Grep '{"pattern":"x","path":"/rt/head","glob":"*.{php,twig}"}' "an extension brace group in the head passes"
+ok_path Grep '{"pattern":"x","path":"/rt/head","glob":"{src,tests}/**/*.php"}' "a folder brace group in the head passes"
+ok_path Glob '{"pattern":"{src,tests}/**/*.php","path":"/rt/head"}' "a folder brace group Glob in the head passes"
+ok_path Glob '{"pattern":"**/*.{php,twig}"}' "an extension brace group Glob in the workspace passes"
+label_is Glob '{"pattern":"{a,b"}' "braces cannot be expanded (field pattern)" "an unbalanced Glob brace is refused"
+label_is Grep '{"pattern":"x","path":"/rt/head","glob":"{a,b"}' "braces cannot be expanded (field glob)" "an unbalanced Grep brace is refused"
+label_is Glob '{"pattern":"{a,{b,c}}/*.php"}' "braces cannot be expanded (field pattern)" "a nested brace is refused"
+label_is Glob '{"pattern":"a}/*.php"}' "braces cannot be expanded (field pattern)" "a stray closing brace is refused"
+printf '[%s]' "$(call Grep '{"pattern":"x","path":"/mnt/a/out/x","glob":"!{.,}./**"}')" > "$tmp/b.json"
+assert_eq "1" "$(rc "$tmp/b.json" --root /mnt/a/out --grep-any-glob-in-subfolders)" "a brace-spelled .. is refused in subfolder mode too"
+# Without the expander the check fails closed.
+mkdir -p "$tmp/noexp"
+cp "$C" "$tmp/noexp/check-trace-tools.sh"
+printf '[%s]' "$(call Read '{"file_path":"/w/repo/a"}')" > "$tmp/b.json"
+assert_eq "1" "$(bash "$tmp/noexp/check-trace-tools.sh" "$tmp/b.json" >/dev/null 2>&1; echo $?)" "a missing expander fails closed"
+
 # It fails closed on what it cannot read.
 assert_eq "1" "$(rc "$tmp/absent.json")" "a missing trace fails"
 : > "$tmp/empty.json"
