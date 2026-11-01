@@ -238,6 +238,12 @@ assert_eq "0" "$(rc source "$tmp/t.json")" "in source, the same read passes"
 # With one subagent declared, a Grep over the output root reaches no other.
 iso poc-decide Grep "{\"pattern\":\"x\",\"path\":\"$OUT\"}" 0 "in poc-decide, a lone subagent's Grep over the output root passes"
 
+# A subagent in a later job writing a state or shared file inside its own
+# scratch fails.
+for job in poc-decide cross-check; do
+  trace "$tmp/t.json" "${CLEAN_POC[@]}" "$(sub ta1 Write "{\"file_path\":\"$OUT/agents/h01/scratch/findings.json\",\"content\":\"[]\"}")" "$(result "$M")"
+  assert_eq "1" "$(rc "$job" "$tmp/t.json")" "in $job, a subagent writing findings.json in its own scratch fails"
+done
 iso poc-write Glob "{\"pattern\":\"{.,}./h02/scratch/*\",\"path\":\"$H01\"}" 1 "in poc-write, {.,}./h02 from agents/h01 fails"
 assert_contains "$(run poc-write "$tmp/t.json")" "reads another agent's" "and is judged as ../h02"
 iso poc-write Glob "{\"pattern\":\".{.,}/h02/scratch/*\",\"path\":\"$H01\"}" 1 "in poc-write, .{.,}/h02 from agents/h01 fails"
