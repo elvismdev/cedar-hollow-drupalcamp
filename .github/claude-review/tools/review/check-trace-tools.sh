@@ -72,10 +72,11 @@
 #     a brace group is kept whole) each part must end in a literal file
 #     extension or a brace group of extensions (*.php, *.{php,module},
 #     src/**/*.ts). Its last segment may instead be a brace group of plain
-#     names before that extension (**/{a,b}.php); a brace group anywhere
-#     else, or one holding a wildcard, is refused. Every brace expansion must
-#     pass the same rule, so each ends in a file extension. No part or
-#     expansion may hold .git as a
+#     names before that extension (**/{a,b}.php), or a brace group of literal
+#     file names that each end in an extension ({REVIEW.md,AGENTS.md},
+#     src/{a.php,b.yml}); a brace group anywhere else, or one holding a
+#     wildcard, is refused. Every brace expansion must pass the same rule, so
+#     each ends in a file extension. No part or expansion may hold .git as a
 #     whole path segment (.git, .git/..., .../.git, .../.git/..., in any
 #     letter case); a name that only starts with .git, such as *.gitignore,
 #     is not one.
@@ -305,10 +306,14 @@ def resolve(p, base):
 
 # A part ends in a file extension or a brace group of extensions. Its last
 # segment may instead be a brace group of plain names before that extension
-# (**/{a,b}.php); a brace group anywhere else is refused.
+# (**/{a,b}.php), or a brace group of literal file names that each end in an
+# extension ({REVIEW.md,AGENTS.md}, src/{a.php,b.yml}); a brace group anywhere
+# else is refused.
 _EXT = r'\.([A-Za-z0-9]+|\{[A-Za-z0-9]+(,[A-Za-z0-9]+)*\})'
+_NAME_EXT = r'[A-Za-z0-9_.-]*[A-Za-z0-9_-]\.[A-Za-z0-9]+'
 EXTENSION_GLOB = re.compile(r'[^{},]*' + _EXT
-                            + r'|([^{},]*/)?\{[A-Za-z0-9_-]+(,[A-Za-z0-9_-]+)*\}' + _EXT)
+                            + r'|([^{},]*/)?\{[A-Za-z0-9_-]+(,[A-Za-z0-9_-]+)*\}' + _EXT
+                            + r'|([^{},]*/)?\{' + _NAME_EXT + r'(,' + _NAME_EXT + r')*\}')
 
 def grep_glob_allowed(value):
     if not glob_ok(value):
