@@ -28,6 +28,11 @@
 #     <output-root>/agents/<its-id>/scratch/, and never on a file whose name is
 #     one of the shared or combined files that only the top-level agent or the
 #     trusted scripts write (SHARED below), wherever it is.
+#   - No agent, the top-level one included, writes a file named as one of
+#     merge-records.py's trusted outputs (TRUSTED below), wherever it is. In
+#     poc-write the top-level agent writes nothing under agents/, so each
+#     proof-of-concept script can only come from the subagent whose scratch
+#     holds it.
 #   - In poc-write only, a subagent's Read, Glob or Grep may not reach another
 #     agent's agents/<id>/: a target inside one fails, and so does a Glob or Grep
 #     rooted at agents/ or above it, which would search them all. Every brace
@@ -173,6 +178,8 @@ const SHARED = new Set([
   'audit-history.json', 'select.json', 'poc-manifest.json', 'cross-check.json',
   'tie-break.json', 'validator-errors.txt',
 ]);
+// merge-records.py's trusted outputs, which no agent writes.
+const TRUSTED = new Set(['trusted-meta.json', 'tie-break-inputs.json', 'select.json', 'list.json']);
 const MODELS = new Set([model, helper].filter(Boolean));
 
 const isObj = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
@@ -297,6 +304,23 @@ function isolationRefusal(name, targets, id) {
   return null;
 }
 
+// The absolute, normalised path a Write or Edit names, or null when
+// check-trace-tools.sh has refused its path already.
+const writePath = (c) => ((c.name === 'Write' || c.name === 'Edit') && isObj(c.input)
+  && typeof c.input.file_path === 'string' && c.input.file_path.startsWith('/')
+  ? path.normalize(c.input.file_path) : null);
+
+// Rules for every agent's writes.
+for (const call of calls) {
+  const p = writePath(call.c);
+  if (p === null) continue;
+  if (TRUSTED.has(path.basename(p))) {
+    refuse(call, "an agent writes one of merge-records.py's trusted outputs");
+  } else if (job === 'poc-write' && call.parent === null && under(p, agentsDir)) {
+    refuse(call, 'the top-level agent writes under agents/, where only each subagent writes its own script');
+  }
+}
+
 let attributed = 0;
 const perSubagent = new Map();
 for (const call of calls) {
@@ -314,7 +338,9 @@ for (const call of calls) {
   if (c.name === 'Write' || c.name === 'Edit') {
     if (typeof a.file_path !== 'string' || !a.file_path.startsWith('/')) continue; // refused by check-trace-tools
     const p = path.normalize(a.file_path);
-    if (SHARED.has(path.basename(p))) {
+    if (TRUSTED.has(path.basename(p))) {
+      // refused above
+    } else if (SHARED.has(path.basename(p))) {
       refuse(call, 'a subagent writes a shared or combined file');
     } else if (id === null || !under(p, path.join(agentsDir, id, 'scratch')) || p === path.join(agentsDir, id, 'scratch')) {
       refuse(call, 'a subagent writes outside its own agents/<id>/scratch/');

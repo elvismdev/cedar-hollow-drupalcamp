@@ -134,6 +134,25 @@ sub_write "$OUT/agents/h01/scratch/cross-check.json" 1 "a subagent writing a com
 trace "$tmp/t.json" "${CLEAN[@]}" "$(sub ta1 Edit "{\"file_path\":\"$OUT/run-metadata.json\",\"old_string\":\"a\",\"new_string\":\"b\"}")" "$(result "$M")"
 assert_eq "1" "$(rc source "$tmp/t.json")" "a subagent editing run-metadata.json fails"
 
+# merge-records.py's trusted outputs: no agent writes them, the top-level
+# agent included, wherever they are.
+for f in trusted-meta.json tie-break-inputs.json select.json list.json; do
+  trace "$tmp/t.json" "${CLEAN[@]}" "$(top Write "{\"file_path\":\"$OUT/$f\",\"content\":\"{}\"}")" "$(result "$M")"
+  assert_eq "1" "$(rc source "$tmp/t.json")" "the top-level agent writing $f fails"
+  assert_contains "$(run source "$tmp/t.json")" "trusted outputs" "and says why for $f"
+done
+trace "$tmp/t.json" "${CLEAN[@]}" "$(top Edit "{\"file_path\":\"$OUT/state/list.json\",\"old_string\":\"a\",\"new_string\":\"b\"}")" "$(result "$M")"
+assert_eq "1" "$(rc cross-check "$tmp/t.json")" "a top-level Edit of list.json in a subdirectory fails"
+trace "$tmp/t.json" "${CLEAN[@]}" "$(sub ta1 Write "{\"file_path\":\"$OUT/agents/h01/scratch/trusted-meta.json\",\"content\":\"{}\"}")" "$(result "$M")"
+assert_eq "1" "$(rc source "$tmp/t.json")" "a subagent writing trusted-meta.json in its own scratch fails"
+# In poc-write the top-level agent writes nothing under agents/.
+trace "$tmp/t.json" "${CLEAN_POC[@]}" "$(top Write "{\"file_path\":\"$OUT/agents/h01/scratch/poc.php\",\"content\":\"x\"}")" "$(result "$M")"
+assert_eq "1" "$(rc poc-write "$tmp/t.json")" "in poc-write, a top-level write under agents/ fails"
+assert_contains "$(run poc-write "$tmp/t.json")" "the top-level agent writes under agents/" "and says why"
+assert_eq "0" "$(rc poc-decide "$tmp/t.json")" "in poc-decide, the same top-level write passes"
+trace "$tmp/t.json" "${CLEAN_POC[@]}" "$(top Write "{\"file_path\":\"$OUT/poc-manifest.json\",\"content\":\"{}\"}")" "$(result "$M")"
+assert_eq "0" "$(rc poc-write "$tmp/t.json")" "in poc-write, the top-level agent writing poc-manifest.json passes"
+
 # Attribution: each subagent call declares one valid, unique id.
 attr () { # description message
   trace "$tmp/t.json" "${CLEAN[@]}" "$(agent ta2 "$1")" "$(sub ta2 Read "{\"file_path\":\"$WS/tracked.txt\"}")" "$(result "$M")"
@@ -152,8 +171,11 @@ trace "$tmp/t.json" "$INIT" "$(top Task '{"description":"agent-id: v1 verify","p
 assert_eq "0" "$(rc cross-check "$tmp/t.json")" "a Task call binds its subagent like an Agent call"
 
 # Isolation: in poc-write a subagent may not reach another agent's directory.
+# The clean run without the top-level agent's write under agents/, which
+# poc-write refuses.
+CLEAN_POC=("${CLEAN[@]:0:3}" "${CLEAN[@]:4}")
 iso () { # job tool input expected-rc message
-  trace "$tmp/t.json" "${CLEAN[@]}" "$(sub ta1 "$2" "$3")" "$(result "$M")"
+  trace "$tmp/t.json" "${CLEAN_POC[@]}" "$(sub ta1 "$2" "$3")" "$(result "$M")"
   assert_eq "$4" "$(rc "$1" "$tmp/t.json")" "$5"
 }
 OTHER="$OUT/agents/h02/scratch/poc.php"
