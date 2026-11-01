@@ -41,9 +41,16 @@ msg () { # parent-or-null name input-json
 }
 top () { msg null "$1" "$2"; }
 sub () { msg "$1" "$2" "$3"; }
-agent () { # call-id description [run_in_background]
+# agent <call-id> <description> [run_in_background] [result]: the subagent
+# call and, unless result is "none", its tool_result holding a foreground
+# report (or the result text given), as two messages.
+agent () {
   printf '{"type":"assistant","parent_tool_use_id":null,"message":{"model":"%s","content":[{"type":"tool_use","id":"%s","name":"Agent","input":{"description":"%s","prompt":"p","subagent_type":"general-purpose","run_in_background":%s}}]}}' \
     "$M" "$1" "$2" "${3:-false}"
+  if [ "${4:-}" != none ]; then
+    printf ',{"type":"user","parent_tool_use_id":null,"message":{"content":[{"type":"tool_result","tool_use_id":"%s","content":[{"type":"text","text":"%s"}]}]}}' \
+      "$1" "${4:-Done: read the files and wrote the entry.}"
+  fi
 }
 result () { # model...
   local usage="" m
@@ -112,17 +119,30 @@ for flag in true '"false"' '"yes"'; do
   assert_eq "0" "$(rc source "$tmp/t.json")" "run_in_background $flag with a foreground subagent and its calls passes"
 done
 # A subagent call whose result is an async launch ran in the background, even
-# after some of its calls reached the trace; a foreground report passes.
-agent_result () { # call-id text
-  printf '{"type":"user","parent_tool_use_id":null,"message":{"content":[{"type":"tool_result","tool_use_id":"%s","content":[{"type":"text","text":"%s"}]}]}}' "$1" "$2"
+# after some of its calls reached the trace. A launch is a plain string or a
+# single text block that starts with the text in async-launch.txt; a report
+# that quotes the phrase elsewhere passes.
+LAUNCH="$(cat "$(dirname "$C")/async-launch.txt")"
+launch_trace () { # result-json
+  trace "$tmp/t.json" "${CLEAN[@]}" "$(agent ta2 "agent-id: h02 hunt" false none)" "$(sub ta2 Read "{\"file_path\":\"$WS/tracked.txt\"}")" \
+    "{\"type\":\"user\",\"parent_tool_use_id\":null,\"message\":{\"content\":[{\"type\":\"tool_result\",\"tool_use_id\":\"ta2\",\"content\":$1}]}}" "$(result "$M")"
 }
-trace "$tmp/t.json" "${CLEAN[@]}" "$(agent ta2 "agent-id: h02 hunt" false)" "$(sub ta2 Read "{\"file_path\":\"$WS/tracked.txt\"}")" \
-  "$(agent_result ta2 "$(cat "$(dirname "$C")/async-launch.txt") successfully. agentId: a1b2")" "$(result "$M")"
-assert_eq "1" "$(rc source "$tmp/t.json")" "a subagent call whose result is an async launch fails, though calls are attributed"
-assert_contains "$(run source "$tmp/t.json")" "returned an async launch" "and says why"
-trace "$tmp/t.json" "${CLEAN[@]}" "$(agent ta2 "agent-id: h02 hunt" false)" "$(sub ta2 Read "{\"file_path\":\"$WS/tracked.txt\"}")" \
-  "$(agent_result ta2 "Read tracked.txt; nothing found.")" "$(result "$M")"
+launch_trace "[{\"type\":\"text\",\"text\":\"$LAUNCH successfully. agentId: a1b2\"}]"
+assert_eq "1" "$(rc source "$tmp/t.json")" "a subagent call whose result is an async launch block fails, though calls are attributed"
+assert_contains "$(run source "$tmp/t.json")" "Agent call" "the refusal names the call"
+assert_contains "$(run source "$tmp/t.json")" "(agent id h02) returned an async launch" "and the agent id"
+launch_trace "\"$LAUNCH successfully. agentId: a1b2\""
+assert_eq "1" "$(rc source "$tmp/t.json")" "an async launch as a plain string fails"
+launch_trace "[{\"type\":\"text\",\"text\":\"Read tracked.txt. The file mentions $LAUNCH successfully in a log line.\"}]"
+assert_eq "0" "$(rc source "$tmp/t.json")" "a report quoting the launch text mid-text passes"
+launch_trace "[{\"type\":\"text\",\"text\":\"Summary first.\"},{\"type\":\"text\",\"text\":\"$LAUNCH successfully.\"}]"
+assert_eq "0" "$(rc source "$tmp/t.json")" "a report of several blocks is not a launch"
+launch_trace "[{\"type\":\"text\",\"text\":\"Read tracked.txt; nothing found.\"}]"
 assert_eq "0" "$(rc source "$tmp/t.json")" "a subagent call whose result is the subagent's report passes"
+# A subagent call with no result cannot be shown to have finished.
+trace "$tmp/t.json" "${CLEAN[@]}" "$(agent ta2 "agent-id: h02 hunt" false none)" "$(sub ta2 Read "{\"file_path\":\"$WS/tracked.txt\"}")" "$(result "$M")"
+assert_eq "1" "$(rc source "$tmp/t.json")" "a subagent call with no result fails"
+assert_contains "$(run source "$tmp/t.json")" "has no result in the trace" "and says why"
 # Background subagents, as Claude Code records them happening.
 trace "$tmp/t.json" "${CLEAN[@]}" "$(agent ta2 "agent-id: h02 hunt" true)" '{"type":"system","subtype":"task_started","tool_use_id":"ta2","is_backgrounded":true}' "$(sub ta2 Read "{\"file_path\":\"$WS/tracked.txt\"}")" "$(result "$M")"
 assert_eq "1" "$(rc source "$tmp/t.json")" "a call whose task_started event is backgrounded fails, whatever it asked for"
@@ -224,7 +244,8 @@ assert_eq "1" "$(rc source "$tmp/t.json")" "a call whose parent is no subagent c
 assert_contains "$(run source "$tmp/t.json")" "cannot be attributed" "and says why"
 # The other name of the subagent tool binds the same way.
 trace "$tmp/t.json" "$INIT" "$(top Task '{"description":"agent-id: v1 verify","prompt":"p"}' | sed 's/"id":"t[0-9]*"/"id":"tk1"/')" \
-  "$(sub tk1 Write "{\"file_path\":\"$OUT/agents/v1/scratch/entry.json\",\"content\":\"{}\"}")" "$(result "$M")"
+  "$(sub tk1 Write "{\"file_path\":\"$OUT/agents/v1/scratch/entry.json\",\"content\":\"{}\"}")" \
+  '{"type":"user","parent_tool_use_id":null,"message":{"content":[{"type":"tool_result","tool_use_id":"tk1","content":"Done."}]}}' "$(result "$M")"
 assert_eq "0" "$(rc cross-check "$tmp/t.json")" "a Task call binds its subagent like an Agent call"
 
 # Isolation: in poc-write a subagent may not reach another agent's directory.

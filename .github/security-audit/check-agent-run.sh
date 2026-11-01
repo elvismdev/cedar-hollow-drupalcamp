@@ -27,9 +27,15 @@
 #     subagent in the foreground): no task_started event marked
 #     is_backgrounded, no background count in the result's subagent_stats,
 #     no subagent call whose result is an async launch rather than the
-#     subagent's report (the text in async-launch.txt, which judge-canary.sh
-#     reads too; it catches a subagent that backgrounds after some calls),
-#     and its calls in the trace (below).
+#     subagent's report, and its calls in the trace (below). A launch result
+#     is a plain string or a single text block that starts with the text in
+#     async-launch.txt, as every background launch in Claude Code 2.1.316
+#     does; a report that quotes the phrase elsewhere is not one. This
+#     catches a subagent that backgrounds after some calls; judge-canary.sh
+#     reads the same file. Its refusal names the call's position and the
+#     declared agent id, which has the canonical form below.
+#   - Every subagent call has a tool_result in the trace: a call with none
+#     cannot be shown to have finished in the foreground.
 #   - A subagent's Write or Edit lands under
 #     <output-root>/agents/<its-id>/scratch/, and never on a file whose name is
 #     one of the shared or combined files that only the top-level agent or the
@@ -283,8 +289,11 @@ for (const m of msgs) {
 // subagent's report, started it in the background, whatever it did before.
 const LAUNCH = fs.readFileSync(launchFile, 'utf8').trim();
 if (!LAUNCH) { say('the async launch text is empty, so a background launch cannot be detected'); process.exit(1); }
-const textOf = (r) => (typeof r.content === 'string' ? r.content
-  : Array.isArray(r.content) ? r.content.filter(isObj).map((b) => (typeof b.text === 'string' ? b.text : '')).join('\n') : '');
+// A launch is one plain string or one text block; a report of several
+// blocks, or text that only quotes the phrase, is not.
+const launchText = (r) => (typeof r.content === 'string' ? r.content
+  : Array.isArray(r.content) && r.content.length === 1 && isObj(r.content[0]) && r.content[0].type === 'text'
+    && typeof r.content[0].text === 'string' ? r.content[0].text : null);
 function* toolResults(node) {
   if (isObj(node)) {
     if (node.type === 'tool_result') yield node;
@@ -293,11 +302,20 @@ function* toolResults(node) {
     for (const v of node) yield* toolResults(v);
   }
 }
+const callById = new Map(calls.filter(({ c }) => typeof c.id === 'string').map((call) => [call.c.id, call]));
+const answered = new Set();
 for (const r of toolResults(msgs)) {
-  if (typeof r.tool_use_id === 'string' && subagents.has(r.tool_use_id) && textOf(r).includes(LAUNCH)) {
-    bad += 1;
-    say('a subagent call returned an async launch: the subagent ran in the background');
+  if (typeof r.tool_use_id !== 'string' || !subagents.has(r.tool_use_id)) continue;
+  answered.add(r.tool_use_id);
+  const text = launchText(r);
+  if (text !== null && text.startsWith(LAUNCH)) {
+    const id = subagents.get(r.tool_use_id);
+    refuse(callById.get(r.tool_use_id),
+      `(agent id ${id === null ? 'not valid' : id}) returned an async launch: the subagent ran in the background`);
   }
+}
+for (const [callId] of subagents) {
+  if (!answered.has(callId)) refuse(callById.get(callId), 'has no result in the trace, so it cannot be shown to have finished in the foreground');
 }
 
 // Brace expansion shared with check-trace-tools.sh: an array of expansions,
