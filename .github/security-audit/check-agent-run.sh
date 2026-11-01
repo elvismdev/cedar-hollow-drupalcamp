@@ -36,7 +36,7 @@
 #     Glob pattern with a .. segment at or after its first wildcard, or a Grep
 #     glob with any .. segment, fails, because where it lands cannot be judged
 #     without matching it on disk; so do braces that cannot be expanded with
-#     confidence (a backslash, a nested or unbalanced brace, or more than 1024
+#     confidence (a backslash, an unbalanced brace, or more than 256
 #     expansions). The expander is check-trace-tools.sh's own,
 #     expand-braces.cjs, so both checks judge the same expansions.
 #   - Every model in a result's modelUsage, and on every assistant message
