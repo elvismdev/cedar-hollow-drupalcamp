@@ -379,13 +379,29 @@ class DecideTest(MergeTest):
             os.link(path, os.path.join(self.tmp, "second-name.json"))
         self.assertIn("run record refused: hardlinked", self.promotion_case(hardlink))
 
-    def test_promotion_refuses_an_oversized_file(self):
-        def grow(path):
-            with open(path, encoding="utf-8") as handle:
-                record = json.load(handle)
-            record["stdout"] = "x" * (64 * 1024)
-            self.write(path, record)
-        self.assertIn("run record refused: oversized", self.promotion_case(grow))
+    def sized(self, path, total):
+        """Pads a run record's stdout so the file is exactly total bytes."""
+        with open(path, encoding="utf-8") as handle:
+            record = json.load(handle)
+        record["stdout"] = ""
+        record["stdout"] = "x" * (total - len(json.dumps(record)))
+        self.write(path, record)
+        self.assertEqual(os.path.getsize(path), total)
+
+    def test_promotion_refuses_a_file_over_one_mebibyte(self):
+        self.assertIn("run record refused: oversized",
+                      self.promotion_case(lambda path: self.sized(path, 1024 * 1024 + 1)))
+
+    def test_promotion_accepts_a_file_just_under_one_mebibyte(self):
+        manifest = self.setup_items(["g-1"])
+        self.sized(os.path.join(self.records, "poc-run-0-b.json"), 1024 * 1024 - 1)
+        self.subagent("decider-g", self.decided("g-1", "confirmed", confirmed("g-1")))
+        self.decide(manifest)
+        self.assertEqual(self.record("g-1")["verdict"], "confirmed")
+        promoted = os.path.join(self.out, "agents", "decider-g", "artifacts", "b.json")
+        self.assertEqual(os.path.getsize(promoted), 1024 * 1024 - 1)
+        self.assert_validators_pass()
+
 
     def test_malformed_entries_are_discarded(self):
         fps = ["m-prose", "m-dupkey", "m-shape", "m-unattributed", "m-fp"]

@@ -26,7 +26,7 @@
 # Run records in <records> are files named poc-run-<n>-<slot>.json; each is
 # matched to its item by the fingerprint and slot inside it. A record is used
 # only if it opens without following links, is a regular file with one link and
-# under 64 KiB, and does not change while it is read; it is then copied, never
+# at most 1 MiB, and does not change while it is read; it is then copied, never
 # moved, to agents/<decider-id>/artifacts/<slot>.json under <entries>.
 #
 # Run ids are the GitHub run id from run-metadata.json, stored as numbers.
@@ -52,7 +52,7 @@ HISTORY = "audit-history.json"
 
 MAX_STATE_BYTES = 5 * 1024 * 1024
 MAX_ENTRY_BYTES = 1024 * 1024
-MAX_ARTIFACT_BYTES = 64 * 1024
+MAX_ARTIFACT_BYTES = 1024 * 1024
 MAX_TEXT = 4096
 POC_SLOTS = 6
 CROSS_CHECK_SLOTS = 30
@@ -116,14 +116,14 @@ def parse_strict(data):
 
 
 def read_fd(fd, limit):
-    """Reads a regular file with one link from an open descriptor, refusing one
-    over the limit or one that changes while it is read. Returns the bytes."""
+    """Reads a regular file with one link and at most limit bytes from an open
+    descriptor, refusing one that changes while it is read. Returns the bytes."""
     before = os.fstat(fd)
     if not stat.S_ISREG(before.st_mode):
         raise Refused("not a regular file")
     if before.st_nlink != 1:
         raise Refused("hardlinked")
-    if before.st_size >= limit:
+    if before.st_size > limit:
         raise Refused("oversized")
     chunks, total = [], 0
     while True:
@@ -131,7 +131,7 @@ def read_fd(fd, limit):
         if not chunk:
             break
         total += len(chunk)
-        if total >= limit:
+        if total > limit:
             raise Refused("oversized")
         chunks.append(chunk)
     after = os.fstat(fd)

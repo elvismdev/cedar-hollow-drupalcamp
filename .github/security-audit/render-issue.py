@@ -47,7 +47,7 @@ DISPUTED = "disputed.json"
 HISTORY = "audit-history.json"
 
 MAX_STATE_BYTES = 5 * 1024 * 1024
-MAX_ARTIFACT_BYTES = 64 * 1024
+MAX_ARTIFACT_BYTES = 1024 * 1024
 MAX_BODY = 60000
 EXCERPT = 1500
 
@@ -92,7 +92,7 @@ def _reject_constant(name):
 
 def read_fd_json(fd, limit):
     info = os.fstat(fd)
-    if not stat.S_ISREG(info.st_mode) or info.st_size >= limit:
+    if not stat.S_ISREG(info.st_mode) or info.st_size > limit:
         raise Refused("not a regular file under the limit")
     data = b""
     while True:
@@ -100,7 +100,7 @@ def read_fd_json(fd, limit):
         if not chunk:
             break
         data += chunk
-        if len(data) >= limit:
+        if len(data) > limit:
             raise Refused("oversized")
     return json.loads(data.decode("utf-8"), object_pairs_hook=_unique_pairs, parse_constant=_reject_constant)
 
