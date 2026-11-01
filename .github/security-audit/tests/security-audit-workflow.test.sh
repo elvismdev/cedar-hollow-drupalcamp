@@ -87,7 +87,7 @@ PERMISSIONS = {
     "source": {"contents": "read", "actions": "read", "issues": "read"},
     "build-site": {"contents": "read"}, "poc-write": {"contents": "read"}, "poc-run": {"contents": "read"},
     "poc-decide": {"contents": "read"}, "cross-check": {"contents": "read"},
-    "report": {"contents": "read", "issues": "write", "actions": "read"},
+    "report": {"contents": "read", "issues": "write"},
 }
 SECRETS = {
     "prepare": set(), "build-site": set(), "poc-run": {"AUDIT_SANDBOX_AGE_KEY"},

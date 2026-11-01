@@ -1643,10 +1643,12 @@ jobs:
     runs-on: ubuntu-24.04
     environment: claude-agents
     timeout-minutes: 10
+    # issues: write for the label and the issue. The hand-offs are this run's
+    # artifacts, which download-artifact reads with the runner's own token, so
+    # no actions permission is needed.
     permissions:
       contents: read
       issues: write
-      actions: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
