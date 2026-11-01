@@ -1,0 +1,721 @@
+#!/usr/bin/env bash
+# Structural assertions on .github/workflows/security-audit.yml, read with
+# PyYAML (which reads the bare key "on" as True): the trigger and its inputs,
+# each job's needs, if:, environment, permissions and secrets, pinned actions,
+# persist-credentials: false on every checkout, no ${{ }} inside a run:, the
+# agent steps' settings, the trusted steps after each agent step and how they
+# are gated, every call of an audit or review script with the argument count
+# its usage line allows, artifact retention and the audit-state upload, the
+# prompt variables, and the key canaries. A mutation self-test proves the
+# check fails on each kind of break it looks for.
+set -euo pipefail
+# shellcheck source=../../claude-review/tools/agent/test/assert.sh
+. "$(dirname "$0")/../../claude-review/tools/agent/test/assert.sh"
+SA="$(cd "$(dirname "$0")/.." && pwd)"
+ROOT="$(cd "$SA/../.." && pwd)"
+WORKFLOW="$ROOT/.github/workflows/security-audit.yml"
+tmp="$(mktemp -d)"
+trap 'rm -rf "$tmp"' EXIT
+python3 -I -c 'import yaml' 2>/dev/null || { echo "FAIL: PyYAML is not installed, so the workflow cannot be read" >&2; exit 1; }
+
+# check <workflow file>: prints each failed assertion, exits 1 if any failed.
+check() {
+  python3 -I - "$1" "$ROOT" <<'PY'
+import json, os, re, shlex, subprocess, sys, tempfile, yaml
+
+path, root = sys.argv[1], sys.argv[2]
+wf = yaml.safe_load(open(path))
+errors = []
+def err(msg):
+    errors.append(msg)
+def read(rel):
+    with open(root + "/" + rel) as f:
+        return f.read()
+
+SA = ".github/security-audit"
+CR = ".github/claude-review"
+prepare_src = read(SA + "/prepare.sh")
+
+# ---------------------------------------------------------------- trigger
+trigger = wf.get(True, wf.get("on"))
+if not isinstance(trigger, dict) or list(trigger) != ["workflow_dispatch"]:
+    err("the trigger must be workflow_dispatch only, got %r" % (list(trigger) if isinstance(trigger, dict) else trigger,))
+    trigger = {"workflow_dispatch": {}}
+inputs = (trigger.get("workflow_dispatch") or {}).get("inputs") or {}
+if set(inputs) != {"publish", "canary"}:
+    err("the dispatch inputs must be publish and canary, got %r" % sorted(inputs))
+pub = inputs.get("publish") or {}
+if pub.get("type") != "boolean" or pub.get("default") is not True:
+    err("publish must be a boolean defaulting to true")
+can = inputs.get("canary") or {}
+case = re.search(r'case "\$canary" in(.*?)esac', prepare_src, re.S)
+canaries = set()
+for pattern in re.findall(r"^\s*([a-z|-]+)\)", case.group(1) if case else "", re.M):
+    canaries.update(pattern.split("|"))
+if can.get("type") != "choice" or can.get("default") != "none" or set(can.get("options") or []) != canaries \
+        or len(can.get("options") or []) != len(canaries):
+    err("canary must be a choice defaulting to none whose options are prepare.sh's, %s" % sorted(canaries))
+
+if wf.get("permissions") != {}:
+    err("the workflow's top-level permissions must be {}")
+conc = wf.get("concurrency") or {}
+if conc.get("group") != "security-audit" or conc.get("cancel-in-progress") is not False:
+    err("concurrency must be group security-audit with cancel-in-progress false")
+
+# ---------------------------------------------------------------- jobs
+jobs = wf.get("jobs") or {}
+all_jobs = re.search(r"ALL_JOBS='(\[.*?\])'", prepare_src)
+expected_jobs = json.loads(all_jobs.group(1)) if all_jobs else []
+if list(jobs) != expected_jobs:
+    err("the job ids must be prepare.sh's run_jobs names in order, %s, got %s" % (expected_jobs, list(jobs)))
+if "name" in (jobs.get("report") or {}) and jobs["report"]["name"] != "report":
+    err("the publishing job's display name must be report")
+
+NEEDS = {
+    "source": {"prepare"}, "build-site": {"prepare"},
+    "poc-write": {"prepare", "source", "build-site"},
+    "poc-run": {"prepare", "poc-write", "build-site"},
+    "poc-decide": {"prepare", "source", "poc-write", "poc-run"},
+    "cross-check": {"prepare", "source", "poc-write", "poc-run", "poc-decide"},
+    "report": {"prepare", "source", "build-site", "poc-write", "poc-run", "poc-decide", "cross-check"},
+}
+ENVIRONMENT = {"prepare": None, "source": "claude-agents", "build-site": None, "poc-write": "claude-agents",
+               "poc-run": "audit-sandbox", "poc-decide": "claude-agents", "cross-check": "claude-agents",
+               "report": "claude-agents"}
+PERMISSIONS = {
+    "prepare": {"contents": "read"},
+    "source": {"contents": "read", "actions": "read", "issues": "read"},
+    "build-site": {"contents": "read"}, "poc-write": {"contents": "read"}, "poc-run": {"contents": "read"},
+    "poc-decide": {"contents": "read"}, "cross-check": {"contents": "read"},
+    "report": {"contents": "read", "issues": "write"},
+}
+SECRETS = {
+    "prepare": set(), "build-site": set(), "poc-run": {"AUDIT_SANDBOX_AGE_KEY"},
+    "source": {"CLAUDE_CODE_OAUTH_TOKEN", "AUDIT_AGENTS_AGE_KEY"},
+    "poc-write": {"CLAUDE_CODE_OAUTH_TOKEN", "AUDIT_AGENTS_AGE_KEY"},
+    "poc-decide": {"CLAUDE_CODE_OAUTH_TOKEN", "AUDIT_AGENTS_AGE_KEY"},
+    "cross-check": {"CLAUDE_CODE_OAUTH_TOKEN", "AUDIT_AGENTS_AGE_KEY"},
+    "report": {"CLAUDE_CODE_OAUTH_TOKEN", "AUDIT_AGENTS_AGE_KEY"},
+}
+AGENT_STEPS = {"source": ["source", "repair"], "poc-write": ["poc_write"], "poc-decide": ["poc_decide"],
+               "cross-check": ["cross_check", "tie_break"]}
+ACTION = "anthropics/claude-code-action@ae68417a745a5df4b2124873632bd73a2255e6f6"
+MODEL_VARS = {"ANTHROPIC_DEFAULT_SONNET_MODEL", "ANTHROPIC_DEFAULT_HAIKU_MODEL", "CLAUDE_CODE_SUBAGENT_MODEL"}
+
+def norm(text):
+    return re.sub(r"\s+", " ", str(text or "")).strip()
+
+def runs(step):
+    """The run block as logical lines, with backslash continuations joined."""
+    return re.sub(r"\\\n\s*", " ", step.get("run") or "").splitlines()
+
+for name, job in jobs.items():
+    if not isinstance(job, dict):
+        err("job %s is not a mapping" % name)
+        continue
+    steps = job.get("steps") or []
+    text = json.dumps(job)
+    needs = job.get("needs") or []
+    needs = {needs} if isinstance(needs, str) else set(needs)
+    cond = norm(job.get("if"))
+
+    if name != "prepare":
+        if needs != NEEDS.get(name):
+            err("%s needs must be %s, got %s" % (name, sorted(NEEDS.get(name, [])), sorted(needs)))
+        for part in ("needs.prepare.outputs.go == 'true'", "github.ref == 'refs/heads/main'",
+                     "contains(fromJSON(needs.prepare.outputs.run_jobs), '%s')" % name):
+            if part not in cond:
+                err("%s if: must contain %s" % (name, part))
+        if name in ("cross-check", "report"):
+            if not cond.startswith("always() && "):
+                err("%s if: must start with always()" % name)
+        elif "always()" in cond:
+            err("%s if: must not use always()" % name)
+        if name == "cross-check" and "needs.source.result == 'success'" not in cond:
+            err("cross-check if: must require needs.source.result == 'success'")
+    for used in set(re.findall(r"needs\.([A-Za-z0-9_-]+)\.", text)):
+        if used not in needs:
+            err("%s uses needs.%s without listing %s in needs" % (name, used, used))
+
+    if job.get("environment") != ENVIRONMENT.get(name):
+        err("%s environment must be %r, got %r" % (name, ENVIRONMENT.get(name), job.get("environment")))
+    if job.get("permissions") != PERMISSIONS.get(name):
+        err("%s permissions must be %r, got %r" % (name, PERMISSIONS.get(name), job.get("permissions")))
+    held = set(re.findall(r"secrets\.([A-Za-z0-9_]+)", text))
+    if held != SECRETS.get(name):
+        err("%s secrets must be %s, got %s" % (name, sorted(SECRETS.get(name, [])), sorted(held)))
+    if "secrets." in json.dumps(job.get("env") or {}):
+        err("%s holds a secret in its job-level env" % name)
+    if name in ("source", "poc-write", "poc-decide", "cross-check"):
+        for key, leaf in (("AUDIT_INPUT_DIR", "in"), ("AUDIT_OUTPUT_DIR", "out")):
+            if (job.get("env") or {}).get(key) != "/mnt/audit/%s/%s" % (name, leaf):
+                err("%s %s must be /mnt/audit/%s/%s" % (name, key, name, leaf))
+
+    agent_ids = []
+    for i, st in enumerate(steps):
+        uses = str(st.get("uses", ""))
+        if uses and not re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+@[0-9a-f]{40}", uses):
+            err("%s step %d uses %s, not pinned to a full commit sha" % (name, i, uses))
+        if uses.startswith("actions/checkout@"):
+            pc = (st.get("with") or {}).get("persist-credentials")
+            if pc is not False and str(pc).lower() != "false":
+                err("%s step %d: checkout must set persist-credentials: false" % (name, i))
+        if "${{" in str(st.get("run", "")):
+            err("%s step %d: ${{ }} inside run:; pass it through env:" % (name, i))
+        if uses.startswith("anthropics/claude-code-action@"):
+            agent_ids.append(i)
+            w = st.get("with") or {}
+            if uses != ACTION:
+                err("%s step %d: claude-code-action must be pinned to ae68417" % (name, i))
+            if st.get("continue-on-error") is not True:
+                err("%s step %d: an agent step needs continue-on-error: true" % (name, i))
+            if not isinstance(st.get("timeout-minutes"), int):
+                err("%s step %d: an agent step needs its own timeout-minutes" % (name, i))
+            if str(w.get("show_full_output")) != "false" or str(w.get("display_report")) != "false":
+                err("%s step %d: show_full_output and display_report must be 'false'" % (name, i))
+            if norm(w.get("claude_code_oauth_token")) != "${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}":
+                err("%s step %d: the agent's token must be secrets.CLAUDE_CODE_OAUTH_TOKEN" % (name, i))
+            if set(st.get("env") or {}) != MODEL_VARS:
+                err("%s step %d: the agent step's env must set exactly %s" % (name, i, sorted(MODEL_VARS)))
+            if not re.fullmatch(r"\$\{\{ steps\.args-[a-z-]+\.outputs\.claude_args \}\}", norm(w.get("claude_args"))):
+                err("%s step %d: claude_args must come from a compose step" % (name, i))
+    if len(agent_ids) != len(AGENT_STEPS.get(name, [])):
+        err("%s must have %d agent step(s), has %d" % (name, len(AGENT_STEPS.get(name, [])), len(agent_ids)))
+
+    # The trusted steps after each agent step, up to the next agent step.
+    for k, ai in enumerate(agent_ids):
+        agent = steps[ai]
+        aid = agent.get("id")
+        end = agent_ids[k + 1] if k + 1 < len(agent_ids) else len(steps)
+        window = steps[ai + 1:end]
+        check = [s for s in window if any("check-agent-run.sh" in l and "--fingerprint" not in l for l in runs(s))]
+        outcome = [s for s in window if any("agent-outcome.sh" in l for l in runs(s))]
+        if len(check) != 1 or len(outcome) != 1:
+            err("%s agent step %s needs exactly one run check and one outcome step after it" % (name, aid))
+            continue
+        check, outcome = check[0], outcome[0]
+        for label, st in (("run check", check), ("outcome", outcome)):
+            if "always()" not in norm(st.get("if")):
+                err("%s %s after %s must have if: always()" % (name, label, aid))
+            if norm((st.get("env") or {}).get("TRACE")) != "${{ steps.%s.outputs.execution_file }}" % aid:
+                err("%s %s after %s must read that step's execution_file" % (name, label, aid))
+        call = [l for l in runs(outcome) if "agent-outcome.sh" in l][0]
+        args = shlex.split(call.split("agent-outcome.sh", 1)[1].split(")", 1)[0])
+        if len(args) < 5 or args[4] != str(agent.get("timeout-minutes")):
+            err("%s outcome after %s must pass the agent step's timeout-minutes" % (name, aid))
+        check_id = check.get("id")
+        for st in window:
+            body = st.get("run") or ""
+            gated = "merge-records.py" in body or "run-validators.sh" in body
+            if gated and "always()" in norm(st.get("if")) \
+                    and "steps.%s.outcome == 'success'" % check_id not in norm(st.get("if")):
+                err("%s step %r after %s runs with always() without requiring the run check %s" % (name, st.get("name"), aid, check_id))
+            canary_only = "needs.prepare.outputs.canary != 'none'" in norm(st.get("if")) \
+                or "steps.canary-trace.outcome" in norm(st.get("if"))
+            if ("seal.sh seal" in body or str(st.get("uses", "")).startswith("actions/upload-artifact@")) \
+                    and "always()" in norm(st.get("if")) and not canary_only:
+                err("%s hand-off step %r must not run with always()" % (name, st.get("name")))
+
+    # Every agent job decides which parts run in a plan step, and on a canary
+    # run merges nothing; poc-decide and cross-check, which no canary runs,
+    # carry the plan guard on every step after their first agent step.
+    if name in ("poc-decide", "cross-check"):
+        plan = next((st for st in steps if st.get("id") == "plan"), None)
+        if plan is None or "none) agent=true merge=true handoff=true" not in (plan.get("run") or "") \
+                or "exit 1" not in (plan.get("run") or ""):
+            err("%s needs a plan step that runs everything on no canary and fails on any canary" % name)
+        for st in steps[agent_ids[0] if agent_ids else 0:]:
+            if st.get("id") == "cause":
+                continue
+            c = norm(st.get("if"))
+            if "steps.plan.outputs." not in c:
+                err("%s step %r after the agent step lacks the steps.plan guard" % (name, st.get("name") or st.get("uses")))
+            if ("seal.sh seal" in (st.get("run") or "") or str(st.get("uses", "")).startswith("actions/upload-artifact@")) \
+                    and "steps.plan.outputs.handoff == 'true'" not in c:
+                err("%s hand-off step %r must be guarded by steps.plan.outputs.handoff" % (name, st.get("name") or st.get("uses")))
+    if name in ("source", "poc-write", "poc-decide", "cross-check"):
+        for st in steps:
+            if "merge-records.py" in (st.get("run") or "") or "run-validators.sh" in (st.get("run") or ""):
+                c = norm(st.get("if"))
+                if "steps.plan.outputs.merge == 'true'" not in c and "steps.check-repair.outcome" not in c:
+                    err("%s step %r must be skipped on a canary run (steps.plan.outputs.merge)" % (name, st.get("name")))
+
+# ---------------------------------------------------------------- artifacts
+PUBLISH_IF = "needs.prepare.outputs.publish == 'true' && needs.prepare.outputs.canary == 'none'"
+for name, job in jobs.items():
+    for st in (job or {}).get("steps") or []:
+        if not str(st.get("uses", "")).startswith("actions/upload-artifact@"):
+            continue
+        w = st.get("with") or {}
+        if w.get("name") == "audit-state":
+            if name != "report":
+                err("only the report job uploads audit-state")
+            if w.get("retention-days") != 90:
+                err("audit-state must be kept 90 days")
+            if not str(w.get("path", "")).endswith("/audit-state/audit-state.age"):
+                err("audit-state must hold exactly the file audit-state.age")
+            if norm(st.get("if")) != "%s && steps.own-marker.outputs.own == 'true'" % PUBLISH_IF:
+                err("audit-state must be uploaded only on a published run whose body names this run's state")
+        elif w.get("retention-days") != 1:
+            err("%s artifact %s must be kept one day" % (name, w.get("name")))
+report_steps = {s.get("id"): s for s in (jobs.get("report") or {}).get("steps") or []}
+publish = report_steps.get("publish") or {}
+if "security-audit-state" not in (publish.get("run") or "") or "find-audit-issue.sh" not in (publish.get("run") or ""):
+    err("the report's publish step must use find-audit-issue.sh and keep the issue's state marker")
+if norm(publish.get("if")) != "%s && (steps.own-marker.outputs.own == 'false' || steps.upload-state.outcome == 'success')" % PUBLISH_IF:
+    err("the report publishes only when publish is true, no canary runs, and this run's state is uploaded or not needed")
+# The issue never names this run before its audit-state exists: the decision
+# from the body, then the upload, then the publish, in that order.
+order = [st.get("id") for st in (jobs.get("report") or {}).get("steps") or []]
+upload_state = next((st for st in (jobs.get("report") or {}).get("steps") or []
+                     if (st.get("with") or {}).get("name") == "audit-state"), {})
+if not ("own-marker" in order and "publish" in order and upload_state.get("id") == "upload-state"
+        and order.index("own-marker") < order.index("upload-state") < order.index("publish")):
+    err("the report must decide whether the body names this run, upload audit-state, and only then publish")
+if not any((s.get("env") or {}).get("GH_TOKEN") == "${{ github.token }}" for s in [publish]):
+    err("the report posts with GITHUB_TOKEN")
+
+# ---------------------------------------------------------------- prompts
+vars_line = re.search(r"^VARS='([^']*)'", read(SA + "/tests/prompts.test.sh"), re.M)
+if (wf.get("env") or {}).get("PROMPT_VARS") != (vars_line.group(1) if vars_line else None):
+    err("PROMPT_VARS must equal the variable list prompts.test.sh renders with")
+renders = 0
+for name, job in jobs.items():
+    for st in (job or {}).get("steps") or []:
+        for l in runs(st):
+            if re.match(r"\s*envsubst\b", l):
+                renders += 1
+                if 'envsubst "$PROMPT_VARS"' not in l:
+                    err("%s: every envsubst call must take exactly \"$PROMPT_VARS\"" % name)
+        if str(st.get("id", "")).startswith("prompt-") and "emit-block.sh prompt" not in (st.get("run") or ""):
+            err("%s %s must pass the prompt with emit-block.sh" % (name, st.get("id")))
+for name, pid in (("source", "prompt-source"), ("poc-write", "prompt-poc-write")):
+    st = {s.get("id"): s for s in jobs.get(name, {}).get("steps") or []}.get(pid) or {}
+    if 'prompts/canary-$CANARY.md' not in (st.get("run") or ""):
+        err("%s must append canary-<value>.md to its prompt on a canary run" % name)
+if renders < 6:
+    err("expected a rendered prompt for each of the six agent steps, found %d envsubst call(s)" % renders)
+
+# ---------------------------------------------------------------- source job order and prior state
+src = (jobs.get("source") or {}).get("steps") or []
+def first(pred):
+    return next((i for i, s in enumerate(src) if pred(s.get("run") or "")), None)
+i_count, i_select = first(lambda r: "count --job source " in r), first(lambda r: "select-poc" in r)
+if i_count is None or i_select is None or i_count > i_select:
+    err("source: count --job source must run before select-poc")
+elif "--prior \"$PRIOR_FINDINGS\"" not in src[i_select].get("run", ""):
+    err("source: select-poc must be given the opened prior findings.json with --prior")
+i_open = first(lambda r: ".prior_run_paths = " in r)
+i_agent = next((i for i, s in enumerate(src) if str(s.get("uses", "")).startswith("anthropics/")), None)
+if i_open is None or i_agent is None or i_open > i_agent:
+    err("source: prior_run_paths must be written into run-metadata.json before the agent step")
+
+# ---------------------------------------------------------------- canary judging
+# After the targeted agent step: judge-canary.sh on that step's trace, run
+# only on a canary run, and the trace sealed to the agents key and kept one
+# day, on a canary run only.
+for name, cond in (("source", "needs.prepare.outputs.canary != 'none'"),
+                   ("poc-write", "needs.prepare.outputs.canary == 'script-isolation'")):
+    steps = (jobs.get(name) or {}).get("steps") or []
+    ids = [i for i, s in enumerate(steps) if s.get("id") == "agent-" + name]
+    judges = [i for i, s in enumerate(steps) if "judge-canary.sh" in (s.get("run") or "")]
+    if len(ids) != 1 or len(judges) != 1 or judges[0] < ids[0]:
+        err("%s must judge its canary once, after its agent step" % name)
+        continue
+    j = steps[judges[0]]
+    c, e = norm(j.get("if")), j.get("env") or {}
+    if not c.startswith("always() && ") or cond not in c:
+        err("%s canary judge must run with always() and only when %s" % (name, cond))
+    if norm(e.get("TRACE")) != "${{ steps.agent-%s.outputs.execution_file }}" % name \
+            or norm(e.get("RUN_CHECK_OUTCOME")) != "${{ steps.check-%s.outcome }}" % name:
+        err("%s canary judge must read its agent step's trace and run check outcome" % name)
+    if 'judge-canary.sh "$CANARY" "$TRACE"' not in (j.get("run") or ""):
+        err("%s canary judge must be called as judge-canary.sh \"$CANARY\" \"$TRACE\"" % name)
+    seal = [s for s in steps if s.get("id") == "canary-trace"]
+    upload = [s for s in steps if (s.get("with") or {}).get("name") == "canary-trace-" + name]
+    if len(seal) != 1 or "needs.prepare.outputs.canary != 'none'" not in norm(seal[0].get("if")) \
+            or "keys/agents.pub" not in (seal[0].get("run") or ""):
+        err("%s must seal its agent's trace to agents.pub on canary runs only" % name)
+    if len(upload) != 1 or norm(upload[0].get("if")) != "always() && steps.canary-trace.outcome == 'success'" \
+            or upload[0]["with"].get("retention-days") != 1:
+        err("%s must upload the sealed trace for one day, only when it was sealed" % name)
+poc_run = {s.get("name"): s for s in (jobs.get("poc-run") or {}).get("steps") or []}
+run_step = next((s for s in poc_run.values() if s.get("id") == "run"), {})
+if "judge-canary.sh sandbox-secrets -" not in (run_step.get("run") or ""):
+    err("poc-run must judge the sandbox-secrets canary on each plaintext record before sealing it")
+verdict = poc_run.get("Canary verdict (sandbox-secrets)") or {}
+if "needs.prepare.outputs.canary == 'sandbox-secrets'" not in norm(verdict.get("if")):
+    err("poc-run must fail the sandbox-secrets canary in its own step when a record fails")
+reopen = poc_run.get("Canary, the sandbox key opens no sealed record") or {}
+if "judge-canary.sh reopen-records -" not in (reopen.get("run") or "") \
+        or "needs.prepare.outputs.canary == 'reopen-records'" not in norm(reopen.get("if")):
+    err("poc-run must judge reopen-records with judge-canary.sh on a reopen-records run only")
+
+# ---------------------------------------------------------------- job causes
+# Each agent job's cause step is run as written: with every agent outcome ok
+# and a failed trusted step (job.status failure) it must not say ok, and the
+# label must be one render-issue.py can show and the scripts already use.
+outcome_src = read(SA + "/agent-outcome.sh")
+LABELS = set(re.findall(r"^#   ([a-z_]+) ", outcome_src, re.M)) | {"run_check_failed", "validators_failed"}
+LABEL = re.compile(r"^[a-z0-9_:. -]{1,80}$")
+def run_cause(step, status):
+    env = {"PATH": os.environ["PATH"]}
+    for k in (step.get("env") or {}):
+        env[k] = "ok" if k.startswith("OUTCOME") else "success" if k.startswith("CHECK") else \
+            "pass" if k == "VALIDATORS" else ""
+    env["JOB_STATUS"] = status
+    with tempfile.NamedTemporaryFile("r", suffix=".out") as out:
+        env["GITHUB_OUTPUT"] = out.name
+        subprocess.run(["bash", "-e", "-c", step.get("run") or "exit 1"], env=env, capture_output=True)
+        found = re.findall(r"^cause=(.*)$", open(out.name).read(), re.M)
+    return found[-1] if found else None
+for name in ("source", "poc-write", "poc-decide", "cross-check"):
+    step = next((st for st in (jobs.get(name) or {}).get("steps") or [] if st.get("id") == "cause"), None)
+    if step is None:
+        err("%s has no cause step" % name)
+        continue
+    if norm((step.get("env") or {}).get("JOB_STATUS")) != "${{ job.status }}" or "always()" not in norm(step.get("if")):
+        err("%s cause step must run with always() and read job.status" % name)
+    failing, passing = run_cause(step, "failure"), run_cause(step, "success")
+    if failing in (None, "ok") or failing not in LABELS or not LABEL.match(failing):
+        err("%s cause after a failed trusted step must be a known label other than ok, got %r" % (name, failing))
+    if passing != "ok":
+        err("%s cause with an ok agent and a succeeding job must be ok, got %r" % (name, passing))
+
+# ---------------------------------------------------------------- poc-run holds no token
+for st in (jobs.get("poc-run") or {}).get("steps") or []:
+    if str(st.get("uses", "")).startswith("shivammathur/setup-php@"):
+        w = st.get("with") or {}
+        if w.get("tools") != "none" or w.get("github-token") != "":
+            err("poc-run's setup-php must set tools: none and github-token: '' so no token reaches composer's auth.json")
+
+# ---------------------------------------------------------------- hand-off hashes
+# Every seal.sh open takes its expected sha256 from a needs.<job>.outputs value
+# (or a step that copies one) through env:, never computed in the step, and
+# open-records.sh takes poc-run's record map, which holds each record's sha256.
+SHA_SOURCE = re.compile(r"^\$\{\{ (needs\.[a-z-]+\.outputs\.[a-z_0-9]+|steps\.(choose|prior)\.outputs\.sha256) \}\}$")
+for name, job in jobs.items():
+    for st in (job or {}).get("steps") or []:
+        body = st.get("run") or ""
+        for m in re.finditer(r'seal\.sh open [A-Z_]+ "\$(?:\{)?([A-Za-z_][A-Za-z0-9_]*)', body):
+            var = m.group(1)
+            value = norm((st.get("env") or {}).get(var))
+            if not SHA_SOURCE.match(value) or re.search(r"(^|[\s;(])%s=" % re.escape(var), body):
+                err("%s step %r opens a hand-off with a sha256 not taken from needs.<job>.outputs: $%s" % (name, st.get("name"), var))
+        if "open-records.sh" in body and (
+                'open-records.sh AUDIT_AGENTS_AGE_KEY "$RECORDS" ' not in body
+                or norm((st.get("env") or {}).get("RECORDS")) != "${{ needs.poc-run.outputs.records }}"
+                or re.search(r"(^|[\s;(])RECORDS=", body)):
+            err("%s step %r opens run records with a map not taken from needs.poc-run.outputs.records" % (name, st.get("name")))
+for name in ("cross-check", "report"):
+    choose = next((st for st in (jobs.get(name) or {}).get("steps") or [] if st.get("id") == "choose"), {})
+    for k, v in (choose.get("env") or {}).items():
+        if k.endswith("SHA256") and not re.match(r"^\$\{\{ needs\.[a-z-]+\.outputs\.[a-z_0-9]+ \}\}$", norm(v)):
+            err("%s choose step's %s must come from needs.<job>.outputs" % (name, k))
+
+# ---------------------------------------------------------------- sandbox-secrets verdict
+# poc-run's run and verdict steps are run as written against stub scripts: a
+# canary manifest whose second script is refused for its path must fail the
+# verdict, and one with two good scripts must pass it.
+steps_by = {st.get("id") or st.get("name"): st for st in (jobs.get("poc-run") or {}).get("steps") or []}
+run_block = (steps_by.get("run") or {}).get("run")
+verdict_block = (steps_by.get("Canary verdict (sandbox-secrets)") or {}).get("run")
+def verdict(second_script):
+    with tempfile.TemporaryDirectory() as d:
+        ws, rt = os.path.join(d, "ws"), os.path.join(d, "rt")
+        sa = os.path.join(ws, SA)
+        os.makedirs(os.path.join(sa, "keys"))
+        os.makedirs(os.path.join(rt, "scripts", "agents", "a", "scratch"))
+        os.makedirs(os.path.join(rt, "scripts", "agents", "b", "scratch"))
+        os.makedirs(os.path.join(rt, "site"))
+        for who in ("a", "b"):
+            open(os.path.join(rt, "scripts", "agents", who, "scratch", "poc.php"), "w").write("<?php\n")
+        open(os.path.join(sa, "keys", "agents.pub"), "w").write("age1stub\n")
+        open(os.path.join(sa, "judge-canary.sh"), "w").write(read(SA + "/judge-canary.sh"))
+        open(os.path.join(sa, "seal.sh"), "w").write("#!/usr/bin/env bash\n: > \"$4\"\necho 0\n")
+        names = ["AUDIT_SANDBOX_AGE_KEY", "AUDIT_AGENTS_AGE_KEY", "CLAUDE_CODE_OAUTH_TOKEN", "GITHUB_TOKEN", "ACTIONS_RUNTIME_TOKEN"]
+        stdout = "".join("%s: not found\\n" % n for n in names)
+        open(os.path.join(sa, "run-in-sandbox.sh"), "w").write(
+            "#!/usr/bin/env bash\njq -n --arg fp \"$1\" --arg slot \"$2\" '{fingerprint: $fp, slot: $slot, stdout: \"%s\"}'\n" % stdout)
+        manifest = {"items": [{"fingerprint": "canary-sandbox-secrets", "scripts": [
+            {"slot": "a", "agent_id": "a", "mode": "http", "script": "agents/a/scratch/poc.php", "fixture": None},
+            {"slot": "b", "agent_id": "b", "mode": "http", "script": second_script, "fixture": None}]}]}
+        json.dump(manifest, open(os.path.join(rt, "scripts", "poc-manifest.json"), "w"))
+        env = {"PATH": os.environ["PATH"], "RUNNER_TEMP": rt, "CANARY": "sandbox-secrets", "GITHUB_OUTPUT": os.devnull}
+        subprocess.run(["bash", "-eo", "pipefail", "-c", run_block or "exit 1"], cwd=ws, env=env, capture_output=True)
+        p = subprocess.run(["bash", "-eo", "pipefail", "-c", verdict_block or "exit 0"], cwd=ws, env=env,
+                           capture_output=True, text=True)
+        return p.returncode, p.stdout
+rc, out = verdict("agents/b/scratch/poc.php")
+if rc != 0:
+    err("the sandbox-secrets verdict must pass when both scripts ran and found nothing")
+rc, out = verdict("../outside.php")
+if rc == 0 or "record poc-run-1-b: not run" not in out:
+    err("the sandbox-secrets verdict must fail when a canary script was refused and never ran")
+
+# ---------------------------------------------------------------- the state marker on the issue
+# The report's own-marker and publish steps are run as written against a stub
+# gh: a body with no marker keeps the issue's marker line verbatim, a body
+# whose marker names this run sets own=true (so its audit-state is uploaded
+# before the publish), and one carrying the previous run's marker sets it
+# false. The screen-failure body is rendered
+# with the previous marker.
+report = {st.get("id") or st.get("name"): st for st in (jobs.get("report") or {}).get("steps") or []}
+screen_failed = (report.get("Replace the body with the screen-failure notice") or {}).get("run") or ""
+if '--screen-failed --previous-marker "$RUNNER_TEMP/previous-marker.json"' not in screen_failed:
+    err("the screen-failure body must be rendered with the previous marker")
+OLD_MARKER = '<!-- security-audit-state {"run_id": "8000", "sha256": "%s", "fingerprints": ["fp-1"]} -->' % ("a" * 64)
+NEW_MARKER = '<!-- security-audit-state {"run_id": "9001", "sha256": "%s", "fingerprints": []} -->' % ("b" * 64)
+def publish(body_text, issue_text):
+    with tempfile.TemporaryDirectory() as d:
+        ws, rt, bin_ = os.path.join(d, "ws"), os.path.join(d, "rt"), os.path.join(d, "bin")
+        os.makedirs(os.path.join(ws, SA)); os.makedirs(os.path.join(rt, "body")); os.makedirs(bin_)
+        open(os.path.join(ws, SA, "find-audit-issue.sh"), "w").write("echo 7\n")
+        open(os.path.join(rt, "body", "issue.md"), "w").write(body_text)
+        open(os.path.join(d, "issue-body"), "w").write(issue_text)
+        gh = os.path.join(bin_, "gh")
+        open(gh, "w").write('#!/usr/bin/env bash\ncase "$1 $2" in\n'
+                            '  "label create") ;;\n'
+                            '  "issue view") if [[ "$*" == *"--json body"* ]]; then cat "%s/issue-body"; else echo OPEN; fi ;;\n'
+                            '  "issue edit") cp "${@: -1}" "%s/edited" ;;\n'
+                            '  *) exit 1 ;;\nesac\n' % (d, d))
+        os.chmod(gh, 0o755)
+        out = os.path.join(d, "output")
+        env = {"PATH": bin_ + ":" + os.environ["PATH"], "RUNNER_TEMP": rt, "REPO": "example/repo",
+               "GITHUB_RUN_ID": "9001", "GITHUB_OUTPUT": out, "GH_TOKEN": "x"}
+        decide = (report.get("own-marker") or {}).get("run") or "exit 1"
+        subprocess.run(["bash", "-eo", "pipefail", "-c", decide], cwd=ws, env=env, capture_output=True)
+        p = subprocess.run(["bash", "-eo", "pipefail", "-c", (report.get("publish") or {}).get("run") or "exit 1"],
+                           cwd=ws, env=env, capture_output=True, text=True)
+        edited = open(os.path.join(d, "edited")).read() if os.path.exists(os.path.join(d, "edited")) else None
+        marker = re.findall(r"^own=(.*)$", open(out).read(), re.M) if os.path.exists(out) else []
+        return p.returncode, edited, (marker[-1] if marker else None)
+rc, edited, mk = publish("# Security audit\n\n**Output failed.**\n", "old body\n\n" + OLD_MARKER + "\n")
+if rc != 0 or edited is None or edited.rstrip("\n").splitlines()[-1] != OLD_MARKER or mk != "false":
+    err("a published body with no marker must keep the issue's marker line verbatim, with own=false")
+rc, edited, mk = publish("# Security audit\n\n" + NEW_MARKER + "\n", "old body\n\n" + OLD_MARKER + "\n")
+if rc != 0 or edited is None or OLD_MARKER in edited or mk != "true":
+    err("a body whose marker names this run must replace the old marker and set own=true")
+rc, edited, mk = publish("# Security audit\n\n" + OLD_MARKER + "\n", "old body\n\n" + OLD_MARKER + "\n")
+if rc != 0 or mk != "false":
+    err("a body carrying the previous run's marker must set own=false")
+
+# ---------------------------------------------------------------- key canaries
+for name, own, other, key in (("source", "agents", "sandbox", "AUDIT_AGENTS_AGE_KEY"),
+                              ("poc-run", "sandbox", "agents", "AUDIT_SANDBOX_AGE_KEY")):
+    call = "bash .github/security-audit/check-key-pair.sh %s .github/security-audit/keys/%s.pub .github/security-audit/keys/%s.pub" % (key, own, other)
+    if not any(key in (st.get("env") or {}) and (st.get("run") or "").strip() == call and "if" not in st
+               for st in (jobs.get(name) or {}).get("steps") or []):
+        err("%s must run check-key-pair.sh with %s against %s.pub and %s.pub on every run" % (name, key, own, other))
+
+# ---------------------------------------------------------------- script calls
+check_usage = ("usage: check-agent-run.sh --fingerprint <out-file>",
+               "check-agent-run.sh <job> <execution-file> <allowed-tools> <output-root> <fingerprint-file> <model> [helper-model]")
+SCRIPTS = {
+    SA + "/prepare.sh": (["usage: prepare.sh <date YYYY-MM-DD> <event> <publish> <canary> <out-dir>"],
+                         lambda a: len(a) == 5),
+    SA + "/fetch-prior-state.sh": (["usage: fetch-prior-state.sh <owner/repo> <out-dir>"], lambda a: len(a) == 2),
+    SA + "/find-audit-issue.sh": (["usage: find-audit-issue.sh <owner/repo>"], lambda a: len(a) == 1),
+    SA + "/seal.sh": (["seal.sh seal <recipient-file> <in-dir> <out>",
+                       "seal.sh open <identity-env-name> <expected-sha256> <in> <out-dir>"],
+                      lambda a: (a[:1] == ["seal"] and len(a) == 4) or (a[:1] == ["open"] and len(a) == 5)),
+    SA + "/sqlite-config.sh": (["usage: sqlite-config.sh <out-dir>"], lambda a: len(a) == 1),
+    SA + "/check-agent-run.sh": (list(check_usage),
+                                 lambda a: (a[:1] == ["--fingerprint"] and len(a) == 2)
+                                 or (len(a) in (6, 7) and a[0] in ("source", "poc-write", "poc-decide", "cross-check"))),
+    SA + "/agent-outcome.sh": (["usage: agent-outcome.sh <execution-file> <step-outcome> <started-epoch> <ended-epoch> <timeout-minutes> <expected-file>..."],
+                               lambda a: len(a) >= 5),
+    SA + "/check-key-pair.sh": (["usage: check-key-pair.sh <identity-env-name> <own.pub> <other.pub>"], lambda a: len(a) == 3),
+    SA + "/open-records.sh": (["usage: open-records.sh <identity-env-name> <record-map> <sealed-dir> <out-dir>"], lambda a: len(a) == 4),
+    SA + "/run-validators.sh": (["usage: run-validators.sh <dir>"], lambda a: len(a) == 1),
+    SA + "/judge-canary.sh": (["usage: judge-canary.sh <canary> <execution-file> [run-record]"],
+                              lambda a: len(a) in (2, 3)),
+    SA + "/run-in-sandbox.sh": (["usage: run-in-sandbox.sh <fingerprint> <slot> <mode> <site-dir> <script> [fixture]"],
+                                lambda a: len(a) in (5, 6)),
+    SA + "/create-test-accounts.php": (["Usage: drush php:script create-test-accounts.php <output-path>"],
+                                       lambda a: len(a) == 1),
+    SA + "/skill/validate-findings.cjs": (["Usage: node validate-findings.cjs <path-to-findings.json>"], lambda a: len(a) == 1),
+    SA + "/skill/validate-coverage-ledger.cjs": (["Usage: node validate-coverage-ledger.cjs <path-to-coverage-ledger.json>"],
+                                                 lambda a: len(a) == 1),
+    SA + "/merge-records.py": (["Usage: merge-records.py --state <dir> <subcommand> [options]"], None),
+    SA + "/render-issue.py": (["render-issue.py --state <dir> --state-sha256 <hex> --run-id <id>",
+                               "render-issue.py --screen-failed [--previous-marker <marker.json>] --out <body.md>"], None),
+    CR + "/tools/agent/emit-block.sh": (["usage: emit-block.sh <output-name> <file>"], lambda a: len(a) == 2),
+    CR + "/tools/agent/compose-agent-args.sh": (["usage: compose-agent-args.sh --audit", "usage: compose-agent-args.sh --audit-models <step>"],
+                                                lambda a: a == ["--audit"] or (len(a) == 2 and a[0] == "--audit-models"
+                                                and a[1] in ("source", "repair", "poc_write", "poc_decide", "cross_check", "tie_break"))),
+    CR + "/tools/review/keep-trace.sh": (["REVIEW_SCREEN_ONLY=1 keep-trace.sh <out-dir> <angle> <head-sha> <trace> [file...]"],
+                                         lambda a: len(a) >= 4 and a[1] == "audit"),
+    "scripts/rebuild.sh": ([], lambda a: len(a) == 0),
+}
+for script, (usages, _) in SCRIPTS.items():
+    source_text = read(script)
+    for usage in usages:
+        if usage not in source_text:
+            err("%s no longer has the usage line this test checks calls against: %s" % (script, usage))
+
+MERGE = {"count": ({"--job", "--cap", "--trace"}, set()), "select-poc": ({"--out"}, {"--prior"}),
+         "apply-decide": ({"--manifest", "--records", "--scripts", "--entries", "--trace"}, set()),
+         "fail-poc": ({"--select", "--job"}, set()), "select-cross-check": ({"--out"}, set()),
+         "apply-cross-check": ({"--entries", "--trace", "--out"}, set()),
+         "apply-tie-break": ({"--inputs", "--entries", "--trace"}, set()), "status": (set(), set())}
+merge_src = read(SA + "/merge-records.py")
+for sub, (req, opt) in MERGE.items():
+    if '"%s"' % sub not in merge_src:
+        err("merge-records.py has no subcommand %s" % sub)
+    for flag in req | opt:
+        if flag not in merge_src:
+            err("merge-records.py no longer takes %s" % flag)
+
+def flags_of(args):
+    """Flag names, and False when a flag lacks its value."""
+    out, i = [], 0
+    while i < len(args):
+        if not args[i].startswith("--") or i + 1 >= len(args) or args[i + 1].startswith("--"):
+            return None
+        out.append(args[i]); i += 2
+    return out
+
+def check_merge(args):
+    if args[:1] != ["--state"] or len(args) < 3 or args[2] not in MERGE:
+        return False
+    req, opt = MERGE[args[2]]
+    flags = flags_of(args[3:])
+    return flags is not None and req <= set(flags) <= (req | opt) and all(flags.count(f) == 1 for f in req)
+
+def check_render(args):
+    if args[:1] == ["--screen-failed"] and (len(args) == 3 and args[1] == "--out"
+                                            or len(args) == 5 and args[1] == "--previous-marker" and args[3] == "--out"):
+        return True
+    flags = flags_of(args)
+    return flags is not None and {"--jobs", "--out"} <= set(flags) <= {
+        "--state", "--state-sha256", "--run-id", "--jobs", "--previous-marker", "--out"}
+
+CALL = re.compile(r'(?:\bbash|\bpython3 -I|\bnode|php:script)\s+"?(?:\$GITHUB_WORKSPACE/)?([A-Za-z0-9_./-]+\.(?:sh|py|cjs|php))"?')
+calls = 0
+for name, job in jobs.items():
+    for st in (job or {}).get("steps") or []:
+        for line in runs(st):
+            for m in CALL.finditer(line):
+                script = m.group(1)
+                if script not in SCRIPTS:
+                    err("%s calls %s, which this test has no usage line for" % (name, script))
+                    continue
+                lex = shlex.shlex(line[m.end():], posix=True, punctuation_chars=True)
+                lex.whitespace_split = True
+                args = []
+                try:
+                    for tok in lex:
+                        if re.fullmatch(r"[;&|<>()]+", tok):
+                            break
+                        args.append(tok)
+                except ValueError:
+                    err("%s: could not parse the call of %s" % (name, script))
+                    continue
+                calls += 1
+                ok = {SA + "/merge-records.py": check_merge, SA + "/render-issue.py": check_render}.get(
+                    script, SCRIPTS[script][1])(args)
+                if script.endswith("keep-trace.sh") and "REVIEW_SCREEN_ONLY=1 bash" not in line:
+                    ok = False
+                if not ok:
+                    err("%s calls %s with arguments its usage does not allow: %r" % (name, script, args))
+if calls < 40:
+    err("found only %d script calls, which means the call pattern read too little" % calls)
+
+for e in errors:
+    print("FAIL: " + e)
+sys.exit(1 if errors else 0)
+PY
+}
+
+# The workflow passes.
+out=$(check "$WORKFLOW" 2>&1) || { printf '%s\n' "$out" >&2; echo "FAIL: security-audit.yml fails its structure checks" >&2; exit 1; }
+
+# Each mutation breaks one requirement, and the check must fail on it.
+mutate() { # label python-replacement-source
+  local label="$1" f="$tmp/mutant.yml"
+  python3 -I - "$WORKFLOW" "$f" "$2" <<'PY'
+import sys
+src, dst, code = sys.argv[1], sys.argv[2], sys.argv[3]
+s = open(src).read()
+old, new, count = eval(code)
+if s.count(old) < 1:
+    sys.exit("mutation anchor not found: %r" % old)
+open(dst, "w").write(s.replace(old, new, count))
+PY
+  if check "$f" > "$tmp/out" 2>&1; then
+    echo "FAIL: the check passed a workflow with this break: $label" >&2
+    exit 1
+  fi
+}
+# Moves the audit-state upload step to the end of the report job.
+mutate_moved_upload() {
+  local f="$tmp/mutant.yml"
+  python3 -I - "$WORKFLOW" "$f" <<'MOVE'
+import sys
+s = open(sys.argv[1]).read()
+start = s.index("      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7\n        id: upload-state\n")
+end = s.index("\n\n", start) + 2
+step = s[start:end]
+open(sys.argv[2], "w").write((s[:start] + s[end:]).rstrip("\n") + "\n\n" + step.rstrip("\n") + "\n")
+MOVE
+  if check "$f" > "$tmp/out" 2>&1; then
+    echo "FAIL: the check passed a workflow that uploads audit-state after publishing" >&2
+    exit 1
+  fi
+  grep -q "upload audit-state, and only then publish" "$tmp/out" \
+    || { echo "FAIL: moving the upload after publishing failed for another reason: $(head -c 200 "$tmp/out")" >&2; exit 1; }
+}
+mutate "a schedule trigger" '("on:\n  workflow_dispatch:", "on:\n  schedule:\n    - cron: \"0 6 * * 6\"\n  workflow_dispatch:", 1)'
+mutate "a checkout keeping credentials" '("persist-credentials: false", "persist-credentials: true", 1)'
+mutate "an expression inside run:" '("run: bash .github/security-audit/sqlite-config.sh", "run: echo ${{ github.event_name }} && bash .github/security-audit/sqlite-config.sh", 1)'
+mutate "audit-state kept 30 days" '("retention-days: 90", "retention-days: 30", 1)'
+mutate "a hand-off kept two days" '("retention-days: 1\n", "retention-days: 2\n", 1)'
+mutate "poc-run in claude-agents" '("environment: audit-sandbox", "environment: claude-agents", 1)'
+mutate "issues: write outside report" '("      actions: read\n      issues: read\n", "      actions: read\n      issues: write\n", 1)'
+mutate "the publishing job renamed" '("  report:\n    needs:", "  report:\n    name: Publish\n    needs:", 1)'
+mutate "full agent output in the log" "(\"show_full_output: 'false'\", \"show_full_output: 'true'\", 1)"
+mutate "an agent step without continue-on-error" '("continue-on-error: true\n        timeout-minutes: 280", "timeout-minutes: 280", 1)'
+mutate "an outcome timeout unlike its agent step" '("\"$ENDED\" 280 ", "\"$ENDED\" 281 ", 1)'
+mutate "a count that ignores the run check" "(\" && steps.check-source.outcome == 'success' && steps.plan.outputs.merge\", \" && steps.plan.outputs.merge\", 1)"
+mutate "a merge step run on a canary" "(\"steps.check-source.outcome == 'success' && steps.plan.outputs.merge == 'true'\", \"steps.check-source.outcome == 'success'\", 1)"
+mutate "prepare.sh with a missing argument" '("\"$PUBLISH\" \"$CANARY\" \"$RUNNER_TEMP/meta\"", "\"$PUBLISH\" \"$RUNNER_TEMP/meta\"", 1)'
+mutate "seal.sh open with an extra argument" '("seal.sh open AUDIT_SANDBOX_AGE_KEY \"$SCRIPTS_SHA256\"", "seal.sh open AUDIT_SANDBOX_AGE_KEY x \"$SCRIPTS_SHA256\"", 1)'
+mutate "apply-decide without --scripts" '("--scripts \"$AUDIT_INPUT_DIR/scripts\" ", "", 1)'
+mutate "select-poc without --prior" '(" --prior \"$PRIOR_FINDINGS\"", "", 1)'
+mutate "a job missing the main ref check" "(\"if: needs.prepare.outputs.go == 'true' && github.ref == 'refs/heads/main' && contains(fromJSON(needs.prepare.outputs.run_jobs), 'build-site')\", \"if: needs.prepare.outputs.go == 'true' && contains(fromJSON(needs.prepare.outputs.run_jobs), 'build-site')\", 1)"
+mutate "an undeclared needs reference" '("SOURCE_SHA256: ${{ needs.source.outputs.sha256 }}\n          RECORDS", "SOURCE_SHA256: ${{ needs.report.outputs.sha256 }}\n          RECORDS", 1)'
+mutate "the sandbox key in an agent job" '("AUDIT_AGENTS_AGE_KEY: ${{ secrets.AUDIT_AGENTS_AGE_KEY }}\n          STATE_SHA256", "AUDIT_AGENTS_AGE_KEY: ${{ secrets.AUDIT_SANDBOX_AGE_KEY }}\n          STATE_SHA256", 1)'
+mutate "an unpinned action" '("actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9", "actions/upload-artifact@v7", 1)'
+mutate "audit-state uploaded unconditionally" "(\"&& steps.own-marker.outputs.own == 'true'\n        with:\n          name: audit-state\", \"\n        with:\n          name: audit-state\", 1)"
+mutate "a prompt rendered without the variable list" '("envsubst \"$PROMPT_VARS\" < .github/security-audit/prompts/tie-break.md", "envsubst < .github/security-audit/prompts/tie-break.md", 1)'
+mutate "no canary prompt in poc-write" '("envsubst \"$PROMPT_VARS\" < \".github/security-audit/prompts/canary-$CANARY.md\" >> \"$RUNNER_TEMP/prompt-poc-write.md\"", "true", 1)'
+mutate "the sandbox key canary removed" '("Check the sandbox key against both public keys\n        env:\n          AUDIT_SANDBOX_AGE_KEY", "Check the sandbox key against both public keys\n        env:\n          UNUSED", 1)'
+mutate "a hand-off sealed with always()" "(\"      - name: Seal audit-final to the agents key\n        id: handoff\n        if: steps.plan.outputs.handoff == 'true'\n\", \"      - name: Seal audit-final to the agents key\n        id: handoff\n        if: always() && steps.plan.outputs.handoff == 'true'\n\", 1)"
+
+mutate "the source canary judge on every run" "(\"Judge the canary (source agent)\n        if: always() && steps.plan.outputs.agent == 'true' && needs.prepare.outputs.canary != 'none'\", \"Judge the canary (source agent)\n        if: always() && steps.plan.outputs.agent == 'true'\", 1)"
+mutate "the canary trace sealed on every run" "(\"id: canary-trace\n        if: always() && steps.plan.outputs.agent == 'true' && needs.prepare.outputs.canary != 'none'\", \"id: canary-trace\n        if: always() && steps.plan.outputs.agent == 'true'\", 1)"
+mutate "the canary trace kept two days" '("name: canary-trace-poc-write\n          path: ${{ runner.temp }}/canary-trace/canary-trace-poc-write.age\n          retention-days: 1", "name: canary-trace-poc-write\n          path: ${{ runner.temp }}/canary-trace/canary-trace-poc-write.age\n          retention-days: 2", 1)'
+mutate "the judge reading the wrong run check" '("RUN_CHECK_OUTCOME: ${{ steps.check-poc-write.outcome }}", "RUN_CHECK_OUTCOME: ${{ steps.outcome-poc-write.outcome }}", 1)'
+mutate "sandbox-secrets not judged" '("bash .github/security-audit/judge-canary.sh sandbox-secrets -", "true", 1)'
+mutate "the judge with a missing argument" '("judge-canary.sh reopen-records - \"$f\"", "judge-canary.sh reopen-records", 1)'
+
+mutate "a hand-off sha computed from the downloaded file" '("          mkdir -p \"$RUNNER_TEMP/state\"\n          bash .github/security-audit/seal.sh open AUDIT_AGENTS_AGE_KEY \"$SHA256\"", "          mkdir -p \"$RUNNER_TEMP/state\"\n          SHA256=$(sha256sum \"$RUNNER_TEMP/handoff/audit-source.age\" | cut -d\" \" -f1)\n          bash .github/security-audit/seal.sh open AUDIT_AGENTS_AGE_KEY \"$SHA256\"", 1)'
+mutate "a hand-off sha from an unchecked step" '("SHA256: ${{ needs.source.outputs.sha256 }}\n        run: |\n          mkdir -p \"$RUNNER_TEMP/state\"", "SHA256: ${{ steps.plan.outputs.agent }}\n        run: |\n          mkdir -p \"$RUNNER_TEMP/state\"", 1)'
+mutate "poc-run installing composer" '("          tools: none\n          github-token: \x27\x27", "          github-token: \x27\x27", 1)'
+mutate "poc-run passing its token to setup-php" '("          tools: none\n          github-token: \x27\x27", "          tools: none", 1)'
+mutate "an ok cause after a failed trusted step" '("          if [ \"$JOB_STATUS\" != success ] && [ \"$cause\" = ok ]; then cause=agent_failed; fi\n          echo \"cause=$cause\" >> \"$GITHUB_OUTPUT\"\n          echo \"poc-decide job: $cause\"", "          echo \"cause=$cause\" >> \"$GITHUB_OUTPUT\"\n          echo \"poc-decide job: $cause\"", 1)'
+mutate "a refused canary script not counted" '("echo \"item $n slot $slot: script path refused, not run\"; not_run \"$n\" \"$slot\"; continue", "echo \"item $n slot $slot: script path refused, not run\"; continue", 1)'
+
+mutate "a record map from an unchecked step" '("RECORDS: ${{ needs.poc-run.outputs.records }}\n        run: bash .github/security-audit/open-records.sh", "RECORDS: ${{ steps.choose.outputs.records }}\n        run: bash .github/security-audit/open-records.sh", 1)'
+mutate "the key pair checked against the wrong public key" '("check-key-pair.sh AUDIT_SANDBOX_AGE_KEY .github/security-audit/keys/sandbox.pub .github/security-audit/keys/agents.pub", "check-key-pair.sh AUDIT_SANDBOX_AGE_KEY .github/security-audit/keys/agents.pub .github/security-audit/keys/sandbox.pub", 1)'
+mutate "a cross-check step without the plan guard" "(\"      - name: Record the run status\n        if: steps.plan.outputs.merge == 'true'\n\", \"      - name: Record the run status\n\", 1)"
+mutate "poc-decide's hand-off without the handoff guard" "(\"      - name: Seal audit-poc to the agents key\n        id: handoff\n        if: steps.plan.outputs.handoff == 'true'\n\", \"      - name: Seal audit-poc to the agents key\n        id: handoff\n\", 1)"
+
+mutate "a markerless body replacing the issue's marker" '("                printf \x27\\n%s\\n\x27 \"$kept\" >> \"$body\"", "                true", 1)'
+mutate "marker=true for the previous run's marker" '("jq -rR --arg id \"$GITHUB_RUN_ID\" \x27fromjson? | objects | select(.run_id == $id) | .run_id\x27", "jq -rR \x27fromjson? | objects | .run_id\x27", 1)'
+
+mutate "publishing before audit-state is uploaded" "(\"steps.own-marker.outputs.own == 'false' || steps.upload-state.outcome == 'success')\", \"steps.own-marker.outputs.own != 'x')\", 1)"
+mutate_moved_upload
+
+pass "security-audit workflow structure"

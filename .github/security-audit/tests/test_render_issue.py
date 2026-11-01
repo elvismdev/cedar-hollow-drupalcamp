@@ -242,22 +242,45 @@ class HeaderTest(RenderTest):
         body = self.render()
         self.assertIn("**Status: incomplete (cap_exceeded:poc-write; cross_check_dispute).**", body)
 
-    def test_a_failed_source_with_no_state_has_no_counts_and_no_marker(self):
+    PRIOR_LINE = '<!-- security-audit-state {"run_id": "1", "sha256": "%s", "fingerprints": ["old-1"]} -->' % SHA
+
+    def test_a_failed_source_with_no_state_keeps_the_previous_marker(self):
         jobs = self.jobs(source={"result": "failure", "cause": "usage_limit"})
         body = self.render(jobs, marker={"run_id": "1", "sha256": SHA, "fingerprints": ["old-1"]}, state=False)
         self.assertIn("**Incomplete: source usage_limit.**", body)
         self.assertIn("*   Counts: none (no state from this run)", body)
+        self.assertEqual(body.count("<!--"), 1)
+        self.assertEqual(body.rstrip("\n").splitlines()[-1], self.PRIOR_LINE)
+
+    def test_no_state_and_no_previous_marker_has_no_marker(self):
+        body = self.render(self.jobs(source={"result": "failure", "cause": "usage_limit"}), state=False)
         self.assertNotIn("<!--", body)
 
-    def test_the_screen_failure_header_has_no_state_marker(self):
+    def test_a_malformed_previous_marker_is_not_written_back(self):
+        for prior in ({"run_id": "1", "sha256": "x", "fingerprints": []},
+                      {"run_id": "1", "sha256": SHA, "fingerprints": ["ok", "--> <b>"]},
+                      {"run_id": "1", "sha256": SHA, "fingerprints": [], "extra": 1}):
+            body = self.render(self.jobs(source={"result": "failure", "cause": "ok"}), marker=prior, state=False)
+            self.assertNotIn("<!--", body)
+
+    def test_a_new_state_replaces_the_previous_marker(self):
+        self.seed([], final_meta())
+        body = self.render(marker={"run_id": "1", "sha256": SHA, "fingerprints": ["old-1"]})
+        self.assertEqual(self.marker(body)["run_id"], "9001")
+
+    def screen_failed(self, *extra):
         out = os.path.join(self.tmp, "screen.md")
-        result = subprocess.run([sys.executable, "-I", SCRIPT, "--screen-failed", "--out", out],
+        result = subprocess.run([sys.executable, "-I", SCRIPT, "--screen-failed", *extra, "--out", out],
                                 capture_output=True, text=True)
         self.assertEqual(result.returncode, 0, result.stderr)
         with open(out, encoding="utf-8") as handle:
-            body = handle.read()
-        self.assertEqual(body, SCREEN_FAILED + "\n")
-        self.assertNotIn("security-audit-state", body)
+            return handle.read()
+
+    def test_the_screen_failure_header_keeps_only_the_previous_marker(self):
+        self.assertEqual(self.screen_failed(), SCREEN_FAILED + "\n")
+        marker_path = os.path.join(self.tmp, "prior.json")
+        self.write(marker_path, {"run_id": "1", "sha256": SHA, "fingerprints": ["old-1"]})
+        self.assertEqual(self.screen_failed("--previous-marker", marker_path), SCREEN_FAILED + "\n\n" + self.PRIOR_LINE + "\n")
 
 
 class ChangesTest(RenderTest):
