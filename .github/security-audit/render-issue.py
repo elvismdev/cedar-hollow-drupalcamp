@@ -37,7 +37,7 @@
 # Usage:
 #   render-issue.py --state <dir> --state-sha256 <hex> --run-id <id> \
 #                   --jobs <job-results.json> --previous-marker <marker.json> --out <body.md>
-#   render-issue.py --screen-failed --out <body.md>
+#   render-issue.py --screen-failed [--previous-marker <marker.json>] --out <body.md>
 #
 # <job-results.json> holds what the report job knows about the run:
 #   {"publish": true, "canary": "none",
@@ -53,9 +53,12 @@
 # otherwise rendered as below; a completed cross-check renders the records; a
 # successful source with no completed cross-check renders
 # "Incomplete: cross-check <cause>" and counts; otherwise
-# "Incomplete: source <cause>" and counts from the state, if any. The state
-# marker is written only when the state was read and its sha256 is given; the
-# screen-failure body has none.
+# "Incomplete: source <cause>" and counts from the state, if any. A new state
+# marker is written only when the state was read and its sha256 is given.
+# Otherwise, and in the screen-failure body, the previous marker is written
+# back unchanged when <marker.json> holds a valid one, so the issue keeps
+# naming the last good state for the next run; the marker holds no record
+# text.
 import argparse
 import functools
 import html
@@ -532,12 +535,30 @@ def changes_section(run, kept=None):
     return lines
 
 
+def marker_line(payload):
+    return "<!-- security-audit-state %s -->" % json.dumps(payload, separators=(", ", ": "))
+
+
+def previous_marker(path):
+    """The previous run's state marker, written back exactly as this script
+    wrote it, when the run has no state of its own to name; nothing when the
+    file is missing or any field fails the shape fetch-prior-state.sh reads."""
+    prior = optional_json(path, dict, {})
+    fps = prior.get("fingerprints")
+    if (set(prior) != {"run_id", "sha256", "fingerprints"} or not isinstance(prior["run_id"], str)
+            or not RUN_ID.fullmatch(prior["run_id"]) or not isinstance(prior["sha256"], str)
+            or not SHA256.fullmatch(prior["sha256"]) or not isinstance(fps, list)
+            or not all(isinstance(fp, str) and FINGERPRINT.fullmatch(fp) for fp in fps)):
+        return []
+    return ["", marker_line({"run_id": prior["run_id"], "sha256": prior["sha256"], "fingerprints": fps})]
+
+
 def marker(run):
     if not (run.state_ok and SHA256.fullmatch(run.args.state_sha256 or "") and RUN_ID.fullmatch(run.args.run_id or "")):
-        return []
+        return previous_marker(run.args.previous_marker)
     payload = {"run_id": run.args.run_id, "sha256": run.args.state_sha256,
                "fingerprints": run.marker_fingerprints()}
-    return ["", "<!-- security-audit-state %s -->" % json.dumps(payload, separators=(", ", ": "))]
+    return ["", marker_line(payload)]
 
 
 def render(run, sections_kept, rows_kept, changes_kept=None):
@@ -607,7 +628,7 @@ def main(argv):
     parser.add_argument("--screen-failed", action="store_true")
     args = parser.parse_args(argv)
     if args.screen_failed:
-        body = SCREEN_FAILED + "\n"
+        body = "\n".join([SCREEN_FAILED] + previous_marker(args.previous_marker)) + "\n"
     else:
         if not args.jobs:
             parser.error("--jobs is required unless --screen-failed is given")
