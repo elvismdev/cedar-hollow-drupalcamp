@@ -1479,3 +1479,191 @@ jobs:
           fi
           echo "cause=$cause" >> "$GITHUB_OUTPUT"
           echo "cross-check job: $cause"
+
+  # The only job that writes to the issue, as github-actions[bot] with
+  # GITHUB_TOKEN. Its id is its display name, report, which
+  # check-audit-health.sh looks for. claude-agents holds the agents key it
+  # opens the state with; no agent runs here.
+  report:
+    needs: [prepare, source, build-site, poc-write, poc-run, poc-decide, cross-check]
+    if: always() && needs.prepare.outputs.go == 'true' && github.ref == 'refs/heads/main' && contains(fromJSON(needs.prepare.outputs.run_jobs), 'report')
+    runs-on: ubuntu-24.04
+    environment: claude-agents
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      issues: write
+      actions: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Install age
+        run: sudo apt-get install -y age
+
+      # audit-final when the cross-check succeeded and its records pass the
+      # validators, then audit-poc under the same rule, then the state before
+      # them; none when no job handed off a state.
+      - name: Choose the input hand-off
+        id: choose
+        env:
+          SOURCE: ${{ needs.source.result }}
+          SOURCE_SHA256: ${{ needs.source.outputs.sha256 }}
+          POC_WRITE: ${{ needs.poc-write.result }}
+          WRITE_SHA256: ${{ needs.poc-write.outputs.state_sha256 }}
+          POC_DECIDE: ${{ needs.poc-decide.result }}
+          DECIDE_VALIDATORS: ${{ needs.poc-decide.outputs.validators }}
+          DECIDE_SHA256: ${{ needs.poc-decide.outputs.sha256 }}
+          CROSS_CHECK: ${{ needs.cross-check.result }}
+          CROSS_CHECK_VALIDATORS: ${{ needs.cross-check.outputs.validators }}
+          CROSS_CHECK_SHA256: ${{ needs.cross-check.outputs.sha256 }}
+        run: |
+          name="" sha=""
+          if [ "$CROSS_CHECK" = success ] && [ "$CROSS_CHECK_VALIDATORS" = pass ]; then
+            name=audit-final sha="$CROSS_CHECK_SHA256"
+          elif [ "$POC_DECIDE" = success ] && [ "$DECIDE_VALIDATORS" = pass ]; then
+            name=audit-poc sha="$DECIDE_SHA256"
+          elif [ "$POC_WRITE" = success ] && [ -n "$WRITE_SHA256" ]; then
+            name=audit-poc-write sha="$WRITE_SHA256"
+          elif [ "$SOURCE" = success ] && [ -n "$SOURCE_SHA256" ]; then
+            name=audit-source sha="$SOURCE_SHA256"
+          fi
+          printf 'name=%s\nsha256=%s\n' "$name" "$sha" >> "$GITHUB_OUTPUT"
+          echo "input hand-off: ${name:-none}"
+
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
+        if: steps.choose.outputs.name != ''
+        with:
+          name: ${{ steps.choose.outputs.name }}
+          path: ${{ runner.temp }}/handoff
+
+      # Step 1 of the report: check and open the input hand-off.
+      - name: Check and open the input hand-off
+        id: state
+        if: steps.choose.outputs.name != ''
+        env:
+          AUDIT_AGENTS_AGE_KEY: ${{ secrets.AUDIT_AGENTS_AGE_KEY }}
+          NAME: ${{ steps.choose.outputs.name }}
+          SHA256: ${{ steps.choose.outputs.sha256 }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/state"
+          bash .github/security-audit/seal.sh open AUDIT_AGENTS_AGE_KEY "$SHA256" "$RUNNER_TEMP/handoff/$NAME.age" "$RUNNER_TEMP/state"
+
+      # Step 2: the state the next run reads, exactly audit-state.age, holding
+      # the four state files the hand-off has.
+      - name: Seal the state files
+        id: seal
+        if: steps.state.outcome == 'success'
+        run: |
+          mkdir -p "$RUNNER_TEMP/audit-state-in" "$RUNNER_TEMP/audit-state"
+          for name in coverage-ledger.json findings.json disputed.json audit-history.json; do
+            if [ -f "$RUNNER_TEMP/state/$name" ] && [ ! -L "$RUNNER_TEMP/state/$name" ]; then
+              cp "$RUNNER_TEMP/state/$name" "$RUNNER_TEMP/audit-state-in/"
+            fi
+          done
+          sum=$(bash .github/security-audit/seal.sh seal .github/security-audit/keys/agents.pub "$RUNNER_TEMP/audit-state-in" "$RUNNER_TEMP/audit-state/audit-state.age")
+          echo "sha256=$sum" >> "$GITHUB_OUTPUT"
+
+      # Step 3: the body, with the sealed state's sha256 in its marker.
+      - name: Render the issue body
+        env:
+          PUBLISH: ${{ needs.prepare.outputs.publish }}
+          CANARY: ${{ needs.prepare.outputs.canary }}
+          SOURCE: ${{ needs.source.result }}
+          SOURCE_CAUSE: ${{ needs.source.outputs.cause }}
+          CROSS_CHECK: ${{ needs.cross-check.result }}
+          CROSS_CHECK_CAUSE: ${{ needs.cross-check.outputs.cause }}
+          CROSS_CHECK_VALIDATORS: ${{ needs.cross-check.outputs.validators }}
+          PRIOR_MARKER: ${{ needs.source.outputs.prior_marker }}
+          STATE_SHA256: ${{ steps.seal.outputs.sha256 }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/body"
+          jq -n --argjson publish "$PUBLISH" --arg canary "$CANARY" \
+            --arg source "$SOURCE" --arg source_cause "$SOURCE_CAUSE" \
+            --arg cross "$CROSS_CHECK" --arg cross_cause "$CROSS_CHECK_CAUSE" --arg validators "$CROSS_CHECK_VALIDATORS" \
+            '{publish: $publish, canary: $canary,
+              source: {result: $source, cause: $source_cause},
+              cross_check: {result: $cross, cause: $cross_cause, validators: $validators}}' > "$RUNNER_TEMP/jobs.json"
+          printf '%s' "$PRIOR_MARKER" > "$RUNNER_TEMP/previous-marker.json"
+          if [ -n "$STATE_SHA256" ]; then
+            python3 -I .github/security-audit/render-issue.py --state "$RUNNER_TEMP/state" --state-sha256 "$STATE_SHA256" --run-id "$GITHUB_RUN_ID" \
+              --jobs "$RUNNER_TEMP/jobs.json" --previous-marker "$RUNNER_TEMP/previous-marker.json" --out "$RUNNER_TEMP/body/issue.md"
+          else
+            python3 -I .github/security-audit/render-issue.py --run-id "$GITHUB_RUN_ID" \
+              --jobs "$RUNNER_TEMP/jobs.json" --previous-marker "$RUNNER_TEMP/previous-marker.json" --out "$RUNNER_TEMP/body/issue.md"
+          fi
+
+      # Step 4: nothing is published until the body and the records are
+      # compared with every secret this job holds. A match, or a screen that
+      # cannot run, replaces the body with the fixed notice, which carries no
+      # state marker.
+      - name: Screen the body for the job's secrets
+        id: screen
+        continue-on-error: true
+        env:
+          HELD_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          HELD_GITHUB_TOKEN: ${{ github.token }}
+          HELD_AGENTS_KEY: ${{ secrets.AUDIT_AGENTS_AGE_KEY }}
+        run: |
+          REVIEW_SECRETS_JSON=$(jq -n '{CLAUDE_CODE_OAUTH_TOKEN: env.HELD_OAUTH_TOKEN, GITHUB_TOKEN: env.HELD_GITHUB_TOKEN, AUDIT_AGENTS_AGE_KEY: env.HELD_AGENTS_KEY}')
+          export REVIEW_SECRETS_JSON
+          if [ -f "$RUNNER_TEMP/state/findings.json" ]; then
+            REVIEW_SCREEN_ONLY=1 bash .github/claude-review/tools/review/keep-trace.sh "$RUNNER_TEMP/screen" audit "$GITHUB_SHA" "$RUNNER_TEMP/body/issue.md" "$RUNNER_TEMP/state/findings.json"
+          else
+            REVIEW_SCREEN_ONLY=1 bash .github/claude-review/tools/review/keep-trace.sh "$RUNNER_TEMP/screen" audit "$GITHUB_SHA" "$RUNNER_TEMP/body/issue.md"
+          fi
+
+      - name: Replace the body with the screen-failure notice
+        if: steps.screen.outcome != 'success'
+        run: python3 -I .github/security-audit/render-issue.py --screen-failed --out "$RUNNER_TEMP/body/issue.md"
+
+      # Step 5: published to the issue chosen by find-audit-issue.sh, the rule
+      # the prior-state fetch reads by. A closed issue is reopened when the
+      # state marker lists any fingerprint still open.
+      - name: Publish the issue
+        id: publish
+        if: needs.prepare.outputs.publish == 'true' && needs.prepare.outputs.canary == 'none'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          body="$RUNNER_TEMP/body/issue.md"
+          gh label create security-audit --repo "$REPO" --color B60205 --description "Security audit findings" --force
+          number=$(bash .github/security-audit/find-audit-issue.sh "$REPO")
+          if [ -z "$number" ]; then
+            url=$(gh issue create --repo "$REPO" --title "Security audit" --label security-audit --body-file "$body")
+            number="${url##*/}"
+          else
+            gh issue edit "$number" --repo "$REPO" --body-file "$body"
+            open=$(sed -n 's/^<!-- security-audit-state \(.*\) -->$/\1/p' "$body" | jq -s 'map(.fingerprints | length) | add // 0')
+            if [ "$(gh issue view "$number" --repo "$REPO" --json state --jq .state)" = CLOSED ] && [ "$open" -gt 0 ]; then
+              gh issue reopen "$number" --repo "$REPO"
+            fi
+          fi
+          if grep -q '^<!-- security-audit-state ' "$body"; then marker=true; else marker=false; fi
+          echo "marker=$marker" >> "$GITHUB_OUTPUT"
+          echo "published to issue $number, state marker: $marker"
+
+      - name: Seal the body when it is not published
+        id: seal-body
+        if: needs.prepare.outputs.publish != 'true' || needs.prepare.outputs.canary != 'none'
+        run: bash .github/security-audit/seal.sh seal .github/security-audit/keys/agents.pub "$RUNNER_TEMP/body" "$RUNNER_TEMP/audit-report.age"
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        if: steps.seal-body.outcome == 'success'
+        with:
+          name: audit-report
+          path: ${{ runner.temp }}/audit-report.age
+          retention-days: 1
+          if-no-files-found: error
+
+      # Step 6: the state is kept only when the published body carries its
+      # marker, so a state no marker names is never left for the next run.
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        if: steps.publish.outputs.marker == 'true'
+        with:
+          name: audit-state
+          path: ${{ runner.temp }}/audit-state/audit-state.age
+          retention-days: 90
+          if-no-files-found: error
