@@ -164,7 +164,36 @@ good_prior
 echo extra > "$FIX/download-$RUN/other.txt"
 fetch "$WORK/out-extra"
 assert_exit 1 "$RC" "an artifact with an extra file fails"
+assert_eq "" "$OUT" "an artifact with an extra file prints no outputs"
 empty_after "$WORK/out-extra" "an artifact with an extra file"
+
+# A download that fails exits 1 and leaves nothing behind.
+new_fixture no-download
+good_prior
+rm -rf "$FIX/download-$RUN"
+fetch "$WORK/out-no-download"
+assert_exit 1 "$RC" "a failed download fails"
+assert_eq "" "$OUT" "a failed download prints no outputs"
+empty_after "$WORK/out-no-download" "a failed download"
+
+# The artifacts list for the run is a 404 (the run is gone): not found.
+new_fixture artifacts-404
+good_prior
+rm "$FIX/repos_example_repo_actions_runs_${RUN}_artifacts_name_audit-state.json"
+fetch "$WORK/out-artifacts-404"
+assert_exit 0 "$RC" "an artifacts list 404 is not an error"
+assert_eq "false" "$(field found)" "an artifacts list 404 means no prior run"
+no_download "an artifacts list 404"
+
+# The artifacts list cannot be read: fails, leaving nothing behind.
+new_fixture artifacts-500
+good_prior
+: > "$FIX/repos_example_repo_actions_runs_${RUN}_artifacts_name_audit-state.500"
+fetch "$WORK/out-artifacts-500"
+assert_exit 1 "$RC" "an artifacts list that cannot be read fails"
+assert_eq "" "$OUT" "an artifacts list that cannot be read prints no outputs"
+empty_after "$WORK/out-artifacts-500" "an unreadable artifacts list"
+no_download "an unreadable artifacts list"
 
 # An expired artifact: not found, nothing downloaded.
 new_fixture expired
@@ -221,6 +250,13 @@ new_fixture list-error
 : > "$FIX/$OPEN_KEY.500"
 fetch "$WORK/out-list-error"
 assert_exit 1 "$RC" "an issue list that cannot be read fails"
+new_fixture closed-list-error
+: > "$FIX/$CLOSED_KEY.500"
+fetch "$WORK/out-closed-list-error"
+assert_exit 1 "$RC" "a closed issue list that cannot be read fails"
+assert_eq "" "$OUT" "a closed issue list that cannot be read prints no outputs"
+assert_contains "$(cat "$FIX/calls.log")" "state=closed" "the closed list was the one that failed"
+empty_after "$WORK/out-closed-list-error" "an unreadable closed issue list"
 
 # A non-empty output directory is refused before any call.
 new_fixture nonempty
