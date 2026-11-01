@@ -66,8 +66,9 @@ args() { # model turns tools
 #
 # --audit reads HOME, RUNNER_TEMP and GITHUB_WORKSPACE to write the runner's
 # paths into the deny rules, and prints nothing (exit 1) when one is unset,
-# relative or holds a character outside [A-Za-z0-9._/-], since every rule
-# list is single-quoted and a path must not end that quoting.
+# relative, ends in or doubles a slash, or holds a character outside
+# [A-Za-z0-9._/-], since every rule list is single-quoted and a path must not
+# end that quoting.
 #
 # Measured in the audit's Stage 0 spike (Claude Code 2.1.316, -p):
 #   - the subagent tool is listed as Task and its calls appear as Agent, so
@@ -105,6 +106,9 @@ audit_path_ok() { # value
   [ "$1" != "/" ] || return 1
   printf '%s' "$1" | grep -qE '^[A-Za-z0-9._/-]+$' || return 1
   case "/$1/" in */../*|*/./*) return 1 ;; esac
+  # A trailing or doubled slash would shift a derived path: ${RUNNER_TEMP%/*}
+  # of /home/runner/work/_temp/ is _temp itself, not its parent.
+  case "$1" in */|*//*) return 1 ;; esac
 }
 
 # One rule per tool for each denied root. $1 is the tools, the rest the
@@ -160,7 +164,7 @@ if [ "${1:-}" = "--audit" ]; then
   [ "$#" -eq 1 ] || { echo "usage: compose-agent-args.sh --audit" >&2; exit 2; }
   for v in HOME RUNNER_TEMP GITHUB_WORKSPACE; do
     if ! audit_path_ok "${!v:-}"; then
-      echo "compose-agent-args: $v must be an absolute path of [A-Za-z0-9._/-] with no . or .. segment" >&2
+      echo "compose-agent-args: $v must be an absolute path of [A-Za-z0-9._/-] with no . or .. segment and no trailing or doubled slash" >&2
       exit 1
     fi
   done

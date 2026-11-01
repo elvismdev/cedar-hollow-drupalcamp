@@ -165,9 +165,11 @@ assert_eq '["/a", "stray"]' "$(printf '%s' "$parsed" | python3 -I -c 'import jso
 assert_eq '["Read", "Edit(//x/**)"]' "$(printf '%s' "$parsed" | python3 -I -c 'import json,sys; print(json.dumps(json.load(sys.stdin)["allowedTools"]))')" \
   "the parser keeps a quoted rule whole"
 
-# Fails closed on a runner path that is unset, relative, or would end the quoting.
+# Fails closed on a runner path that is unset, relative, would end the
+# quoting, or ends in or doubles a slash (which would shift the _actions rule).
 for bad in "HOME=" "HOME=home/runner" "RUNNER_TEMP=/home/runner/work/_te'mp" "GITHUB_WORKSPACE=/home/runner/work/a b" \
-           "GITHUB_WORKSPACE=/home/runner/work/../x" "RUNNER_TEMP=/"; do
+           "GITHUB_WORKSPACE=/home/runner/work/../x" "RUNNER_TEMP=/" "RUNNER_TEMP=/home/runner/work/_temp/" \
+           "HOME=/home//runner" "GITHUB_WORKSPACE=/home/runner/work/ddemo/ddemo/"; do
   out=$(env "${RUNNER_ENV[@]}" "$bad" bash "$R" --audit 2>/dev/null)
   rc=$?
   assert_exit 1 "$rc" "--audit refuses $bad"
