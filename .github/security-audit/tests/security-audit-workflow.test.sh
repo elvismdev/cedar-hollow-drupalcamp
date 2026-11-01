@@ -277,6 +277,15 @@ if not ("own-marker" in order and "publish" in order and upload_state.get("id") 
 if not any((s.get("env") or {}).get("GH_TOKEN") == "${{ github.token }}" for s in [publish]):
     err("the report posts with GITHUB_TOKEN")
 
+# ---------------------------------------------------------------- run check tools
+# Foreground subagents hand their report back with SubagentHandback, so the
+# run check of every step that delegates must accept it; the repair step,
+# which starts no subagent, does not.
+if (wf.get("env") or {}).get("AGENT_TOOLS", "").split(",") != ["Read", "Glob", "Grep", "Write", "Edit", "Agent", "Task", "SubagentHandback"]:
+    err("AGENT_TOOLS must be Read,Glob,Grep,Write,Edit,Agent,Task,SubagentHandback")
+if "SubagentHandback" in (wf.get("env") or {}).get("REPAIR_TOOLS", ""):
+    err("REPAIR_TOOLS must not accept SubagentHandback: the repair step starts no subagent")
+
 # ---------------------------------------------------------------- prompts
 vars_line = re.search(r"^VARS='([^']*)'", read(SA + "/tests/prompts.test.sh"), re.M)
 if (wf.get("env") or {}).get("PROMPT_VARS") != (vars_line.group(1) if vars_line else None):
@@ -722,5 +731,7 @@ mutate_moved_upload
 
 mutate "background subagents allowed in the tie-break" '("          CLAUDE_CODE_SUBAGENT_MODEL: ${{ steps.args-tie-break.outputs.CLAUDE_CODE_SUBAGENT_MODEL }}\n          # Subagents run in the foreground even when a call omits\n          # run_in_background, so their calls reach the trace.\n          CLAUDE_CODE_DISABLE_BACKGROUND_TASKS: \"1\"\n", "          CLAUDE_CODE_SUBAGENT_MODEL: ${{ steps.args-tie-break.outputs.CLAUDE_CODE_SUBAGENT_MODEL }}\n", 1)'
 mutate "background subagents set to 0" '("CLAUDE_CODE_DISABLE_BACKGROUND_TASKS: \"1\"", "CLAUDE_CODE_DISABLE_BACKGROUND_TASKS: \"0\"", 1)'
+
+mutate "a run check refusing subagent handbacks" '("  AGENT_TOOLS: Read,Glob,Grep,Write,Edit,Agent,Task,SubagentHandback", "  AGENT_TOOLS: Read,Glob,Grep,Write,Edit,Agent,Task", 1)'
 
 pass "security-audit workflow structure"
