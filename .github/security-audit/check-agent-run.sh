@@ -74,31 +74,49 @@ usage() {
 # One labelled line per watched thing. A path that does not exist is skipped
 # by the tree hash and recorded as absent for settings.json, so creating one
 # changes the fingerprint too.
+#
+# Fails closed: it returns non-zero, naming the part, when the workspace is not
+# the top of a git repository, when git, jq or find fails (git's refusal of a
+# directory it judges of dubious ownership included), or when settings.json
+# exists but does not parse. Each command's status is checked explicitly,
+# because callers run this in a context where set -e does not apply.
 fingerprint() {
-  local ws="${GITHUB_WORKSPACE:?GITHUB_WORKSPACE is not set}"
-  local claude="$HOME/.claude" settings paths=() p
-  echo "head $(git -C "$ws" rev-parse HEAD)"
-  echo "status $(git -C "$ws" status --porcelain=v1 -uall | sha256sum | cut -d' ' -f1)"
+  local ws="${GITHUB_WORKSPACE:-}" claude="$HOME/.claude"
+  local top head status settings files paths=() p
+  if [ -z "$ws" ]; then echo "check-agent-run: GITHUB_WORKSPACE is not set" >&2; return 1; fi
+  top=$(git -C "$ws" rev-parse --show-toplevel 2>/dev/null) \
+    && [ "$(cd "$top" && pwd -P)" = "$(cd "$ws" && pwd -P)" ] \
+    || { echo "check-agent-run: the workspace is not the top of a git repository git can read" >&2; return 1; }
+  head=$(git -C "$ws" rev-parse --verify HEAD 2>/dev/null) \
+    || { echo "check-agent-run: git could not read HEAD" >&2; return 1; }
+  status=$(git -C "$ws" status --porcelain=v1 -uall 2>/dev/null | sha256sum | cut -d' ' -f1) \
+    || { echo "check-agent-run: git status failed" >&2; return 1; }
   if [ -e "$claude/settings.json" ]; then
     settings=$(jq -cS '{hooks, permissions}' "$claude/settings.json" 2>/dev/null | sha256sum | cut -d' ' -f1) \
-      || settings=unreadable
+      || { echo "check-agent-run: ~/.claude/settings.json exists but cannot be read as JSON" >&2; return 1; }
   else
     settings=absent
   fi
-  echo "settings $settings"
   for p in CLAUDE.md agents commands hooks; do
     if [ -e "$claude/$p" ]; then paths+=("$claude/$p"); fi
   done
   if [ "${#paths[@]}" -gt 0 ]; then
-    echo "claude-files $(find "${paths[@]}" -type f -print0 | sort -z | xargs -0 -r sha256sum | sha256sum | cut -d' ' -f1)"
+    files=$(find "${paths[@]}" -type f -print0 | sort -z | xargs -0 -r sha256sum | sha256sum | cut -d' ' -f1) \
+      || { echo "check-agent-run: the ~/.claude files could not be hashed" >&2; return 1; }
   else
-    echo "claude-files none"
+    files=none
   fi
+  printf 'head %s\nstatus %s\nsettings %s\nclaude-files %s\n' "$head" "$status" "$settings" "$files"
 }
 
 if [ "${1:-}" = "--fingerprint" ]; then
   [ "$#" -eq 2 ] || usage
-  fingerprint > "$2"
+  if ! fp=$(fingerprint); then
+    rm -f "$2"
+    echo "check-agent-run: no fingerprint written" >&2
+    exit 1
+  fi
+  printf '%s\n' "$fp" > "$2"
   echo "check-agent-run: fingerprint written"
   exit 0
 fi
@@ -361,7 +379,11 @@ if [ ! -s "$fp_file" ]; then
   echo "check-agent-run: no fingerprint from before the step, so changes to the checkout and ~/.claude cannot be checked" >&2
   failed=1
 else
-  now=$(fingerprint) || { echo "check-agent-run: the fingerprint could not be taken again" >&2; now=""; failed=1; }
+  if ! now=$(fingerprint); then
+    echo "check-agent-run: the fingerprint could not be taken again" >&2
+    now=""
+    failed=1
+  fi
   changed=$(diff <(printf '%s\n' "$now") "$fp_file" | sed -n 's/^[<>] \([a-z-]*\) .*/\1/p' | sort -u | tr '\n' ' ') || true
   if [ -n "$changed" ]; then
     echo "check-agent-run: changed while the agent ran: ${changed% }" >&2

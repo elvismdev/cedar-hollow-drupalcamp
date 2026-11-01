@@ -236,6 +236,32 @@ assert_eq "1" "$(rc source "$tmp/clean.json")" "a new file in ~/.claude/agents f
 rm -r "$HOME/.claude/agents"
 assert_eq "0" "$(rc source "$tmp/clean.json")" "restored state passes again"
 
+# The fingerprint fails closed: what it cannot read is an error, never a
+# stable value that compares equal before and after.
+fp_rc () { bash "$C" --fingerprint "$tmp/fp2" >/dev/null 2>&1; echo $?; }
+mkdir -p "$tmp/not-a-repo"
+assert_eq "1" "$(GITHUB_WORKSPACE="$tmp/not-a-repo" fp_rc)" "--fingerprint fails on a workspace that is not a git repository"
+assert_eq "no" "$([ -e "$tmp/fp2" ] && echo yes || echo no)" "and writes no fingerprint"
+mkdir -p "$WS/sub"
+assert_eq "1" "$(GITHUB_WORKSPACE="$WS/sub" fp_rc)" "--fingerprint fails on a folder below a repository's top"
+rmdir "$WS/sub"
+assert_eq "1" "$(GITHUB_WORKSPACE="" fp_rc)" "--fingerprint fails with no workspace"
+assert_eq "1" "$(GITHUB_WORKSPACE="$tmp/not-a-repo" rc source "$tmp/clean.json")" "the comparison fails when the workspace is not a repository"
+saved=$(cat "$HOME/.claude/settings.json")
+echo 'not json' > "$HOME/.claude/settings.json"
+assert_eq "1" "$(fp_rc)" "--fingerprint fails when settings.json does not parse"
+assert_contains "$(run source "$tmp/clean.json")" "could not be taken again" "and the comparison fails"
+echo "$saved" > "$HOME/.claude/settings.json"
+# A git that refuses (as it does on a directory of dubious ownership) for
+# status only, after HEAD was read.
+mkdir -p "$tmp/bin"
+real_git=$(command -v git)
+printf '#!/usr/bin/env bash\nfor a in "$@"; do if [ "$a" = status ]; then echo "fatal: detected dubious ownership" >&2; exit 128; fi; done\nexec %q "$@"\n' "$real_git" > "$tmp/bin/git"
+chmod +x "$tmp/bin/git"
+assert_eq "1" "$(PATH="$tmp/bin:$PATH" fp_rc)" "--fingerprint fails when git status refuses"
+assert_eq "1" "$(PATH="$tmp/bin:$PATH" rc source "$tmp/clean.json")" "and so does the comparison"
+assert_eq "0" "$(rc source "$tmp/clean.json")" "the real state still passes"
+
 # No value written by the agent reaches the log.
 canary="zq$(od -An -N8 -tx1 /dev/urandom | tr -d ' \n')"
 trace "$tmp/t.json" "${CLEAN[@]}" "$(agent ta2 "agent-id: $canary")" "$(sub ta2 Write "{\"file_path\":\"$OUT/agents/$canary/x\",\"content\":\"$canary\"}")" \
