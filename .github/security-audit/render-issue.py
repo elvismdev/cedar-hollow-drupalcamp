@@ -414,6 +414,9 @@ def script_results(run, fp):
             continue
         for check in unit.get("local_checks") or []:
             if isinstance(check, dict) and check.get("method") == "local":
+                match = ARTIFACT.match(check.get("artifact") or "") if isinstance(check.get("artifact"), str) else None
+                if match is None or match.group(1) != check.get("agent_id"):
+                    continue
                 record = read_artifact(run.args.state, check.get("artifact"))
                 if record and record.get("fingerprint") == fp and record.get("slot") in ("a", "b"):
                     results[record["slot"]] = record

@@ -310,5 +310,15 @@ class BoundTest(RenderTest):
         self.assertGreater(int(match.group(1)), 0)
         self.assertTrue(body.rstrip().endswith("-->"))
 
+    def test_a_check_must_name_the_artifacts_agent(self):
+        u = self.artifacts("c-1", "decider-1")
+        for check in u["local_checks"]:
+            check["agent_id"] = "decider-2"
+        self.seed([confirmed("c-1")], final_meta(["c-1"], ["c-1"]), ledger=[u])
+        body = self.render()
+        self.assertIn("Script a: run record not available.", body)
+        self.assertIn("Script b: run record not available.", body)
+
+
 if __name__ == "__main__":
     unittest.main()
