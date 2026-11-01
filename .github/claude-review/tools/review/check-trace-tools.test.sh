@@ -262,6 +262,23 @@ no_opt Write '{"content":"x"}' "empty field (field file_path)" "a Write with no 
 no_opt Agent '{"description":"agent-id: h1","prompt":"p","model":"other"}' "unknown field" "an Agent call naming a model is refused"
 no_opt Bash '{"command":"id"}' "tool not allowed" "a tool outside --tools is still refused"
 assert_contains "$(run "$tmp/o.json" "${A[@]}")" "outside Read, Glob, Grep, Write, Edit, Agent and Task" "and the message names the allowed list"
+# SubagentHandback, the tool a foreground subagent hands its report back with,
+# passes only when --tools names it, and only with exactly a string message.
+H=(--tools "Read,Glob,Grep,Write,Edit,Agent,Task,SubagentHandback" --root /mnt/a/in --root /mnt/a/out --write-root /mnt/a/out)
+hand () { printf '[%s]' "$(call SubagentHandback "$1")" > "$tmp/h.json"; }
+hand '{"message":"done: 3 files read"}'
+assert_eq "0" "$(rc "$tmp/h.json" "${H[@]}")" "a SubagentHandback with a string message passes when --tools names it"
+assert_eq "1" "$(rc "$tmp/h.json" "${A[@]}")" "a SubagentHandback is refused when --tools does not name it"
+assert_eq "1" "$(rc "$tmp/h.json")" "a SubagentHandback is refused with no options, as before"
+hand '{"message":"done","file_path":"/mnt/a/out/x"}'
+assert_eq "1" "$(rc "$tmp/h.json" "${H[@]}")" "a SubagentHandback with another field is refused"
+assert_contains "$(run "$tmp/h.json" "${H[@]}")" "SubagentHandback call 1: unknown field" "and says why"
+hand '{}'
+assert_contains "$(run "$tmp/h.json" "${H[@]}")" "SubagentHandback call 1: empty field (field message)" "a SubagentHandback with no message is refused"
+hand '{"message":["x"]}'
+assert_contains "$(run "$tmp/h.json" "${H[@]}")" "SubagentHandback call 1: field not a string (field message)" "a SubagentHandback whose message is not a string is refused"
+hand '"done"'
+assert_eq "1" "$(rc "$tmp/h.json" "${H[@]}")" "a SubagentHandback whose input is not an object is refused"
 printf '[%s]' "$(call Write '{"file_path":"/mnt/a/out/x","content":""}')" > "$tmp/o.json"
 assert_eq "1" "$(rc "$tmp/o.json" --tools Read,Write --root /mnt/a/out)" "with no write root every Write is refused"
 assert_eq "2" "$(rc "$tmp/o.json" --tools Read,Bash)" "--tools may name only tools whose fields are checked"
