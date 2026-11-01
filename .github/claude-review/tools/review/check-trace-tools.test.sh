@@ -317,7 +317,22 @@ ok_path Glob '{"pattern":"{src,tests}/**/*.php","path":"/rt/head"}' "a folder br
 ok_path Glob '{"pattern":"**/*.{php,twig}"}' "an extension brace group Glob in the workspace passes"
 label_is Glob '{"pattern":"{a,b"}' "braces cannot be expanded (field pattern)" "an unbalanced Glob brace is refused"
 label_is Grep '{"pattern":"x","path":"/rt/head","glob":"{a,b"}' "braces cannot be expanded (field glob)" "an unbalanced Grep brace is refused"
-label_is Glob '{"pattern":"{a,{b,c}}/*.php"}' "braces cannot be expanded (field pattern)" "a nested brace is refused"
+# Nested groups expand as in bash and minimatch, and each expansion is judged.
+ok_path Glob '{"pattern":"{a,{b,c}}/*.php"}' "a nested brace group inside the workspace passes"
+ok_path Grep '{"pattern":"x","path":"/rt/head","glob":"{web/modules/custom/**,tests/**,web/themes/custom/**/*.{php,twig,yml}}"}' "a nested folder and extension list in the head passes"
+ok_path Glob '{"pattern":"{web/modules/custom/**,tests/**,web/themes/custom/**/*.{php,twig,yml}}","path":"/rt/head"}' "the same nested list as a Glob in the head passes"
+no_path Glob '{"pattern":"{.,{.,}.}/{.,{.,}.}/etc/*"}' "a nested brace-spelled .. Glob pattern from the workspace is refused"
+printf '[%s]' "$(call Grep '{"pattern":"x","path":"/rt/head","glob":"{.,{.,}.}/**"}')" > "$tmp/b.json"
+assert_eq "1" "$(rc "$tmp/b.json")" "a nested brace-spelled .. Grep glob in the head is refused"
+# A group with no comma is literal; it is judged as written and without its
+# braces, since glob engines differ on it.
+no_path Glob '{"pattern":"{..}/{..}/etc/*"}' "a literal {..} group is judged as .. and refused"
+printf '[%s]' "$(call Grep '{"pattern":"x","path":"/rt/head","glob":"{..}/**"}')" > "$tmp/b.json"
+assert_eq "1" "$(rc "$tmp/b.json")" "a literal {..} Grep glob in the head is refused"
+ok_path Grep '{"pattern":"x","glob":"*.{php}"}' "a literal one-extension group still passes"
+# More than 256 expansions cannot be judged.
+label_is Glob '{"pattern":"{a,b,c,d}{a,b,c,d}{a,b,c,d}{a,b,c,d}{a,b}/*.php"}' "braces cannot be expanded (field pattern)" "512 expansions are refused"
+ok_path Glob '{"pattern":"{a,b,c,d}{a,b,c,d}{a,b,c,d}{a,b,c,d}/*.php"}' "256 expansions pass"
 label_is Glob '{"pattern":"a}/*.php"}' "braces cannot be expanded (field pattern)" "a stray closing brace is refused"
 printf '[%s]' "$(call Grep '{"pattern":"x","path":"/mnt/a/out/x","glob":"!{.,}./**"}')" > "$tmp/b.json"
 assert_eq "1" "$(rc "$tmp/b.json" --root /mnt/a/out --grep-any-glob-in-subfolders)" "a brace-spelled .. is refused in subfolder mode too"

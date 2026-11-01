@@ -39,10 +39,12 @@
 # Brace groups are expanded before the paths are judged, by expand-braces.cjs
 # (shared with the security audit's run check): every expansion of a Read
 # file_path, a Glob or Grep path, a Glob pattern and a Grep glob must pass the
-# rules below on its own, so {.,}./x is judged as both ../x and ./x. A value
-# whose braces cannot be expanded with confidence (a backslash, a nested,
-# unbalanced or stray brace, or too many expansions) is refused with the label
-# "braces cannot be expanded". The raw value is still held to every rule.
+# rules below on its own, so {.,}./x is judged as both ../x and ./x. Nested
+# groups expand as in bash and minimatch, and a group with no comma, such as
+# {..}, is judged both as written and without its braces. A value whose braces
+# cannot be expanded with confidence (a backslash, an unbalanced or stray
+# brace, or more than 256 expansions) is refused with the label "braces cannot
+# be expanded". The raw value is still held to every rule.
 #
 # Nothing is normalised. Claude Code trims a path (with JavaScript's trim, which
 # removes characters such as U+FEFF that other trims keep) and expands a
