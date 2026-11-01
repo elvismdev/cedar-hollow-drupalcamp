@@ -1698,8 +1698,8 @@ jobs:
 
       # Step 4: nothing is published until the body and the records are
       # compared with every secret this job holds. A match, or a screen that
-      # cannot run, replaces the body with the fixed notice, which carries no
-      # state marker.
+      # cannot run, replaces the body with the fixed notice, which carries
+      # only the previous run's state marker.
       - name: Screen the body for the job's secrets
         id: screen
         continue-on-error: true
@@ -1718,11 +1718,15 @@ jobs:
 
       - name: Replace the body with the screen-failure notice
         if: steps.screen.outcome != 'success'
-        run: python3 -I .github/security-audit/render-issue.py --screen-failed --out "$RUNNER_TEMP/body/issue.md"
+        run: python3 -I .github/security-audit/render-issue.py --screen-failed --previous-marker "$RUNNER_TEMP/previous-marker.json" --out "$RUNNER_TEMP/body/issue.md"
 
       # Step 5: published to the issue chosen by find-audit-issue.sh, the rule
-      # the prior-state fetch reads by. A closed issue is reopened when the
-      # state marker lists any fingerprint still open.
+      # the prior-state fetch reads by. A body with no state marker never
+      # replaces one that has a marker: the issue's marker line is kept as it
+      # is, so the next run still finds the last good state. A closed issue is
+      # reopened when the state marker lists any fingerprint still open.
+      # marker is true only when the published marker names this run, which
+      # is when this run's audit-state is the one to keep.
       - name: Publish the issue
         id: publish
         if: needs.prepare.outputs.publish == 'true' && needs.prepare.outputs.canary == 'none'
@@ -1737,13 +1741,21 @@ jobs:
             url=$(gh issue create --repo "$REPO" --title "Security audit" --label security-audit --body-file "$body")
             number="${url##*/}"
           else
+            if ! grep -q '^<!-- security-audit-state ' "$body"; then
+              current=$(gh issue view "$number" --repo "$REPO" --json body --jq .body)
+              kept=$(printf '%s\n' "$current" | tr -d '\r' | grep -E '^<!-- security-audit-state \{.*\} -->$' || true)
+              if [ -n "$kept" ] && [ "$(printf '%s\n' "$kept" | wc -l)" -eq 1 ]; then
+                printf '\n%s\n' "$kept" >> "$body"
+              fi
+            fi
             gh issue edit "$number" --repo "$REPO" --body-file "$body"
-            open=$(sed -n 's/^<!-- security-audit-state \(.*\) -->$/\1/p' "$body" | jq -s 'map(.fingerprints | length) | add // 0')
+            open=$(sed -n 's/^<!-- security-audit-state \(.*\) -->$/\1/p' "$body" | jq -nR '[inputs | fromjson? | .fingerprints | arrays | length] | add // 0')
             if [ "$(gh issue view "$number" --repo "$REPO" --json state --jq .state)" = CLOSED ] && [ "$open" -gt 0 ]; then
               gh issue reopen "$number" --repo "$REPO"
             fi
           fi
-          if grep -q '^<!-- security-audit-state ' "$body"; then marker=true; else marker=false; fi
+          own=$(sed -n 's/^<!-- security-audit-state \(.*\) -->$/\1/p' "$body" | jq -rR --arg id "$GITHUB_RUN_ID" 'fromjson? | objects | select(.run_id == $id) | .run_id')
+          if [ -n "$own" ]; then marker=true; else marker=false; fi
           echo "marker=$marker" >> "$GITHUB_OUTPUT"
           echo "published to issue $number, state marker: $marker"
 

@@ -444,6 +444,50 @@ rc, out = verdict("../outside.php")
 if rc == 0 or "record poc-run-1-b: not run" not in out:
     err("the sandbox-secrets verdict must fail when a canary script was refused and never ran")
 
+# ---------------------------------------------------------------- the state marker on the issue
+# The report's publish step is run as written against a stub gh: a body with
+# no marker keeps the issue's marker line verbatim, a body whose marker names
+# this run sets marker=true (so its audit-state is kept), and one carrying the
+# previous run's marker sets it false. The screen-failure body is rendered
+# with the previous marker.
+report = {st.get("id") or st.get("name"): st for st in (jobs.get("report") or {}).get("steps") or []}
+screen_failed = (report.get("Replace the body with the screen-failure notice") or {}).get("run") or ""
+if '--screen-failed --previous-marker "$RUNNER_TEMP/previous-marker.json"' not in screen_failed:
+    err("the screen-failure body must be rendered with the previous marker")
+OLD_MARKER = '<!-- security-audit-state {"run_id": "8000", "sha256": "%s", "fingerprints": ["fp-1"]} -->' % ("a" * 64)
+NEW_MARKER = '<!-- security-audit-state {"run_id": "9001", "sha256": "%s", "fingerprints": []} -->' % ("b" * 64)
+def publish(body_text, issue_text):
+    with tempfile.TemporaryDirectory() as d:
+        ws, rt, bin_ = os.path.join(d, "ws"), os.path.join(d, "rt"), os.path.join(d, "bin")
+        os.makedirs(os.path.join(ws, SA)); os.makedirs(os.path.join(rt, "body")); os.makedirs(bin_)
+        open(os.path.join(ws, SA, "find-audit-issue.sh"), "w").write("echo 7\n")
+        open(os.path.join(rt, "body", "issue.md"), "w").write(body_text)
+        open(os.path.join(d, "issue-body"), "w").write(issue_text)
+        gh = os.path.join(bin_, "gh")
+        open(gh, "w").write('#!/usr/bin/env bash\ncase "$1 $2" in\n'
+                            '  "label create") ;;\n'
+                            '  "issue view") if [[ "$*" == *"--json body"* ]]; then cat "%s/issue-body"; else echo OPEN; fi ;;\n'
+                            '  "issue edit") cp "${@: -1}" "%s/edited" ;;\n'
+                            '  *) exit 1 ;;\nesac\n' % (d, d))
+        os.chmod(gh, 0o755)
+        out = os.path.join(d, "output")
+        env = {"PATH": bin_ + ":" + os.environ["PATH"], "RUNNER_TEMP": rt, "REPO": "example/repo",
+               "GITHUB_RUN_ID": "9001", "GITHUB_OUTPUT": out, "GH_TOKEN": "x"}
+        p = subprocess.run(["bash", "-eo", "pipefail", "-c", (report.get("publish") or {}).get("run") or "exit 1"],
+                           cwd=ws, env=env, capture_output=True, text=True)
+        edited = open(os.path.join(d, "edited")).read() if os.path.exists(os.path.join(d, "edited")) else None
+        marker = re.findall(r"^marker=(.*)$", open(out).read(), re.M) if os.path.exists(out) else []
+        return p.returncode, edited, (marker[-1] if marker else None)
+rc, edited, mk = publish("# Security audit\n\n**Output failed.**\n", "old body\n\n" + OLD_MARKER + "\n")
+if rc != 0 or edited is None or edited.rstrip("\n").splitlines()[-1] != OLD_MARKER or mk != "false":
+    err("a published body with no marker must keep the issue's marker line verbatim, with marker=false")
+rc, edited, mk = publish("# Security audit\n\n" + NEW_MARKER + "\n", "old body\n\n" + OLD_MARKER + "\n")
+if rc != 0 or edited is None or OLD_MARKER in edited or mk != "true":
+    err("a body whose marker names this run must replace the old marker and set marker=true")
+rc, edited, mk = publish("# Security audit\n\n" + OLD_MARKER + "\n", "old body\n\n" + OLD_MARKER + "\n")
+if rc != 0 or mk != "false":
+    err("a body carrying the previous run's marker must set marker=false")
+
 # ---------------------------------------------------------------- key canaries
 for name, own, other, key in (("source", "agents", "sandbox", "AUDIT_AGENTS_AGE_KEY"),
                               ("poc-run", "sandbox", "agents", "AUDIT_SANDBOX_AGE_KEY")):
@@ -483,7 +527,7 @@ SCRIPTS = {
                                                  lambda a: len(a) == 1),
     SA + "/merge-records.py": (["Usage: merge-records.py --state <dir> <subcommand> [options]"], None),
     SA + "/render-issue.py": (["render-issue.py --state <dir> --state-sha256 <hex> --run-id <id>",
-                               "render-issue.py --screen-failed --out <body.md>"], None),
+                               "render-issue.py --screen-failed [--previous-marker <marker.json>] --out <body.md>"], None),
     CR + "/tools/agent/emit-block.sh": (["usage: emit-block.sh <output-name> <file>"], lambda a: len(a) == 2),
     CR + "/tools/agent/compose-agent-args.sh": (["usage: compose-agent-args.sh --audit", "usage: compose-agent-args.sh --audit-models <step>"],
                                                 lambda a: a == ["--audit"] or (len(a) == 2 and a[0] == "--audit-models"
@@ -528,7 +572,8 @@ def check_merge(args):
     return flags is not None and req <= set(flags) <= (req | opt) and all(flags.count(f) == 1 for f in req)
 
 def check_render(args):
-    if args == ["--screen-failed", "--out", args[-1]] and len(args) == 3:
+    if args[:1] == ["--screen-failed"] and (len(args) == 3 and args[1] == "--out"
+                                            or len(args) == 5 and args[1] == "--previous-marker" and args[3] == "--out"):
         return True
     flags = flags_of(args)
     return flags is not None and {"--jobs", "--out"} <= set(flags) <= {
@@ -636,5 +681,8 @@ mutate "a record map from an unchecked step" '("RECORDS: ${{ needs.poc-run.outpu
 mutate "the key pair checked against the wrong public key" '("check-key-pair.sh AUDIT_SANDBOX_AGE_KEY .github/security-audit/keys/sandbox.pub .github/security-audit/keys/agents.pub", "check-key-pair.sh AUDIT_SANDBOX_AGE_KEY .github/security-audit/keys/agents.pub .github/security-audit/keys/sandbox.pub", 1)'
 mutate "a cross-check step without the plan guard" "(\"      - name: Record the run status\n        if: steps.plan.outputs.merge == 'true'\n\", \"      - name: Record the run status\n\", 1)"
 mutate "poc-decide's hand-off without the handoff guard" "(\"      - name: Seal audit-poc to the agents key\n        id: handoff\n        if: steps.plan.outputs.handoff == 'true'\n\", \"      - name: Seal audit-poc to the agents key\n        id: handoff\n\", 1)"
+
+mutate "a markerless body replacing the issue's marker" '("                printf \x27\\n%s\\n\x27 \"$kept\" >> \"$body\"", "                true", 1)'
+mutate "marker=true for the previous run's marker" '("jq -rR --arg id \"$GITHUB_RUN_ID\" \x27fromjson? | objects | select(.run_id == $id) | .run_id\x27", "jq -rR \x27fromjson? | objects | .run_id\x27", 1)'
 
 pass "security-audit workflow structure"
