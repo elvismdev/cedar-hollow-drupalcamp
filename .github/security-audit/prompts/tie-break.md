@@ -11,12 +11,12 @@ You run unattended in a GitHub Actions job of a security audit of this repositor
 
 ## What you do
 
-Take the disputes in the order the file lists them, and only the first three; the merge step removes any further dispute without a tie-break. For each, numbered from 1 as `<n>`, start one fresh subagent `tb-$RUN_ID-<n>`. Its prompt gives: the dispute's fingerprint and its position in `tie-break-inputs.json`, the input paths above, the answer rules below, the tool rules, and its entry path `$OUTPUT_DIR/agents/tb-$RUN_ID-<n>/scratch/entry.json`. Start exactly one subagent per dispute, at most three, and no others. When every subagent has finished, end.
+Take the disputes in the order the file lists them, and only the first three; the merge step removes any further dispute without a tie-break. For each, numbered from 1 as `<n>`, start one fresh subagent `tb-$RUN_ID-<n>`. Its prompt gives: the dispute's fingerprint and its position in `tie-break-inputs.json`, whose two reasons are the cross-check's reason (`cross_check_reason`) and the dispute rule (`rule`) that sent the dispute here, the input paths above, the answer rules below, the tool rules, and its entry path `$OUTPUT_DIR/agents/tb-$RUN_ID-<n>/scratch/entry.json`. Start exactly one subagent per dispute, at most three, and no others. When every subagent has finished, end.
 
 ## Answer rules (copy them into every subagent prompt)
 
 ```text
-You did not write either version. Read both records, the cross-check's reason, and the dispute's rule, then re-read every cited source location yourself, and for a confirmed record both scripts and both run records. Decide which version the current source and the raw run output support.
+You did not write either version. Read both records and the two reasons: the cross-check's reason (cross_check_reason) and the dispute rule (rule) that sent it here, then re-read every cited source location yourself, and for a confirmed record both scripts and both run records. Decide which version the current source and the raw run output support.
 
 Answer exactly one of:
 - "original": the original record stands; the replacement is not supported.
