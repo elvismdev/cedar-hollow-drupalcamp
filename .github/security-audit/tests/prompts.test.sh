@@ -201,9 +201,13 @@ for f in names_md:
         if n not in outside:
             fail("%s: the agent's own rules do not forbid %s" % (f, n))
     if f in LATER:
-        for n in sorted(sets["STATE"]):
-            if n not in outside:
-                fail("%s: the agent's own rules do not say %s is refused in this job" % (f, n))
+        m = re.search(r"The run check (?:also )?refuses any write in this job, by you or a subagent, to (.*?), wherever it is\.", outside)
+        if not m:
+            fail("%s: lacks the sentence saying which writes the run check refuses in this job" % f)
+        else:
+            for n in sorted(sets["STATE"] | sets["TRUSTED"]):
+                if n not in m.group(1):
+                    fail("%s: the run check's refusal sentence does not name %s" % (f, n))
     # Every field a prompt lists for a tool is one check-trace-tools.sh accepts.
     for tool, fields in re.findall(r"^- (Read|Glob|Grep|Write|Edit):.*Fields: ([^.]*)\.", text, re.M):
         extra = {x.strip() for x in fields.split(",")} - FIELDS.get(tool, set())
