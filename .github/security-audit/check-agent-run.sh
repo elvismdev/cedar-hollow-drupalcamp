@@ -21,9 +21,21 @@
 #     A message whose parent_tool_use_id is that call's id belongs to that
 #     subagent. A call in a message whose parent matches no subagent call
 #     cannot be attributed and fails.
-#   - A subagent runs in the foreground: run_in_background absent or false, no
-#     task_started event marked is_backgrounded, and no background count in
-#     the result's subagent_stats.
+#   - A subagent ran in the foreground, judged by what happened rather than
+#     by the run_in_background value its call asked for (any value is
+#     accepted, since CLAUDE_CODE_DISABLE_BACKGROUND_TASKS keeps every
+#     subagent in the foreground): no task_started event marked
+#     is_backgrounded, no background count in the result's subagent_stats,
+#     no subagent call whose result is an async launch rather than the
+#     subagent's report, and its calls in the trace (below). A launch result
+#     is a plain string or a single text block that starts with the text in
+#     async-launch.txt, as every background launch in Claude Code 2.1.316
+#     does; a report that quotes the phrase elsewhere is not one. This
+#     catches a subagent that backgrounds after some calls; judge-canary.sh
+#     reads the same file. Its refusal names the call's position and the
+#     declared agent id, which has the canonical form below.
+#   - Every subagent call has a tool_result in the trace: a call with none
+#     cannot be shown to have finished in the foreground.
 #   - A subagent's Write or Edit lands under
 #     <output-root>/agents/<its-id>/scratch/, and never on a file whose name is
 #     one of the shared or combined files that only the top-level agent or the
@@ -168,11 +180,11 @@ if ! bash "$CTT" "$trace" --tools "$allowed" "${roots[@]}" --write-root "$out_ro
 fi
 
 if ! node - "$trace" "$job" "$out_root" "$GITHUB_WORKSPACE" "$model" "$helper" \
-  "$HERE/../claude-review/tools/review/expand-braces.cjs" <<'JS'
+  "$HERE/../claude-review/tools/review/expand-braces.cjs" "$HERE/async-launch.txt" <<'JS'
 const fs = require('fs');
 const path = require('path').posix;
 
-const [trace, job, outArg, wsArg, model, helper, expander] = process.argv.slice(2);
+const [trace, job, outArg, wsArg, model, helper, expander, launchFile] = process.argv.slice(2);
 const say = (line) => console.error(`check-agent-run: ${line}`);
 
 let msgs;
@@ -249,9 +261,6 @@ for (const call of calls) {
     id = ids[0];
     seenIds.add(id);
   }
-  if ('run_in_background' in input && input.run_in_background !== false) {
-    refuse(call, 'starts a background subagent');
-  }
   if (typeof c.id !== 'string' || c.id === '') {
     refuse(call, 'has no call id, so its subagent cannot be attributed');
   } else {
@@ -274,6 +283,39 @@ for (const m of msgs) {
     const bg = (Number(s.started_in_background) || 0) + (isObj(s.requested) ? Number(s.requested.background) || 0 : 0);
     if (bg > 0) { bad += 1; say('the result counts a background subagent'); }
   }
+}
+
+// A subagent call that returns at once with an async launch, rather than the
+// subagent's report, started it in the background, whatever it did before.
+const LAUNCH = fs.readFileSync(launchFile, 'utf8').trim();
+if (!LAUNCH) { say('the async launch text is empty, so a background launch cannot be detected'); process.exit(1); }
+// A launch is one plain string or one text block; a report of several
+// blocks, or text that only quotes the phrase, is not.
+const launchText = (r) => (typeof r.content === 'string' ? r.content
+  : Array.isArray(r.content) && r.content.length === 1 && isObj(r.content[0]) && r.content[0].type === 'text'
+    && typeof r.content[0].text === 'string' ? r.content[0].text : null);
+function* toolResults(node) {
+  if (isObj(node)) {
+    if (node.type === 'tool_result') yield node;
+    for (const v of Object.values(node)) yield* toolResults(v);
+  } else if (Array.isArray(node)) {
+    for (const v of node) yield* toolResults(v);
+  }
+}
+const callById = new Map(calls.filter(({ c }) => typeof c.id === 'string').map((call) => [call.c.id, call]));
+const answered = new Set();
+for (const r of toolResults(msgs)) {
+  if (typeof r.tool_use_id !== 'string' || !subagents.has(r.tool_use_id)) continue;
+  answered.add(r.tool_use_id);
+  const text = launchText(r);
+  if (text !== null && text.startsWith(LAUNCH)) {
+    const id = subagents.get(r.tool_use_id);
+    refuse(callById.get(r.tool_use_id),
+      `(agent id ${id === null ? 'not valid' : id}) returned an async launch: the subagent ran in the background`);
+  }
+}
+for (const [callId] of subagents) {
+  if (!answered.has(callId)) refuse(callById.get(callId), 'has no result in the trace, so it cannot be shown to have finished in the foreground');
 }
 
 // Brace expansion shared with check-trace-tools.sh: an array of expansions,
