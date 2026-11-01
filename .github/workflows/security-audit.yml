@@ -249,6 +249,7 @@ jobs:
             envsubst "$PROMPT_VARS" < ".github/security-audit/prompts/canary-$CANARY.md" >> "$RUNNER_TEMP/prompt-source.md"
           fi
           bash .github/claude-review/tools/agent/emit-block.sh prompt "$RUNNER_TEMP/prompt-source.md" >> "$GITHUB_OUTPUT"
+          echo "env_path=$GITHUB_ENV" >> "$GITHUB_OUTPUT"
 
       - name: Fingerprint the checkout and ~/.claude before the source agent
         id: before-source
@@ -305,6 +306,36 @@ jobs:
           cause=$(bash .github/security-audit/agent-outcome.sh "$TRACE" "$OUTCOME" "$STARTED" "$ENDED" 280 "$AUDIT_OUTPUT_DIR/findings.json" "$AUDIT_OUTPUT_DIR/coverage-ledger.json")
           echo "cause=$cause" >> "$GITHUB_OUTPUT"
           echo "source agent: $cause"
+
+      # On a canary run: the canary's pass condition, judged from the trace
+      # with one line per planted call by label, and the trace sealed to the
+      # agents key for the owner, kept one day.
+      - name: Judge the canary (source agent)
+        if: always() && steps.plan.outputs.agent == 'true' && needs.prepare.outputs.canary != 'none'
+        env:
+          CANARY: ${{ needs.prepare.outputs.canary }}
+          TRACE: ${{ steps.agent-source.outputs.execution_file }}
+          RUN_CHECK_OUTCOME: ${{ steps.check-source.outcome }}
+          GITHUB_ENV_PATH: ${{ steps.prompt-source.outputs.env_path }}
+        run: bash .github/security-audit/judge-canary.sh "$CANARY" "$TRACE"
+
+      - name: Seal the canary trace to the agents key
+        id: canary-trace
+        if: always() && steps.plan.outputs.agent == 'true' && needs.prepare.outputs.canary != 'none'
+        env:
+          TRACE: ${{ steps.agent-source.outputs.execution_file }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/canary-trace-in" "$RUNNER_TEMP/canary-trace"
+          cp "$TRACE" "$RUNNER_TEMP/canary-trace-in/execution.json"
+          bash .github/security-audit/seal.sh seal .github/security-audit/keys/agents.pub "$RUNNER_TEMP/canary-trace-in" "$RUNNER_TEMP/canary-trace/canary-trace-source.age" > /dev/null
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        if: always() && steps.canary-trace.outcome == 'success'
+        with:
+          name: canary-trace-source
+          path: ${{ runner.temp }}/canary-trace/canary-trace-source.age
+          retention-days: 1
+          if-no-files-found: error
 
       # count --job source runs first: it creates trusted-meta.json, which
       # every later subcommand reads instead of anything the agent wrote.
@@ -647,6 +678,7 @@ jobs:
             envsubst "$PROMPT_VARS" < ".github/security-audit/prompts/canary-$CANARY.md" >> "$RUNNER_TEMP/prompt-poc-write.md"
           fi
           bash .github/claude-review/tools/agent/emit-block.sh prompt "$RUNNER_TEMP/prompt-poc-write.md" >> "$GITHUB_OUTPUT"
+          echo "env_path=$GITHUB_ENV" >> "$GITHUB_OUTPUT"
 
       - name: Fingerprint the checkout and ~/.claude before the poc-write agent
         id: before-poc-write
@@ -698,6 +730,36 @@ jobs:
           cause=$(bash .github/security-audit/agent-outcome.sh "$TRACE" "$OUTCOME" "$STARTED" "$ENDED" 75 "$AUDIT_OUTPUT_DIR/poc-manifest.json")
           echo "cause=$cause" >> "$GITHUB_OUTPUT"
           echo "poc-write agent: $cause"
+
+      # On a canary run: the canary's pass condition, judged from the trace
+      # with one line per planted call by label, and the trace sealed to the
+      # agents key for the owner, kept one day.
+      - name: Judge the canary (poc-write agent)
+        if: always() && steps.plan.outputs.agent == 'true' && needs.prepare.outputs.canary == 'script-isolation'
+        env:
+          CANARY: ${{ needs.prepare.outputs.canary }}
+          TRACE: ${{ steps.agent-poc-write.outputs.execution_file }}
+          RUN_CHECK_OUTCOME: ${{ steps.check-poc-write.outcome }}
+          GITHUB_ENV_PATH: ${{ steps.prompt-poc-write.outputs.env_path }}
+        run: bash .github/security-audit/judge-canary.sh "$CANARY" "$TRACE"
+
+      - name: Seal the canary trace to the agents key
+        id: canary-trace
+        if: always() && steps.plan.outputs.agent == 'true' && needs.prepare.outputs.canary != 'none'
+        env:
+          TRACE: ${{ steps.agent-poc-write.outputs.execution_file }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/canary-trace-in" "$RUNNER_TEMP/canary-trace"
+          cp "$TRACE" "$RUNNER_TEMP/canary-trace-in/execution.json"
+          bash .github/security-audit/seal.sh seal .github/security-audit/keys/agents.pub "$RUNNER_TEMP/canary-trace-in" "$RUNNER_TEMP/canary-trace/canary-trace-poc-write.age" > /dev/null
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        if: always() && steps.canary-trace.outcome == 'success'
+        with:
+          name: canary-trace-poc-write
+          path: ${{ runner.temp }}/canary-trace/canary-trace-poc-write.age
+          retention-days: 1
+          if-no-files-found: error
 
       - name: Count the poc-write agent's subagents
         if: always() && steps.check-poc-write.outcome == 'success' && steps.plan.outputs.merge == 'true'
@@ -860,6 +922,8 @@ jobs:
       # record. The log names items by position only, never by fingerprint.
       - name: Run each script in the sandbox and seal its record
         id: run
+        env:
+          CANARY: ${{ needs.prepare.outputs.canary }}
         run: |
           scripts="$(cd "$RUNNER_TEMP/scripts" && pwd -P)"
           manifest="$scripts/poc-manifest.json"
@@ -911,6 +975,13 @@ jobs:
                 missing=$((missing + 1))
                 continue
               fi
+              # The sandbox-secrets canary is judged here, on the plaintext
+              # record, because once sealed only the agents key opens it.
+              if [ "$CANARY" = sandbox-secrets ]; then
+                echo "sandbox-secrets: record $name" >> "$RUNNER_TEMP/canary-verdict.txt"
+                bash .github/security-audit/judge-canary.sh sandbox-secrets - "$RUNNER_TEMP/record/$name/$name.json" \
+                  >> "$RUNNER_TEMP/canary-verdict.txt" || echo "$name" >> "$RUNNER_TEMP/canary-failed.txt"
+              fi
               bash .github/security-audit/seal.sh seal .github/security-audit/keys/agents.pub "$RUNNER_TEMP/record/$name" "$RUNNER_TEMP/sealed/$name.age" > /dev/null
               rm -rf "$RUNNER_TEMP/record/$name"
               echo "item $n slot $slot: record sealed"
@@ -942,6 +1013,19 @@ jobs:
           echo "records=$map" >> "$GITHUB_OUTPUT"
           echo "$(jq length <<<"$map") sealed run record(s)"
 
+      - name: Canary verdict (sandbox-secrets)
+        if: always() && needs.prepare.outputs.canary == 'sandbox-secrets' && steps.open.outcome == 'success'
+        run: |
+          if [ ! -s "$RUNNER_TEMP/canary-verdict.txt" ]; then
+            echo "::error::sandbox-secrets: no run record was judged"
+            exit 1
+          fi
+          cat "$RUNNER_TEMP/canary-verdict.txt"
+          if [ -s "$RUNNER_TEMP/canary-failed.txt" ]; then
+            echo "::error::sandbox-secrets: fail"
+            exit 1
+          fi
+
       # The reopen-records canary: this job's own key must open none of the
       # records it sealed. A run with no record seals a probe record the same
       # way first, so the check never passes on an empty set.
@@ -959,19 +1043,11 @@ jobs:
             bash .github/security-audit/seal.sh seal .github/security-audit/keys/agents.pub "$RUNNER_TEMP/probe/poc-run-0-a" "$RUNNER_TEMP/probe/poc-run-0-a.age" > /dev/null
             files=("$RUNNER_TEMP/probe/poc-run-0-a.age")
           fi
-          opened=0
+          failed=0
           for f in "${files[@]}"; do
-            dir=$(mktemp -d)
-            if bash .github/security-audit/seal.sh open AUDIT_SANDBOX_AGE_KEY "$(sha256sum "$f" | cut -d' ' -f1)" "$f" "$dir"; then
-              opened=$((opened + 1))
-            fi
-            rm -rf "$dir"
+            bash .github/security-audit/judge-canary.sh reopen-records - "$f" || failed=1
           done
-          if [ "$opened" -ne 0 ]; then
-            echo "::error::AUDIT_SANDBOX_AGE_KEY opened $opened of ${#files[@]} sealed record(s)"
-            exit 1
-          fi
-          echo "AUDIT_SANDBOX_AGE_KEY opened none of ${#files[@]} sealed record(s)"
+          exit "$failed"
 
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         if: always() && steps.records.outcome == 'success'
