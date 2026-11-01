@@ -25,7 +25,7 @@ base="$1"; head="$2"; candidates="$3"; out="$4"; diff_from="${5:-}"
 head_dir="${REVIEW_HEAD_DIR:-}"
 input_dir="${REVIEW_INPUT_DIR:-$(dirname "$out")}"
 diff_file="$input_dir/verify-diff.patch"
-search_rules="${BASH_SOURCE[0]%/*}/search-rules.md"
+search_rules="$(dirname "${BASH_SOURCE[0]}")/search-rules.md"
 [ -s "$search_rules" ] || { echo "assemble-verify-prompt: $search_rules is missing; refusing to assemble a prompt without the search rules the trace check enforces" >&2; exit 1; }
 
 standard=$(git show "${base}:REVIEW.md" 2>/dev/null) || {

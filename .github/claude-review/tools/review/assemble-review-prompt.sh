@@ -45,7 +45,7 @@ angle="$1"; base="$2"; head="$3"; out="$4"; since="${5:-}"; prior="${6:-}"; inte
 head_dir="${REVIEW_HEAD_DIR:-}"
 input_dir="${REVIEW_INPUT_DIR:-$(dirname "$out")}"
 diff_file="$input_dir/review-diff.patch"
-search_rules="${BASH_SOURCE[0]%/*}/search-rules.md"
+search_rules="$(dirname "${BASH_SOURCE[0]}")/search-rules.md"
 [ -s "$search_rules" ] || { echo "assemble-review-prompt: $search_rules is missing; refusing to assemble a prompt without the search rules the trace check enforces" >&2; exit 1; }
 
 if [ -n "$prior" ] && [ ! -f "$prior" ]; then
