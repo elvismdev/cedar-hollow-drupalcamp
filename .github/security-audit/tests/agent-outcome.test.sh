@@ -42,8 +42,8 @@ assert_eq "usage_limit" "$(cause "$tmp/token.json" failure "$T0" $((T0 + 60)) 30
 assert_eq "usage_limit" "$(cause "$tmp/token.json" success "$T0" $((T0 + 60)) 30 "$tmp/absent")" "and so it is when the step succeeded but the result is an error"
 
 cat > "$tmp/quota.json" <<'JSON'
-[{"type":"assistant","message":{"content":[{"type":"text","text":"Claude AI usage limit reached"}]}},
- {"type":"result","subtype":"success","is_error":true,"modelUsage":{}}]
+[{"type":"assistant","message":{"content":[{"type":"text","text":"working"}]}},
+ {"type":"result","subtype":"success","is_error":true,"result":"Claude AI usage limit reached","modelUsage":{}}]
 JSON
 assert_eq "usage_limit" "$(cause "$tmp/quota.json" failure "$T0" $((T0 + 60)) 30 "${OUTPUTS[@]}")" "a reached usage limit is usage_limit"
 
@@ -54,8 +54,30 @@ cat > "$tmp/quoted.json" <<'JSON'
 JSON
 assert_eq "ok" "$(cause "$tmp/quoted.json" success "$T0" $((T0 + 60)) 30 "${OUTPUTS[@]}")" "a quoted string in a successful run is ok"
 
+# Only the final result and assistant error fields are searched, never tool
+# results: a failed step whose agent read a file holding the strings (this
+# script or the review action) is classed by its other evidence.
+cat > "$tmp/read-strings.json" <<'JSON'
+[{"type":"assistant","message":{"content":[{"type":"tool_use","id":"t1","name":"Read","input":{"file_path":"/w/agent-outcome.sh"}}]}},
+ {"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"t1","content":"'authentication_error' 'usage limit' 'rate_limit_error' 'OAuth access token is invalid'"}]}},
+ {"type":"assistant","message":{"content":[{"type":"text","text":"still auditing"}]}}]
+JSON
+assert_eq "time_limit" "$(cause "$tmp/read-strings.json" failure "$T0" $((T0 + 1800)) 30 "${OUTPUTS[@]}")" "strings in a tool result are not usage_limit: a timed-out step is time_limit"
+assert_eq "no_outputs" "$(cause "$tmp/read-strings.json" failure "$T0" $((T0 + 60)) 30 "$tmp/absent")" "and a step that stopped early without outputs is no_outputs"
+cat > "$tmp/errfield.json" <<'JSON'
+[{"type":"assistant","message":{"content":[{"type":"text","text":"x"}]},"error":"rate_limit_error"},
+ {"type":"result","subtype":"success","is_error":false,"modelUsage":{}}]
+JSON
+assert_eq "usage_limit" "$(cause "$tmp/errfield.json" failure "$T0" $((T0 + 60)) 30 "${OUTPUTS[@]}")" "an assistant error field alone is usage_limit in a failed step"
+# is_error is read from the final result only.
+cat > "$tmp/earlier-error.json" <<'JSON'
+[{"type":"result","subtype":"success","is_error":true,"result":"usage limit","modelUsage":{}},
+ {"type":"result","subtype":"success","is_error":false,"result":"done","modelUsage":{}}]
+JSON
+assert_eq "ok" "$(cause "$tmp/earlier-error.json" success "$T0" $((T0 + 60)) 30 "${OUTPUTS[@]}")" "an earlier result's is_error and text do not make a successful step usage_limit"
+
 # Every quota and authentication string the review action greps for is one
-# here too: each, alone in a failed run's trace, is usage_limit.
+# here too: each, alone in a failed run's final result, is usage_limit.
 mapfile -t strings < <(python3 -I - "$ACTION" <<'PY'
 import re, sys, yaml
 steps = yaml.safe_load(open(sys.argv[1]))["runs"]["steps"]
@@ -67,7 +89,7 @@ PY
 )
 [ "${#strings[@]}" -ge 6 ] || { echo "FAIL: read only ${#strings[@]} strings from the review action" >&2; exit 1; }
 for s in "${strings[@]}"; do
-  jq -n --arg t "$s" '[{"type":"assistant","message":{"content":[{"type":"text","text":$t}]}}]' > "$tmp/s.json"
+  jq -n --arg t "$s" '[{"type":"result","subtype":"success","is_error":false,"result":$t}]' > "$tmp/s.json"
   assert_eq "usage_limit" "$(cause "$tmp/s.json" failure "$T0" $((T0 + 60)) 30 "${OUTPUTS[@]}")" "the review action's string [$s] is usage_limit"
 done
 
