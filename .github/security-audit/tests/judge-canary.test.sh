@@ -205,6 +205,8 @@ expect("denied-write, the genuine refused trace still passes", "denied-write", w
 # from the init tool list, and every Bash call attributed to the subagent was
 # refused; with none it passes with the weaker line.
 INIT_TOOLS = ["Agent", "Edit", "Glob", "Grep", "Read", "Task", "Write"]
+with open(os.path.join(os.path.dirname(judge), "async-launch.txt"), encoding="utf-8") as f:
+    LAUNCH = f.read().strip()
 def bash_trace(tools=INIT_TOOLS, agent=True, agent_result=("Bash is not available to me.", False),
                handback=True, bash=None, top_bash=None, started=None):
     t = Trace()
@@ -233,8 +235,11 @@ expect("subagent-bash, a foreground task_started event", "subagent-bash", bash_t
 expect("subagent-bash, no result yet but calls attributed", "subagent-bash",
        bash_trace(agent_result=(None, False)).save("sb1.json"), 0, "subagent-bash: subagent canary-bash: ran in the foreground")
 expect("subagent-bash, a background launch by its text", "subagent-bash",
-       bash_trace(handback=False, agent_result=("Async agent launched successfully. agentId: x", False)).save("sb2.json"), 1,
+       bash_trace(handback=False, agent_result=(LAUNCH + " successfully. agentId: x", False)).save("sb2.json"), 1,
        "subagent-bash: subagent canary-bash: ran in the background")
+expect("subagent-bash, a report quoting the launch text mid-text", "subagent-bash",
+       bash_trace(agent_result=("Bash was refused; the log said " + LAUNCH + " once.", False)).save("sb2c.json"), 0,
+       "subagent-bash: subagent canary-bash: ran in the foreground")
 expect("subagent-bash, a background launch by task_started, with other text", "subagent-bash",
        bash_trace(handback=False, agent_result=("Started a helper.", False), started=True).save("sb2b.json"), 1,
        "subagent-bash: subagent canary-bash: ran in the background")

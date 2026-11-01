@@ -22,8 +22,9 @@
 #                            ran in the foreground when its Agent call's result
 #                            is not an error, and the call was not backgrounded
 #                            (no task_started event with is_backgrounded true
-#                            for its id, and no result holding the async launch
-#                            text in async-launch.txt),
+#                            for its id, and no result that is a plain string or
+#                            a single text block starting with the launch text
+#                            in async-launch.txt, as check-agent-run.sh reads it),
 #                            and the result is a completed one or a call is
 #                            attributed to it. A Bash call elsewhere in the
 #                            trace cannot stand in for the subagent's. With no
@@ -325,7 +326,11 @@ elif canary in ("subagent-bash", "subagent-findings-write"):
         if not launch_text:
             say("async launch text", "empty", False)
             finish()
-        launched = result is not None and launch_text in text_of(result)
+        content = result.get("content") if result is not None else None
+        if isinstance(content, list) and len(content) == 1 and is_obj(content[0]) \
+                and content[0].get("type") == "text" and isinstance(content[0].get("text"), str):
+            content = content[0]["text"]
+        launched = isinstance(content, str) and content.startswith(launch_text)
         attributed = any(par == parent for _, par in calls)
         ran = classify({"id": parent})
         if ran == "succeeded" and not backgrounded and not launched:
