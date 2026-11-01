@@ -156,6 +156,35 @@ trace "$tmp/t.json" "${CLEAN[@]}" "$(agent ta2 "agent-id: h02 hunt" false "Done,
 assert_eq "1" "$(rc source "$tmp/t.json")" "a report only quoting the interruption is not one, so a subagent with no calls still fails"
 launch_trace "[{\"type\":\"text\",\"text\":\"$LAUNCH successfully. agentId: a1b2\"}]"
 assert_eq "1" "$(rc source "$tmp/t.json")" "an async launch still fails alongside the interruption rule"
+# An interruption is exactly the sentence, alone in one text block of a
+# top-level result, for a general-purpose call; anything else is not one, so
+# a subagent with no calls then fails.
+int_result () { # parent content-json
+  printf '{"type":"user","parent_tool_use_id":%s,"message":{"content":[{"type":"tool_result","tool_use_id":"ta2","content":%s}]}}' "$1" "$2"
+}
+int_case () { # message parent content-json
+  trace "$tmp/t.json" "${CLEAN[@]}" "$(agent ta2 "agent-id: h02 hunt" false none)" "$(int_result "$2" "$3")" "$(result "$M")"
+  assert_eq "1" "$(rc source "$tmp/t.json")" "$1"
+}
+int_case "a report starting with the sentence is not an interruption" null "[{\"type\":\"text\",\"text\":\"$INTERRUPTION Then I read three files.\"}]"
+int_case "the sentence in a second block is not an interruption" null "[{\"type\":\"text\",\"text\":\"Report.\"},{\"type\":\"text\",\"text\":\"$INTERRUPTION\"}]"
+int_case "the sentence as a plain string is not an interruption" null "\"$INTERRUPTION\""
+int_case "the sentence in a subagent's own message is not an interruption" '"ta1"' "[{\"type\":\"text\",\"text\":\"$INTERRUPTION\"}]"
+trace "$tmp/t.json" "${CLEAN[@]}" "$(int_result null "[{\"type\":\"text\",\"text\":\"  $INTERRUPTION\\n\"}]")" \
+  "$(agent ta2 "agent-id: h02 hunt" false none)" "$(result "$M")"
+assert_eq "0" "$(rc source "$tmp/t.json")" "the sentence with surrounding whitespace is an interruption"
+explore () { # call-id
+  printf '{"type":"assistant","parent_tool_use_id":null,"message":{"model":"%s","content":[{"type":"tool_use","id":"%s","name":"Agent","input":{"description":"agent-id: h03 explore","prompt":"p","subagent_type":"Explore"}}]}}' "$M" "$1"
+}
+trace "$tmp/t.json" "${CLEAN[@]}" "$(explore ta3)" \
+  '{"type":"user","parent_tool_use_id":null,"message":{"content":[{"type":"tool_result","tool_use_id":"ta3","content":[{"type":"text","text":"'"$INTERRUPTION"'"}]}]}}' "$(result "$M")"
+assert_eq "1" "$(rc source "$tmp/t.json")" "an Explore-type call is refused and its interruption does not count"
+assert_contains "$(run source "$tmp/t.json")" "asks for a subagent type other than general-purpose" "and says why"
+assert_contains "$(run source "$tmp/t.json")" "started a subagent with no tool calls" "and its subagent is not treated as interrupted"
+trace "$tmp/t.json" "${CLEAN[@]}" "$(explore ta3)" "$(sub ta3 Read "{\"file_path\":\"$WS/tracked.txt\"}")" \
+  '{"type":"user","parent_tool_use_id":null,"message":{"content":[{"type":"tool_result","tool_use_id":"ta3","content":"done"}]}}' "$(result "$M")"
+assert_eq "1" "$(rc source "$tmp/t.json")" "an Explore-type call is refused even with calls"
+
 # More subagent starts than subagent calls means a call is missing from the
 # trace, and an interruption does not excuse it.
 started_event () { printf '{"type":"system","subtype":"task_started","tool_use_id":"%s","is_backgrounded":false}' "$1"; }

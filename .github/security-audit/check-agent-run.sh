@@ -38,9 +38,13 @@
 #     declared agent id, which has the canonical form below.
 #   - Every subagent call has a tool_result in the trace: a call with none
 #     cannot be shown to have finished in the foreground.
-#   - A subagent whose result is the safety classifier's interruption (the
-#     text in classifier-interruption.txt, as a plain string or a single text
-#     block) is reported by its call's position and agent id, not refused:
+#   - A subagent call asks for no subagent_type or general-purpose; any other
+#     type is refused.
+#   - A subagent whose result is the safety classifier's interruption is
+#     reported by its call's position and agent id, not refused. It is one
+#     only when the call's tool_result, in a top-level message, is a single
+#     text block whose trimmed text equals the sentence in
+#     classifier-interruption.txt, for a general-purpose call:
 #     it is exempt from the no-tool-calls rules below, merge-records.py never
 #     uses its entry, and every other rule still applies to its calls that
 #     reached the trace.
@@ -282,6 +286,9 @@ for (const call of calls) {
     id = ids[0];
     seenIds.add(id);
   }
+  if ('subagent_type' in input && input.subagent_type !== 'general-purpose') {
+    refuse(call, 'asks for a subagent type other than general-purpose');
+  }
   if (typeof c.id !== 'string' || c.id === '') {
     refuse(call, 'has no call id, so its subagent cannot be attributed');
   } else {
@@ -335,15 +342,30 @@ for (const r of toolResults(msgs)) {
   if (typeof r.tool_use_id !== 'string' || !subagents.has(r.tool_use_id)) continue;
   answered.add(r.tool_use_id);
   const text = launchText(r);
-  if (text !== null && text.startsWith(INTERRUPTION)) {
-    interrupted.add(r.tool_use_id);
-    const id = subagents.get(r.tool_use_id);
-    say(`${label(callById.get(r.tool_use_id))}: (agent id ${id === null ? 'not valid' : id}) was interrupted by the safety classifier; its entry is never merged`);
-  }
   if (text !== null && text.startsWith(LAUNCH)) {
     const id = subagents.get(r.tool_use_id);
     refuse(callById.get(r.tool_use_id),
       `(agent id ${id === null ? 'not valid' : id}) returned an async launch: the subagent ran in the background`);
+  }
+}
+// An interruption is exactly Claude Code's sentence, alone in one text block
+// of a top-level tool_result for a general-purpose subagent call; a report
+// that starts with it, carries it in another block, or answers another kind
+// of call is not one.
+for (const m of msgs) {
+  if (!isObj(m) || m.type !== 'user' || (m.parent_tool_use_id !== null && m.parent_tool_use_id !== undefined)
+      || !isObj(m.message) || !Array.isArray(m.message.content)) continue;
+  for (const r of m.message.content) {
+    if (!isObj(r) || r.type !== 'tool_result' || typeof r.tool_use_id !== 'string' || !subagents.has(r.tool_use_id)) continue;
+    const call = callById.get(r.tool_use_id);
+    const type = isObj(call.c.input) ? call.c.input.subagent_type : undefined;
+    if (type !== undefined && type !== 'general-purpose') continue;
+    if (Array.isArray(r.content) && r.content.length === 1 && isObj(r.content[0]) && r.content[0].type === 'text'
+        && typeof r.content[0].text === 'string' && r.content[0].text.trim() === INTERRUPTION) {
+      interrupted.add(r.tool_use_id);
+      const id = subagents.get(r.tool_use_id);
+      say(`${label(call)}: (agent id ${id === null ? 'not valid' : id}) was interrupted by the safety classifier; its entry is never merged`);
+    }
   }
 }
 for (const [callId] of subagents) {
