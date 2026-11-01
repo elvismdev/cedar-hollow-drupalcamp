@@ -563,6 +563,56 @@ class CountTest(MergeTest):
         self.assertEqual(result.returncode, 1)
 
 
+INTERRUPTION = open(os.path.join(os.path.dirname(SCRIPT), "classifier-interruption.txt"), encoding="utf-8").read().strip()
+
+
+class InterruptionTest(MergeTest):
+    """A subagent the safety classifier stopped is recorded by count and its
+    entry, though written by it and on disk, is never merged."""
+
+    def result(self, text):
+        """The subagent call's tool_result, for the last subagent added."""
+        self.messages.append({"type": "user", "message": {"content": [
+            {"type": "tool_result", "tool_use_id": "toolu_%d" % self.calls,
+             "content": [{"type": "text", "text": text}]}]}})
+
+    def decide_once(self, result_text):
+        self.seed([lead("fp-1")], [unit("u1", fps=["fp-1"])])
+        self.select()
+        manifest = self.manifest(["fp-1"])
+        self.subagent("decider-1", self.decided("fp-1", "needs_validation", lead("fp-1"),
+                                                a="not_demonstrated", b="not_demonstrated"))
+        self.result(result_text)
+        messages = list(self.messages)
+        self.run_merge("count", "--job", "poc-decide", "--cap", "6", "--trace", self.trace_file())
+        self.messages = messages
+        self.decide(manifest)
+        return self.load("trusted-meta.json")
+
+    def test_an_interrupted_subagents_entry_is_not_merged(self):
+        meta = self.decide_once(INTERRUPTION + " and its response was withheld.")
+        self.assertEqual(meta["interrupted"], [{"job": "poc-decide", "agent_id": "decider-1"}])
+        self.assertIn("subagent interrupted by the safety classifier", self.discarded())
+        self.assertEqual(meta["poc"]["decided"], [])
+
+    def test_a_report_is_merged_and_records_no_interruption(self):
+        meta = self.decide_once("Judged both scripts; neither showed the claim.")
+        self.assertEqual(meta.get("interrupted"), [])
+        self.assertNotIn("subagent interrupted by the safety classifier", self.discarded())
+        self.assertEqual(meta["poc"]["decided"], ["fp-1"])
+
+    def test_a_report_quoting_the_interruption_is_not_one(self):
+        meta = self.decide_once("Done. A log line read: " + INTERRUPTION + ".")
+        self.assertEqual(meta.get("interrupted"), [])
+        self.assertEqual(meta["poc"]["decided"], ["fp-1"])
+
+    def test_status_copies_the_interruptions_into_run_metadata(self):
+        self.decide_once(INTERRUPTION + ".")
+        self.run_merge("status")
+        self.assertEqual(self.load("run-metadata.json")["interrupted"],
+                         [{"job": "poc-decide", "agent_id": "decider-1"}])
+
+
 class HostileEntryTest(MergeTest):
     """Agent-written input shaped to crash the merge, override a decision or
     skew a count; each case comes from a review probe."""

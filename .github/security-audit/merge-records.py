@@ -90,6 +90,12 @@
 #   dispute_rate         {disputes, cross_checked, rate}, set by status only
 #                        when a cross-check selection exists
 #   prior_run_paths      the --prior paths select-poc was given
+#   interrupted          [{job, agent_id}] for each subagent whose call
+#                        returned the safety classifier's interruption (the
+#                        text in classifier-interruption.txt), recorded by
+#                        count; its entry is never merged, and every
+#                        subcommand that reads entries discards it with the
+#                        label "subagent interrupted by the safety classifier"
 # and, in trusted-meta.json only, run_id and source_run_status.
 # Incomplete reasons it sets: cap_exceeded:<job>, cross_check_cap,
 # cross_check_missing (a selected record with no valid cross-check entry, or
@@ -373,7 +379,7 @@ def record_valid(record):
 # does not hold), so their copies there, which the source and repair agents
 # can write, are never read.
 MIRRORED_KEYS = ("usage", "poc", "cross_check", "merge_discarded", "incomplete_reasons", "dispute_rate",
-                 "prior_run_paths")
+                 "prior_run_paths", "interrupted")
 
 
 def non_negative_int(value):
@@ -405,7 +411,7 @@ class State:
         for key in ("poc", "cross_check", "dispute_rate"):
             if key in trusted and not isinstance(trusted[key], dict):
                 raise Refused(TRUSTED_META + " %s is not an object" % key)
-        for key in ("merge_discarded", "prior_run_paths"):
+        for key in ("merge_discarded", "prior_run_paths", "interrupted"):
             if not isinstance(trusted.get(key, []), list):
                 raise Refused(TRUSTED_META + " %s is not a list" % key)
         reasons = trusted.get("incomplete_reasons")
@@ -548,6 +554,52 @@ def subagent_bindings(messages):
     return {k: v for k, v in calls.items() if v not in reused}, reused
 
 
+# The text a subagent's call returns when the safety classifier stopped it,
+# kept in one file that check-agent-run.sh reads too.
+INTERRUPTION_FILE = os.path.join(HERE, "classifier-interruption.txt")
+
+
+def interruption_text():
+    try:
+        with open(INTERRUPTION_FILE, encoding="utf-8") as handle:
+            text = handle.read().strip()
+    except OSError:
+        text = ""
+    if not text:
+        raise Refused("the classifier interruption text cannot be read")
+    return text
+
+
+def tool_results(node):
+    if isinstance(node, dict):
+        if node.get("type") == "tool_result":
+            yield node
+        for value in node.values():
+            yield from tool_results(value)
+    elif isinstance(node, list):
+        for value in node:
+            yield from tool_results(value)
+
+
+def interrupted_agents(messages, bindings):
+    """The agent ids of the subagents whose call returned the classifier's
+    interruption, as a plain string or a single text block that starts with
+    it, read the way check-agent-run.sh reads it."""
+    text = interruption_text()
+    found = set()
+    for result in tool_results(messages):
+        agent_id = bindings.get(result.get("tool_use_id")) if isinstance(result.get("tool_use_id"), str) else None
+        if agent_id is None:
+            continue
+        content = result.get("content")
+        if (isinstance(content, list) and len(content) == 1 and isinstance(content[0], dict)
+                and content[0].get("type") == "text"):
+            content = content[0].get("text")
+        if isinstance(content, str) and content.startswith(text):
+            found.add(agent_id)
+    return found
+
+
 def subagent_count(messages):
     calls = sum(1 for m in messages for c in tool_uses(m) if c.get("name") in SUBAGENT_TOOLS)
     spawned = 0
@@ -573,6 +625,7 @@ def read_entries(state, job, entries, trace_path):
     bindings, reused = subagent_bindings(messages)
     for agent_id in sorted(reused):
         state.discard(job, agent_id, "agent id declared by more than one subagent call")
+    interrupted = interrupted_agents(messages, bindings)
     paths = {entry_path(entries, agent_id): agent_id for agent_id in set(bindings.values())}
     last, refused = {}, {}
     for message in messages:
@@ -596,6 +649,9 @@ def read_entries(state, job, entries, trace_path):
                 refused.setdefault(owner, "entry edited after it was written")
     result = {}
     for agent_id in sorted(set(bindings.values())):
+        if agent_id in interrupted:
+            state.discard(job, agent_id, "subagent interrupted by the safety classifier")
+            continue
         if agent_id in refused:
             state.discard(job, agent_id, refused[agent_id])
             continue
@@ -646,7 +702,13 @@ def cmd_count(state, args):
         raise Refused("invalid job name")
     if args.cap < 0:
         raise Refused("the cap must not be negative")
-    used = subagent_count(read_trace(args.trace))
+    messages = read_trace(args.trace)
+    used = subagent_count(messages)
+    bindings, _ = subagent_bindings(messages)
+    recorded = state.trusted.setdefault("interrupted", [])
+    for agent_id in sorted(interrupted_agents(messages, bindings)):
+        if {"job": args.job, "agent_id": agent_id} not in recorded:
+            recorded.append({"job": args.job, "agent_id": agent_id})
     usage = state.trusted.setdefault("usage", {})
     entry = usage.get(args.job) or {"invocations": 0, "cap": args.cap}
     entry["invocations"] = entry["invocations"] + used
