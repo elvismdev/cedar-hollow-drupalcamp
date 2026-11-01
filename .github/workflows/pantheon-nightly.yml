@@ -42,7 +42,11 @@ jobs:
       - uses: actions/setup-node@v7
         with:
           node-version: '22'
+      # --with-deps runs apt-get update, which can hang on an unreachable
+      # Ubuntu mirror, so a stalled install fails here instead of at the job's
+      # limit.
       - run: npm ci && npx playwright install --with-deps chromium
+        timeout-minutes: 10
         working-directory: tests
       # Only this step reads the bot-bypass token, not the npm install above.
       - run: npx playwright test --project=smoke --project=a11y
