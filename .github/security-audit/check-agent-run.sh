@@ -318,14 +318,22 @@ const writePath = (c) => ((c.name === 'Write' || c.name === 'Edit') && isObj(c.i
   && typeof c.input.file_path === 'string' && c.input.file_path.startsWith('/')
   ? path.normalize(c.input.file_path) : null);
 
+// The refusal for a write by any agent to a reserved file name, else null:
+// a trusted output anywhere, or a state file outside the source job.
+function reservedRefusal(p) {
+  const name = path.basename(p);
+  if (TRUSTED.has(name)) return "an agent writes one of merge-records.py's trusted outputs";
+  if (job !== 'source' && STATE.has(name)) return 'an agent writes a state file outside the source job';
+  return null;
+}
+
 // Rules for every agent's writes.
 for (const call of calls) {
   const p = writePath(call.c);
   if (p === null) continue;
-  if (TRUSTED.has(path.basename(p))) {
-    refuse(call, "an agent writes one of merge-records.py's trusted outputs");
-  } else if (job !== 'source' && STATE.has(path.basename(p))) {
-    refuse(call, 'an agent writes a state file outside the source job');
+  const reserved = reservedRefusal(p);
+  if (reserved) {
+    refuse(call, reserved);
   } else if (job === 'poc-write' && call.parent === null && under(p, agentsDir)) {
     refuse(call, 'the top-level agent writes under agents/, where only each subagent writes its own script');
   }
@@ -348,7 +356,7 @@ for (const call of calls) {
   if (c.name === 'Write' || c.name === 'Edit') {
     if (typeof a.file_path !== 'string' || !a.file_path.startsWith('/')) continue; // refused by check-trace-tools
     const p = path.normalize(a.file_path);
-    if (TRUSTED.has(path.basename(p)) || (job !== 'source' && STATE.has(path.basename(p)))) {
+    if (reservedRefusal(p)) {
       // refused above
     } else if (SHARED.has(path.basename(p))) {
       refuse(call, 'a subagent writes a shared or combined file');
