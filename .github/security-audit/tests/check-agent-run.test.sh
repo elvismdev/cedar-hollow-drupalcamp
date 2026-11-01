@@ -139,6 +139,23 @@ launch_trace "[{\"type\":\"text\",\"text\":\"Summary first.\"},{\"type\":\"text\
 assert_eq "0" "$(rc source "$tmp/t.json")" "a report of several blocks is not a launch"
 launch_trace "[{\"type\":\"text\",\"text\":\"Read tracked.txt; nothing found.\"}]"
 assert_eq "0" "$(rc source "$tmp/t.json")" "a subagent call whose result is the subagent's report passes"
+# A subagent the safety classifier interrupted is reported, not refused, even
+# with no calls; the other rules still apply to its calls in the trace, and a
+# launch still fails.
+INTERRUPTION="$(cat "$(dirname "$C")/classifier-interruption.txt")"
+trace "$tmp/t.json" "${CLEAN[@]}" "$(agent ta2 "agent-id: h02 hunt" false "$INTERRUPTION")" "$(result "$M")"
+assert_eq "0" "$(rc source "$tmp/t.json")" "an interrupted subagent with no calls passes"
+assert_contains "$(run source "$tmp/t.json")" "(agent id h02) was interrupted by the safety classifier" "and is reported by call and agent id"
+trace "$tmp/t.json" "$INIT" "$(agent ta2 "agent-id: h02 hunt" false "$INTERRUPTION")" "$(result "$M")"
+assert_eq "0" "$(rc source "$tmp/t.json")" "a run whose only subagent was interrupted passes"
+trace "$tmp/t.json" "${CLEAN[@]}" "$(agent ta2 "agent-id: h02 hunt" false "$INTERRUPTION")" "$(sub ta2 Read "{\"file_path\":\"$WS/tracked.txt\"}")" "$(result "$M")"
+assert_eq "0" "$(rc source "$tmp/t.json")" "an interrupted subagent with allowed calls passes"
+trace "$tmp/t.json" "${CLEAN[@]}" "$(agent ta2 "agent-id: h02 hunt" false "$INTERRUPTION")" "$(sub ta2 Bash '{"command":"id"}')" "$(result "$M")"
+assert_eq "1" "$(rc source "$tmp/t.json")" "an interrupted subagent's refused call still fails the run"
+trace "$tmp/t.json" "${CLEAN[@]}" "$(agent ta2 "agent-id: h02 hunt" false "Done, though the log quoted $INTERRUPTION.")" "$(result "$M")"
+assert_eq "1" "$(rc source "$tmp/t.json")" "a report only quoting the interruption is not one, so a subagent with no calls still fails"
+launch_trace "[{\"type\":\"text\",\"text\":\"$LAUNCH successfully. agentId: a1b2\"}]"
+assert_eq "1" "$(rc source "$tmp/t.json")" "an async launch still fails alongside the interruption rule"
 # A subagent call with no result cannot be shown to have finished.
 trace "$tmp/t.json" "${CLEAN[@]}" "$(agent ta2 "agent-id: h02 hunt" false none)" "$(sub ta2 Read "{\"file_path\":\"$WS/tracked.txt\"}")" "$(result "$M")"
 assert_eq "1" "$(rc source "$tmp/t.json")" "a subagent call with no result fails"

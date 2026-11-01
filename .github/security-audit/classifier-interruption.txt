@@ -1,0 +1,1 @@
+Interrupted: the response that made this tool call was stopped by a safety classifier
