@@ -353,7 +353,7 @@ Every agent job (source, poc-write, poc-decide, cross-check) follows these rules
         *   a subagent writing outside its own `agents/<its-id>/scratch/`;
         *   anything other than the top-level agent writing `findings.json`, the ledger or `run-metadata.json`;
         *   in poc-write only, a subagent reading another agent's `agents/<id>/`;
-        *   a change to the checkout (`git status` and `HEAD`), to the hooks and permissions keys of `~/.claude/settings.json`, to `~/.claude/CLAUDE.md`, or to the `~/.claude/agents`, `commands` and `hooks` trees, compared with a fingerprint taken before the step and kept under `$RUNNER_TEMP`;
+        *   a change to the checkout (`git status` and `HEAD`), to `~/.claude/settings.json` apart from `enableAllProjectMcpServers` (the one key claude-code-action writes during the step), to `~/.claude/CLAUDE.md`, or to the `~/.claude/agents`, `commands` and `hooks` trees, compared with a fingerprint taken before the step and kept under `$RUNNER_TEMP`;
         *   a model in `modelUsage` other than the pinned one, or an allowlisted helper.
 
         If subagents were used but the trace holds none of their tool calls, the check fails. **A failed run check stops the job:** nothing is handed off and the job fails.
@@ -970,7 +970,7 @@ Stage 2 lands as pull requests in this order: item 12's CI wiring with the first
 *   **Type / Scope**: Post-agent checks and their test. The trace is parsed in Node, in the style of the review practice's `findings-from-trace.mjs`, which already reads the action's execution file.
 *   **Proposed Changes**:
     *   **Usage**: `check-agent-run.sh <job> <execution-file> <allowed-tools> <output-root> <fingerprint-file> <model> [helper-model]`. `<job>` selects the job-specific rules; only `poc-write` applies the isolation rule.
-    *   **`check-agent-run.sh --fingerprint <out-file>`** writes the fingerprint before the step, into `$RUNNER_TEMP`: `git status --porcelain=v1 -uall`, `git rev-parse HEAD`, the hooks and permissions keys of `~/.claude/settings.json` (read with `jq`), and the review practice's `find ... -print0 | sort -z | xargs -0 -r sha256sum | sha256sum` one-liner over `~/.claude/CLAUDE.md` and the `agents`, `commands` and `hooks` trees, skipping paths that do not exist.
+    *   **`check-agent-run.sh --fingerprint <out-file>`** writes the fingerprint before the step, into `$RUNNER_TEMP`: `git status --porcelain=v1 -uall`, `git rev-parse HEAD`, `~/.claude/settings.json` without its `enableAllProjectMcpServers` key, a missing file hashing as an empty one (read with `jq`), and the review practice's `find ... -print0 | sort -z | xargs -0 -r sha256sum | sha256sum` one-liner over `~/.claude/CLAUDE.md` and the `agents`, `commands` and `hooks` trees, skipping paths that do not exist.
     *   **It implements** the run check in Technical Plan section 2.
     *   **Tests**, with fixture traces:
         *   a clean trace passes, and so does an allowlisted helper model;
@@ -983,7 +983,7 @@ Stage 2 lands as pull requests in this order: item 12's CI wiring with the first
         *   a declared agent id that disagrees with the written path fails;
         *   in `poc-write`, a subagent reading the other script's directory fails; in `poc-decide`, the same read passes;
         *   a checkout change (`git status` or `HEAD`) fails;
-        *   a changed hooks or permissions key in `~/.claude/settings.json` fails, and a change to its other keys passes;
+        *   a changed or added key in `~/.claude/settings.json` fails, and a file created holding only `enableAllProjectMcpServers` passes;
         *   an unexpected model fails;
         *   subagent use with no subagent calls in the trace fails.
 

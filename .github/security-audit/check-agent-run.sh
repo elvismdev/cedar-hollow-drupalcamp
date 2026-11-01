@@ -61,8 +61,8 @@
 #   - Every subagent call must have at least one tool call attributed to it,
 #     and if subagents were used at all (a subagent call, a task_started event
 #     or a spawned count) the trace must hold their tool calls.
-#   - The checkout (git status and HEAD), the hooks and permissions keys of
-#     ~/.claude/settings.json, ~/.claude/CLAUDE.md and the ~/.claude agents,
+#   - The checkout (git status and HEAD), ~/.claude/settings.json apart from
+#     enableAllProjectMcpServers, ~/.claude/CLAUDE.md and the ~/.claude agents,
 #     commands and hooks trees match the fingerprint taken before the step.
 #
 # The fingerprint holds only hashes and HEAD, and a refusal names the tool, the
@@ -90,8 +90,12 @@ usage() {
 }
 
 # One labelled line per watched thing. A path that does not exist is skipped
-# by the tree hash and recorded as absent for settings.json, so creating one
-# changes the fingerprint too.
+# by the tree hash. settings.json is hashed whole, apart from
+# enableAllProjectMcpServers, the one key claude-code-action writes during the
+# agent step (it creates the file holding only that key when none exists), so
+# a missing file and one holding only that key hash alike. Any other key
+# counts, because hooks, permissions, apiKeyHelper, statusLine, env and others
+# change what a later Claude run in the same job executes.
 #
 # Fails closed: it returns non-zero, naming the part, when the workspace is not
 # the top of a git repository, when git, jq or find fails (git's refusal of a
@@ -110,10 +114,11 @@ fingerprint() {
   status=$(git -C "$ws" status --porcelain=v1 -uall 2>/dev/null | sha256sum | cut -d' ' -f1) \
     || { echo "check-agent-run: git status failed" >&2; return 1; }
   if [ -e "$claude/settings.json" ]; then
-    settings=$(jq -cS '{hooks, permissions}' "$claude/settings.json" 2>/dev/null | sha256sum | cut -d' ' -f1) \
+    settings=$(jq -cS 'del(.enableAllProjectMcpServers)' "$claude/settings.json" 2>/dev/null | sha256sum | cut -d' ' -f1) \
       || { echo "check-agent-run: ~/.claude/settings.json exists but cannot be read as JSON" >&2; return 1; }
   else
-    settings=absent
+    settings=$(jq -ncS '{}' | sha256sum | cut -d' ' -f1) \
+      || { echo "check-agent-run: jq failed" >&2; return 1; }
   fi
   for p in CLAUDE.md agents commands hooks; do
     if [ -e "$claude/$p" ]; then paths+=("$claude/$p"); fi
