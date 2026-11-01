@@ -109,13 +109,21 @@ MODEL_VARS = {"ANTHROPIC_DEFAULT_SONNET_MODEL", "ANTHROPIC_DEFAULT_HAIKU_MODEL",
 def norm(text):
     return re.sub(r"\s+", " ", str(text or "")).strip()
 
+SEALED_TRACE = re.compile(r"\$\{\{ runner\.temp \}\}/(failed-trace/failed-trace|canary-trace/canary-trace)-[a-z-]+\.age")
+
 def trace_only(st):
-    """A step that keeps an agent's trace for the owner, on a canary run or
-    after a failed run check, rather than handing anything off."""
-    c = norm(st.get("if"))
-    return ("needs.prepare.outputs.canary != 'none'" in c or "steps.canary-trace.outcome" in c
-            or re.search(r"steps\.check-[a-z-]+\.outcome == 'failure'", c) is not None
-            or re.search(r"steps\.failed-trace-[a-z-]+\.outcome == 'success'", c) is not None)
+    """A step that keeps an agent's trace for the owner rather than handing
+    anything off: a seal step whose id is canary-trace or failed-trace-*, or
+    an upload named canary-trace-* or failed-trace-* whose path is such a
+    sealed trace file. Judged by the step, never by its condition text."""
+    sid = str(st.get("id") or "")
+    if "run" in st:
+        return (sid == "canary-trace" or sid.startswith("failed-trace-")) and "seal-trace.sh" in st["run"]
+    w = st.get("with") or {}
+    name = str(w.get("name") or "")
+    return (str(st.get("uses", "")).startswith("actions/upload-artifact@")
+            and (name.startswith("canary-trace-") or name.startswith("failed-trace-"))
+            and SEALED_TRACE.fullmatch(str(w.get("path") or "")) is not None)
 
 def runs(step):
     """The run block as logical lines, with backslash continuations joined."""
@@ -241,7 +249,8 @@ for name, job in jobs.items():
             c = norm(st.get("if"))
             if "steps.plan.outputs." not in c:
                 err("%s step %r after the agent step lacks the steps.plan guard" % (name, st.get("name") or st.get("uses")))
-            if ("seal.sh seal" in (st.get("run") or "") or str(st.get("uses", "")).startswith("actions/upload-artifact@")) \
+            if ("seal.sh seal" in (st.get("run") or "") or "seal-trace.sh" in (st.get("run") or "")
+                    or str(st.get("uses", "")).startswith("actions/upload-artifact@")) \
                     and "steps.plan.outputs.handoff == 'true'" not in c and not trace_only(st):
                 err("%s hand-off step %r must be guarded by steps.plan.outputs.handoff" % (name, st.get("name") or st.get("uses")))
     if name in ("source", "poc-write", "poc-decide", "cross-check"):
@@ -778,6 +787,7 @@ mutate "a failed trace kept when the run check passed" "(\"if: always() && steps
 mutate "an unsealed trace uploaded" '("path: ${{ runner.temp }}/failed-trace/failed-trace-cross-check-tie-break.age", "path: ${{ steps.agent-tie-break.outputs.execution_file }}", 1)'
 mutate "a failed trace kept two days" '("name: failed-trace-source-repair\n          path: ${{ runner.temp }}/failed-trace/failed-trace-source-repair.age\n          retention-days: 1", "name: failed-trace-source-repair\n          path: ${{ runner.temp }}/failed-trace/failed-trace-source-repair.age\n          retention-days: 2", 1)'
 
+mutate "findings.json uploaded after a failed run check" "(\"      - name: Name the job's cause\n        id: cause\n        if: always()\n        env:\n          JOB_STATUS: \${{ job.status }}\n          CHECK: \${{ steps.check-poc-decide.outcome }}\", \"      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7\n        if: always() && steps.check-poc-decide.outcome == 'failure' && steps.plan.outputs.agent == 'true'\n        with:\n          name: failed-trace-poc-decide-findings\n          path: /mnt/audit/poc-decide/out/findings.json\n          retention-days: 1\n\n      - name: Name the job's cause\n        id: cause\n        if: always()\n        env:\n          JOB_STATUS: \${{ job.status }}\n          CHECK: \${{ steps.check-poc-decide.outcome }}\", 1)"
 mutate "a failed trace sealed on a canary run" "(\" && steps.agent-poc-write.outputs.execution_file != '' && steps.plan.outputs.agent == 'true' && needs.prepare.outputs.canary == 'none'\", \" && steps.agent-poc-write.outputs.execution_file != '' && steps.plan.outputs.agent == 'true'\", 1)"
 mutate "the repair seal without its plan guard" "(\"steps.agent-repair.outputs.execution_file != '' && steps.plan.outputs.agent == 'true' && \", \"steps.agent-repair.outputs.execution_file != '' && \", 1)"
 mutate "a failed trace sealed with no trace" "(\"steps.check-source.outcome == 'failure' && steps.agent-source.outputs.execution_file != '' && \", \"steps.check-source.outcome == 'failure' && \", 1)"
