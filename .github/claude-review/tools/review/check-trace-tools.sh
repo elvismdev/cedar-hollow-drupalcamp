@@ -317,12 +317,13 @@ def away_from_workspace(path):
     directory, so its search cannot reach the workspace's .git."""
     if not isinstance(path, str) or path_refusal('path', path, ws):
         return False
-    resolved = resolve(path, ws)
     away = [posixpath.normpath(os.environ[v])
             for v in ('REVIEW_HEAD_DIR', 'REVIEW_INPUT_DIR') if os.environ.get(v)]
     # An added root counts only where it cannot reach the workspace.
     away += [r for r in extra_roots if not under(r, ws) and not under(ws, r)]
-    return any(under(resolved, r) for r in away)
+    # Every brace expansion of the path must lie in one of them.
+    exps = expansions(path)
+    return bool(exps) and all(any(under(resolve(e, ws), r) for r in away) for e in exps)
 
 def calls(node):
     if isinstance(node, dict):
@@ -387,7 +388,9 @@ def subfolder_search(path):
         return False
     if path_refusal('path', path, ws):
         return False
-    return not under(ws, resolve(path, ws))
+    # Every brace expansion of the path must be such a folder.
+    exps = expansions(path)
+    return bool(exps) and all(not under(ws, resolve(e, ws)) for e in exps)
 
 def refusal(call):
     """(label, field or None) for the first rule that refuses the call, else None.
