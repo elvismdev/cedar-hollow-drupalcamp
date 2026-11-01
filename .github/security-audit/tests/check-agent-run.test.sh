@@ -211,6 +211,33 @@ iso poc-write Glob "{\"pattern\":\"scratch/*/../../../h02/scratch/poc.php\",\"pa
 assert_contains "$(run poc-write "$tmp/t.json")" "cannot be judged" "and says its reach cannot be judged"
 # Brace groups are expanded before judging, so a brace-spelled .. is a ..
 H01="$OUT/agents/h01"
+
+# In poc-decide and cross-check a subagent may not reach the directory of
+# another subagent declared in the same trace; other directories stay open.
+IN=/mnt/audit/job/in
+TWO=("${CLEAN_POC[@]}" "$(agent ta2 "agent-id: h02 decide item 2")"
+     "$(sub ta2 Write "{\"file_path\":\"$OUT/agents/h02/scratch/entry.json\",\"content\":\"{}\"}")")
+peer () { # job tool input expected-rc message
+  trace "$tmp/t.json" "${TWO[@]}" "$(sub ta1 "$2" "$3")" "$(result "$M")"
+  assert_eq "$4" "$(AUDIT_INPUT_DIR="$IN" rc "$1" "$tmp/t.json")" "$5"
+}
+for job in poc-decide cross-check; do
+  peer "$job" Read "{\"file_path\":\"$OUT/agents/h02/scratch/entry.json\"}" 1 "in $job, a subagent reading another declared subagent's entry fails"
+  peer "$job" Glob "{\"pattern\":\"*.json\",\"path\":\"$OUT/agents/h02/scratch\"}" 1 "in $job, a subagent Glob in another declared subagent's directory fails"
+  peer "$job" Grep "{\"pattern\":\"x\",\"path\":\"$OUT\"}" 1 "in $job, a subagent Grep over the output root reaches the other subagent and fails"
+  peer "$job" Glob "{\"pattern\":\"agents/*/scratch/entry.json\",\"path\":\"$OUT\"}" 1 "in $job, a subagent Glob across agents/ fails"
+  peer "$job" Read "{\"file_path\":\"$OUT/agents/h01/scratch/entry.json\"}" 0 "in $job, a subagent reading its own directory passes"
+  peer "$job" Read "{\"file_path\":\"$OUT/agents/hunter-x/scratch/notes.md\"}" 0 "in $job, a subagent reading an undeclared (source job) agent's directory passes"
+  peer "$job" Read "{\"file_path\":\"$IN/scripts/agents/poc-1-a/scratch/poc.php\"}" 0 "in $job, a subagent reading poc-write's script passes"
+  peer "$job" Read "{\"file_path\":\"$IN/records/poc-run-1-a.json\"}" 0 "in $job, a subagent reading a run record passes"
+  peer "$job" Grep "{\"pattern\":\"x\",\"path\":\"$OUT/findings.json\"}" 0 "in $job, a subagent Grep of findings.json passes"
+done
+trace "$tmp/t.json" "${TWO[@]}" "$(sub ta1 Read "{\"file_path\":\"$OUT/agents/h02/scratch/entry.json\"}")" "$(result "$M")"
+assert_contains "$(run cross-check "$tmp/t.json")" "another agent's agents/<id>/" "and says why"
+assert_eq "0" "$(rc source "$tmp/t.json")" "in source, the same read passes"
+# With one subagent declared, a Grep over the output root reaches no other.
+iso poc-decide Grep "{\"pattern\":\"x\",\"path\":\"$OUT\"}" 0 "in poc-decide, a lone subagent's Grep over the output root passes"
+
 iso poc-write Glob "{\"pattern\":\"{.,}./h02/scratch/*\",\"path\":\"$H01\"}" 1 "in poc-write, {.,}./h02 from agents/h01 fails"
 assert_contains "$(run poc-write "$tmp/t.json")" "reads another agent's" "and is judged as ../h02"
 iso poc-write Glob "{\"pattern\":\".{.,}/h02/scratch/*\",\"path\":\"$H01\"}" 1 "in poc-write, .{.,}/h02 from agents/h01 fails"
