@@ -1,6 +1,8 @@
 # deploy-dev.yml starts when this workflow, matched by the name "CI", succeeds
 # on main. Renaming it stops deploys, and adding if: or continue-on-error to a
-# job would let a deploy run without that job passing.
+# job would let a deploy run without that job passing. audit-health is the one
+# job with an if: condition, which is safe because it is not a required check,
+# gates nothing and always exits 0.
 name: CI
 
 on:
@@ -252,6 +254,27 @@ jobs:
           if [ "${#pyfiles[@]}" -gt 0 ]; then
             python3 -m unittest discover -s .github/security-audit/tests -p 'test_*.py'
           fi
+
+  # Push events are not disabled by GitHub's inactivity rule, unlike the
+  # audit's schedule, so a push to main is where a disabled or stale audit is
+  # noticed. Warnings only.
+  audit-health:
+    name: Security audit schedule health
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Warn when the audit's schedule is disabled or its last run is stale
+        run: bash .github/security-audit/check-audit-health.sh "$REPO"
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
 
   visual:
     name: Visual regression on Storybook templates
