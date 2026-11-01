@@ -79,6 +79,25 @@ marker.json" "$(ls "$WORK/out-good")" "the output directory holds only the state
 assert_eq '["fp-1","fp-2"]' "$(jq -c .fingerprints "$WORK/out-good/marker.json")" "the marker is saved with its fingerprints"
 assert_contains "$(cat "$FIX/calls.log")" "gh run download $RUN -R $REPO -n audit-state -D $WORK/out-good/download." "the download names the run, repository and artifact"
 
+# The marker exactly as render-issue.py writes it is read, so a change to
+# the renderer's marker format fails here.
+new_fixture renderer
+good_prior
+renderer_body="$(python3 -I - "$TESTS/../render-issue.py" "$SUM" "$RUN" <<'PYTHON'
+import importlib.util, sys, types
+spec = importlib.util.spec_from_file_location("render_issue", sys.argv[1])
+module = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(module)
+args = types.SimpleNamespace(state_sha256=sys.argv[2], run_id=sys.argv[3])
+run = types.SimpleNamespace(state_ok=True, args=args, marker_fingerprints=lambda: ["fp-a", "fp/b:1"])
+print("Header\n" + "\n".join(module.marker(run)))
+PYTHON
+)"
+issue_with_body 3 "$renderer_body"
+fetch "$WORK/out-renderer"
+assert_eq "true" "$(field found)" "the renderer's own marker is read"
+assert_eq '["fp-a","fp/b:1"]' "$(jq -c .fingerprints "$WORK/out-renderer/marker.json")" "the renderer's fingerprints are kept"
+
 # No issue at all: not found, nothing downloaded, no marker.
 new_fixture none
 fetch "$WORK/out-none"
