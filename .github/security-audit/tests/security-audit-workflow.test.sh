@@ -389,6 +389,46 @@ for name in ("cross-check", "report"):
         if k.endswith("SHA256") and not re.match(r"^\$\{\{ needs\.[a-z-]+\.outputs\.[a-z_0-9]+ \}\}$", norm(v)):
             err("%s choose step's %s must come from needs.<job>.outputs" % (name, k))
 
+# ---------------------------------------------------------------- sandbox-secrets verdict
+# poc-run's run and verdict steps are run as written against stub scripts: a
+# canary manifest whose second script is refused for its path must fail the
+# verdict, and one with two good scripts must pass it.
+steps_by = {st.get("id") or st.get("name"): st for st in (jobs.get("poc-run") or {}).get("steps") or []}
+run_block = (steps_by.get("run") or {}).get("run")
+verdict_block = (steps_by.get("Canary verdict (sandbox-secrets)") or {}).get("run")
+def verdict(second_script):
+    with tempfile.TemporaryDirectory() as d:
+        ws, rt = os.path.join(d, "ws"), os.path.join(d, "rt")
+        sa = os.path.join(ws, SA)
+        os.makedirs(os.path.join(sa, "keys"))
+        os.makedirs(os.path.join(rt, "scripts", "agents", "a", "scratch"))
+        os.makedirs(os.path.join(rt, "scripts", "agents", "b", "scratch"))
+        os.makedirs(os.path.join(rt, "site"))
+        for who in ("a", "b"):
+            open(os.path.join(rt, "scripts", "agents", who, "scratch", "poc.php"), "w").write("<?php\n")
+        open(os.path.join(sa, "keys", "agents.pub"), "w").write("age1stub\n")
+        open(os.path.join(sa, "judge-canary.sh"), "w").write(read(SA + "/judge-canary.sh"))
+        open(os.path.join(sa, "seal.sh"), "w").write("#!/usr/bin/env bash\n: > \"$4\"\necho 0\n")
+        names = ["AUDIT_SANDBOX_AGE_KEY", "AUDIT_AGENTS_AGE_KEY", "CLAUDE_CODE_OAUTH_TOKEN", "GITHUB_TOKEN", "ACTIONS_RUNTIME_TOKEN"]
+        stdout = "".join("%s: not found\\n" % n for n in names)
+        open(os.path.join(sa, "run-in-sandbox.sh"), "w").write(
+            "#!/usr/bin/env bash\njq -n --arg fp \"$1\" --arg slot \"$2\" '{fingerprint: $fp, slot: $slot, stdout: \"%s\"}'\n" % stdout)
+        manifest = {"items": [{"fingerprint": "canary-sandbox-secrets", "scripts": [
+            {"slot": "a", "agent_id": "a", "mode": "http", "script": "agents/a/scratch/poc.php", "fixture": None},
+            {"slot": "b", "agent_id": "b", "mode": "http", "script": second_script, "fixture": None}]}]}
+        json.dump(manifest, open(os.path.join(rt, "scripts", "poc-manifest.json"), "w"))
+        env = {"PATH": os.environ["PATH"], "RUNNER_TEMP": rt, "CANARY": "sandbox-secrets", "GITHUB_OUTPUT": os.devnull}
+        subprocess.run(["bash", "-eo", "pipefail", "-c", run_block or "exit 1"], cwd=ws, env=env, capture_output=True)
+        p = subprocess.run(["bash", "-eo", "pipefail", "-c", verdict_block or "exit 0"], cwd=ws, env=env,
+                           capture_output=True, text=True)
+        return p.returncode, p.stdout
+rc, out = verdict("agents/b/scratch/poc.php")
+if rc != 0:
+    err("the sandbox-secrets verdict must pass when both scripts ran and found nothing")
+rc, out = verdict("../outside.php")
+if rc == 0 or "record poc-run-1-b: not run" not in out:
+    err("the sandbox-secrets verdict must fail when a canary script was refused and never ran")
+
 # ---------------------------------------------------------------- key canaries
 for name, own, other, key in (("source", "agents", "sandbox", "AUDIT_AGENTS_AGE_KEY"),
                               ("poc-run", "sandbox", "agents", "AUDIT_SANDBOX_AGE_KEY")):
@@ -576,5 +616,6 @@ mutate "a hand-off sha from an unchecked step" '("SHA256: ${{ needs.source.outpu
 mutate "poc-run installing composer" '("          tools: none\n          github-token: \x27\x27", "          github-token: \x27\x27", 1)'
 mutate "poc-run passing its token to setup-php" '("          tools: none\n          github-token: \x27\x27", "          tools: none", 1)'
 mutate "an ok cause after a failed trusted step" '("          if [ \"$JOB_STATUS\" != success ] && [ \"$cause\" = ok ]; then cause=agent_failed; fi\n          echo \"cause=$cause\" >> \"$GITHUB_OUTPUT\"\n          echo \"poc-decide job: $cause\"", "          echo \"cause=$cause\" >> \"$GITHUB_OUTPUT\"\n          echo \"poc-decide job: $cause\"", 1)'
+mutate "a refused canary script not counted" '("echo \"item $n slot $slot: script path refused, not run\"; not_run \"$n\" \"$slot\"; continue", "echo \"item $n slot $slot: script path refused, not run\"; continue", 1)'
 
 pass "security-audit workflow structure"

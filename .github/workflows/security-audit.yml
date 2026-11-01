@@ -954,23 +954,31 @@ jobs:
           }
           count=$(jq 'if (.items | type) == "array" then [(.items | length), 6] | min else 0 end' "$manifest")
           missing=0
+          # On the sandbox-secrets canary a slot that runs nothing fails the
+          # verdict, so it cannot pass on one record while the other never ran.
+          not_run() { # n slot
+            if [ "$CANARY" = sandbox-secrets ]; then
+              echo "sandbox-secrets: record poc-run-$1-$2: not run" >> "$RUNNER_TEMP/canary-verdict.txt"
+              echo "poc-run-$1-$2" >> "$RUNNER_TEMP/canary-failed.txt"
+            fi
+          }
           for ((i = 0; i < count; i++)); do
             n=$((i + 1))
             for slot in a b; do
               entry=$(jq -c --argjson i "$i" --arg slot "$slot" '
                 [.items[$i] | objects | .scripts | arrays | .[] | objects | select(.slot == $slot)] | first // empty' "$manifest")
-              if [ -z "$entry" ]; then echo "item $n slot $slot: no script listed"; continue; fi
+              if [ -z "$entry" ]; then echo "item $n slot $slot: no script listed"; not_run "$n" "$slot"; continue; fi
               fp=$(jq -r --argjson i "$i" '.items[$i] | objects | .fingerprint | strings' "$manifest")
               mode=$(jq -r '.mode | strings' <<<"$entry")
               script=$(jq -r '.script | strings' <<<"$entry")
               fixture=$(jq -r '.fixture | strings' <<<"$entry")
               if ! [[ "$fp" =~ ^[A-Za-z0-9][A-Za-z0-9._:/@+-]*$ ]] || { [ "$mode" != http ] && [ "$mode" != drush ]; }; then
-                echo "item $n slot $slot: malformed entry, not run"; continue
+                echo "item $n slot $slot: malformed entry, not run"; not_run "$n" "$slot"; continue
               fi
-              if ! script_path=$(inside "$script"); then echo "item $n slot $slot: script path refused, not run"; continue; fi
+              if ! script_path=$(inside "$script"); then echo "item $n slot $slot: script path refused, not run"; not_run "$n" "$slot"; continue; fi
               fixture_path=""
               if [ -n "$fixture" ] && ! fixture_path=$(inside "$fixture"); then
-                echo "item $n slot $slot: fixture path refused, not run"; continue
+                echo "item $n slot $slot: fixture path refused, not run"; not_run "$n" "$slot"; continue
               fi
               name="poc-run-$n-$slot"
               mkdir "$RUNNER_TEMP/record/$name"
@@ -983,6 +991,7 @@ jobs:
               if [ "$rc" -ne 0 ] || [ ! -s "$RUNNER_TEMP/record/$name/$name.json" ]; then
                 echo "item $n slot $slot: run-in-sandbox.sh exited $rc and printed no record"
                 rm -rf "$RUNNER_TEMP/record/$name"
+                not_run "$n" "$slot"
                 missing=$((missing + 1))
                 continue
               fi
