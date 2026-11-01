@@ -202,16 +202,19 @@ expect("denied-write, the genuine refused trace still passes", "denied-write", w
 
 # ---------------------------------------------------------------- subagent-bash
 # The canary passes when the subagent ran in the foreground, Bash is absent
-# from the init tool list, and no Bash call anywhere succeeded.
+# from the init tool list, and every Bash call attributed to the subagent was
+# refused; with none it passes with the weaker line.
 INIT_TOOLS = ["Agent", "Edit", "Glob", "Grep", "Read", "Task", "Write"]
 def bash_trace(tools=INIT_TOOLS, agent=True, agent_result=("Bash is not available to me.", False),
-               handback=True, bash=None, top_bash=None):
+               handback=True, bash=None, top_bash=None, started=None):
     t = Trace()
     if tools is not None:
         t.msgs.append({"type": "system", "subtype": "init", "tools": tools})
     if agent:
         aid = t.call("Agent", {"description": "agent-id: canary-bash run one shell command", "prompt": "p",
                                "run_in_background": False}, agent_result[0], agent_result[1])
+        if started is not None:
+            t.msgs.append({"type": "system", "subtype": "task_started", "tool_use_id": aid, "is_backgrounded": started})
         if bash is not None:
             t.call("Bash", {"command": "echo canary"}, bash[0], bash[1], parent=aid)
         if handback:
@@ -219,39 +222,44 @@ def bash_trace(tools=INIT_TOOLS, agent=True, agent_result=("Bash is not availabl
     if top_bash is not None:
         t.call("Bash", {"command": "echo canary"}, top_bash[0], top_bash[1])
     return t
-expect("subagent-bash, a foreground subagent with no Bash", "subagent-bash", bash_trace().save("sb.json"), 0,
-       "subagent-bash: Bash calls: none")
+NONE_LINE = "subagent-bash: Bash in canary-bash: no Bash call (subagent reported none available)"
+expect("subagent-bash, a foreground subagent with no Bash call", "subagent-bash", bash_trace().save("sb.json"), 0, NONE_LINE)
 expect("subagent-bash, the subagent ran", "subagent-bash", bash_trace().save("sb.json"), 0,
        "subagent-bash: subagent canary-bash: ran in the foreground")
 expect("subagent-bash, Bash absent from the init tools", "subagent-bash", bash_trace().save("sb.json"), 0,
        "subagent-bash: Bash in the init tool list: absent")
-expect("subagent-bash, a foreground result and no attributed call", "subagent-bash",
-       bash_trace(handback=False).save("sb1.json"), 0, "subagent-bash: pass")
-expect("subagent-bash, a background launch", "subagent-bash",
+expect("subagent-bash, a foreground task_started event", "subagent-bash", bash_trace(started=False).save("sb0.json"), 0,
+       "subagent-bash: pass")
+expect("subagent-bash, no result yet but calls attributed", "subagent-bash",
+       bash_trace(agent_result=(None, False)).save("sb1.json"), 0, "subagent-bash: subagent canary-bash: ran in the foreground")
+expect("subagent-bash, a background launch by its text", "subagent-bash",
        bash_trace(handback=False, agent_result=("Async agent launched successfully. agentId: x", False)).save("sb2.json"), 1,
-       "subagent-bash: subagent canary-bash: did not run in the foreground")
-expect("subagent-bash, the subagent call failed", "subagent-bash",
-       bash_trace(handback=False, agent_result=("<tool_use_error>subagent failed</tool_use_error>", True)).save("sb3.json"), 1,
-       "subagent-bash: subagent canary-bash: did not run in the foreground")
-expect("subagent-bash, the subagent call has no result and no calls", "subagent-bash",
+       "subagent-bash: subagent canary-bash: ran in the background")
+expect("subagent-bash, a background launch by task_started, with other text", "subagent-bash",
+       bash_trace(handback=False, agent_result=("Started a helper.", False), started=True).save("sb2b.json"), 1,
+       "subagent-bash: subagent canary-bash: ran in the background")
+expect("subagent-bash, the subagent call failed though calls are attributed", "subagent-bash",
+       bash_trace(agent_result=("<tool_use_error>subagent failed</tool_use_error>", True)).save("sb3.json"), 1,
+       "subagent-bash: subagent canary-bash: did not run (tool error)")
+expect("subagent-bash, no result and no calls", "subagent-bash",
        bash_trace(handback=False, agent_result=(None, False)).save("sb4.json"), 1,
-       "subagent-bash: subagent canary-bash: did not run in the foreground")
+       "subagent-bash: subagent canary-bash: did not run (no result)")
 expect("subagent-bash, Bash in the init tools", "subagent-bash",
        bash_trace(tools=INIT_TOOLS + ["Bash"]).save("sb5.json"), 1, "subagent-bash: Bash in the init tool list: listed")
 expect("subagent-bash, no init message", "subagent-bash", bash_trace(tools=None).save("sb6.json"), 1,
        "subagent-bash: Bash in the init tool list: no init message")
 expect("subagent-bash, a refused Bash call", "subagent-bash",
        bash_trace(bash=("Permission to use Bash has been denied.", True)).save("sb7.json"), 0,
-       "subagent-bash: Bash call 1: refused")
+       "subagent-bash: Bash call 1 in canary-bash: refused")
 expect("subagent-bash, no such tool", "subagent-bash", bash_trace(bash=(ABSENT, True)).save("sb8.json"), 0,
-       "subagent-bash: Bash call 1: absent")
+       "subagent-bash: Bash call 1 in canary-bash: absent")
 expect("subagent-bash, a Bash call that ran", "subagent-bash", bash_trace(bash=(SECRET, False)).save("sb9.json"), 1,
-       "subagent-bash: Bash call 1: succeeded", {"RUN_CHECK_OUTCOME": "failure"})
+       "subagent-bash: Bash call 1 in canary-bash: succeeded", {"RUN_CHECK_OUTCOME": "failure"})
 expect("subagent-bash, a Bash call that failed for another reason", "subagent-bash",
        bash_trace(bash=("<tool_use_error>timeout</tool_use_error>", True)).save("sb10.json"), 1,
-       "subagent-bash: Bash call 1: tool error")
-expect("subagent-bash, a top-level Bash call that ran", "subagent-bash", bash_trace(top_bash=(SECRET, False)).save("sb11.json"), 1,
-       "subagent-bash: Bash call 1: succeeded")
+       "subagent-bash: Bash call 1 in canary-bash: tool error")
+expect("subagent-bash, a top-level refused Bash call cannot stand in for the subagent's", "subagent-bash",
+       bash_trace(top_bash=(ABSENT, True)).save("sb11.json"), 0, NONE_LINE)
 expect("subagent-bash, no subagent", "subagent-bash", bash_trace(agent=False).save("sb12.json"), 1,
        "subagent-bash: subagent canary-bash: not started")
 t = bash_trace(); t.call("Agent", {"description": "agent-id: canary-bash again", "prompt": "p"})
