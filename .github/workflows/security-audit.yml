@@ -516,3 +516,621 @@ jobs:
           path: ${{ runner.temp }}/site/audit-site.tar.gz
           retention-days: 1
           if-no-files-found: error
+
+  poc-write:
+    needs: [prepare, source, build-site]
+    if: needs.prepare.outputs.go == 'true' && github.ref == 'refs/heads/main' && contains(fromJSON(needs.prepare.outputs.run_jobs), 'poc-write')
+    runs-on: ubuntu-24.04
+    environment: claude-agents
+    timeout-minutes: 90
+    permissions:
+      contents: read
+    env:
+      AUDIT_INPUT_DIR: /mnt/audit/poc-write/in
+      AUDIT_OUTPUT_DIR: /mnt/audit/poc-write/out
+    outputs:
+      sandbox_sha256: ${{ steps.handoff.outputs.sandbox_sha256 }}
+      scripts_sha256: ${{ steps.handoff.outputs.scripts_sha256 }}
+      state_sha256: ${{ steps.handoff-state.outputs.sha256 }}
+      cause: ${{ steps.cause.outputs.cause }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Install age, and envsubst where the image lacks it
+        run: |
+          pkgs=(age)
+          command -v envsubst >/dev/null || pkgs+=(gettext-base)
+          sudo apt-get install -y "${pkgs[@]}"
+
+      # script-isolation and sandbox-secrets run this agent with their canary
+      # prompt; sandbox-secrets and reopen-records hand off for poc-run.
+      - name: Decide which parts of this job run
+        id: plan
+        env:
+          CANARY: ${{ needs.prepare.outputs.canary }}
+        run: |
+          case "$CANARY" in
+            none) agent=true merge=true handoff=true ;;
+            script-isolation) agent=true merge=false handoff=false ;;
+            sandbox-secrets) agent=true merge=false handoff=true ;;
+            reopen-records) agent=false merge=false handoff=true ;;
+            *) echo "::error::poc-write does not run for this canary"; exit 1 ;;
+          esac
+          printf 'agent=%s\nmerge=%s\nhandoff=%s\n' "$agent" "$merge" "$handoff" >> "$GITHUB_OUTPUT"
+
+      - name: Create the working directories
+        run: |
+          sudo mkdir -p "$AUDIT_INPUT_DIR" "$AUDIT_OUTPUT_DIR"
+          sudo chown -R "$(id -u):$(id -g)" /mnt/audit/poc-write
+
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
+        with:
+          name: audit-source
+          path: ${{ runner.temp }}/handoff
+
+      # Opened twice: into the input directory for the agent, and into a
+      # state directory under $RUNNER_TEMP, which the agents' deny rules keep
+      # out of reach, for the count.
+      - name: Check and open audit-source
+        env:
+          AUDIT_AGENTS_AGE_KEY: ${{ secrets.AUDIT_AGENTS_AGE_KEY }}
+          SHA256: ${{ needs.source.outputs.sha256 }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/state"
+          bash .github/security-audit/seal.sh open AUDIT_AGENTS_AGE_KEY "$SHA256" "$RUNNER_TEMP/handoff/audit-source.age" "$AUDIT_INPUT_DIR"
+          bash .github/security-audit/seal.sh open AUDIT_AGENTS_AGE_KEY "$SHA256" "$RUNNER_TEMP/handoff/audit-source.age" "$RUNNER_TEMP/state"
+
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
+        with:
+          name: audit-site
+          path: ${{ runner.temp }}/site
+
+      - name: Check audit-site and unpack only accounts.json
+        env:
+          SHA256: ${{ needs.build-site.outputs.sha256 }}
+        run: |
+          actual=$(sha256sum "$RUNNER_TEMP/site/audit-site.tar.gz" | cut -d' ' -f1)
+          if [ "$actual" != "$SHA256" ]; then
+            echo "::error::audit-site is not the file build-site uploaded (expected $SHA256, got $actual)"
+            exit 1
+          fi
+          tar -xzf "$RUNNER_TEMP/site/audit-site.tar.gz" -C "$AUDIT_INPUT_DIR" accounts.json
+
+      - name: Compose the poc-write agent's arguments
+        id: args-poc-write
+        if: steps.plan.outputs.agent == 'true'
+        run: |
+          bash .github/claude-review/tools/agent/compose-agent-args.sh --audit > "$RUNNER_TEMP/agent-args"
+          line=$(grep '^AGENT_ARGS_AUDIT_POC_WRITE=' "$RUNNER_TEMP/agent-args")
+          echo "claude_args=${line#AGENT_ARGS_AUDIT_POC_WRITE=}" >> "$GITHUB_OUTPUT"
+          bash .github/claude-review/tools/agent/compose-agent-args.sh --audit-models poc_write >> "$GITHUB_OUTPUT"
+
+      - name: Render the poc-write prompt
+        id: prompt-poc-write
+        if: steps.plan.outputs.agent == 'true'
+        env:
+          CANARY: ${{ needs.prepare.outputs.canary }}
+        run: |
+          export RUN_ID="$GITHUB_RUN_ID" SOURCE_REF="$GITHUB_SHA" GITHUB_ENV_PATH="$GITHUB_ENV"
+          export OUTPUT_DIR="$AUDIT_OUTPUT_DIR" INPUT_DIR="$AUDIT_INPUT_DIR"
+          envsubst "$PROMPT_VARS" < .github/security-audit/prompts/poc-write.md > "$RUNNER_TEMP/prompt-poc-write.md"
+          if [ "$CANARY" != none ]; then
+            envsubst "$PROMPT_VARS" < ".github/security-audit/prompts/canary-$CANARY.md" >> "$RUNNER_TEMP/prompt-poc-write.md"
+          fi
+          bash .github/claude-review/tools/agent/emit-block.sh prompt "$RUNNER_TEMP/prompt-poc-write.md" >> "$GITHUB_OUTPUT"
+
+      - name: Fingerprint the checkout and ~/.claude before the poc-write agent
+        id: before-poc-write
+        if: steps.plan.outputs.agent == 'true'
+        run: |
+          bash .github/security-audit/check-agent-run.sh --fingerprint "$RUNNER_TEMP/fingerprint-poc-write"
+          echo "started=$(date +%s)" >> "$GITHUB_OUTPUT"
+
+      - name: poc-write agent
+        id: agent-poc-write
+        if: steps.plan.outputs.agent == 'true'
+        continue-on-error: true
+        timeout-minutes: 75
+        uses: anthropics/claude-code-action@ae68417a745a5df4b2124873632bd73a2255e6f6 # v1.0.259
+        env:
+          ANTHROPIC_DEFAULT_SONNET_MODEL: ${{ steps.args-poc-write.outputs.ANTHROPIC_DEFAULT_SONNET_MODEL }}
+          ANTHROPIC_DEFAULT_HAIKU_MODEL: ${{ steps.args-poc-write.outputs.ANTHROPIC_DEFAULT_HAIKU_MODEL }}
+          CLAUDE_CODE_SUBAGENT_MODEL: ${{ steps.args-poc-write.outputs.CLAUDE_CODE_SUBAGENT_MODEL }}
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          github_token: ${{ github.token }}
+          prompt: ${{ steps.prompt-poc-write.outputs.prompt }}
+          claude_args: ${{ steps.args-poc-write.outputs.claude_args }}
+          show_full_output: 'false'
+          display_report: 'false'
+
+      - name: Record when the poc-write agent ended
+        id: after-poc-write
+        if: always() && steps.plan.outputs.agent == 'true'
+        run: echo "ended=$(date +%s)" >> "$GITHUB_OUTPUT"
+
+      - name: Run check (poc-write agent)
+        id: check-poc-write
+        if: always() && steps.plan.outputs.agent == 'true'
+        env:
+          TRACE: ${{ steps.agent-poc-write.outputs.execution_file }}
+          MODEL: ${{ steps.args-poc-write.outputs.CLAUDE_CODE_SUBAGENT_MODEL }}
+        run: bash .github/security-audit/check-agent-run.sh poc-write "$TRACE" "$AGENT_TOOLS" "$AUDIT_OUTPUT_DIR" "$RUNNER_TEMP/fingerprint-poc-write" "$MODEL"
+
+      - name: Outcome (poc-write agent)
+        id: outcome-poc-write
+        if: always() && steps.plan.outputs.agent == 'true'
+        env:
+          TRACE: ${{ steps.agent-poc-write.outputs.execution_file }}
+          OUTCOME: ${{ steps.agent-poc-write.outcome }}
+          STARTED: ${{ steps.before-poc-write.outputs.started }}
+          ENDED: ${{ steps.after-poc-write.outputs.ended }}
+        run: |
+          cause=$(bash .github/security-audit/agent-outcome.sh "$TRACE" "$OUTCOME" "$STARTED" "$ENDED" 75 "$AUDIT_OUTPUT_DIR/poc-manifest.json")
+          echo "cause=$cause" >> "$GITHUB_OUTPUT"
+          echo "poc-write agent: $cause"
+
+      - name: Count the poc-write agent's subagents
+        if: always() && steps.check-poc-write.outcome == 'success' && steps.plan.outputs.merge == 'true'
+        env:
+          TRACE: ${{ steps.agent-poc-write.outputs.execution_file }}
+        run: python3 -I .github/security-audit/merge-records.py --state "$RUNNER_TEMP/state" count --job poc-write --cap 12 --trace "$TRACE"
+
+      # The scripts and manifest twice: to the sandbox key for poc-run, and to
+      # the agents key for poc-decide and the cross-check. On an audit run a
+      # missing manifest fails the job here, so the cross-check names poc-write
+      # as the failed phase.
+      - name: Seal the scripts to the sandbox and agents keys
+        id: handoff
+        if: steps.plan.outputs.handoff == 'true'
+        env:
+          MERGE: ${{ steps.plan.outputs.merge }}
+        run: |
+          if [ "$MERGE" = true ] && [ ! -s "$AUDIT_OUTPUT_DIR/poc-manifest.json" ]; then
+            echo "::error::the poc-write agent wrote no poc-manifest.json"
+            exit 1
+          fi
+          mkdir -p "$RUNNER_TEMP/handoff-out"
+          sandbox=$(bash .github/security-audit/seal.sh seal .github/security-audit/keys/sandbox.pub "$AUDIT_OUTPUT_DIR" "$RUNNER_TEMP/handoff-out/poc-scripts-sandbox.age")
+          scripts=$(bash .github/security-audit/seal.sh seal .github/security-audit/keys/agents.pub "$AUDIT_OUTPUT_DIR" "$RUNNER_TEMP/handoff-out/poc-scripts.age")
+          printf 'sandbox_sha256=%s\nscripts_sha256=%s\n' "$sandbox" "$scripts" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        if: steps.handoff.outcome == 'success'
+        with:
+          name: poc-scripts-sandbox
+          path: ${{ runner.temp }}/handoff-out/poc-scripts-sandbox.age
+          retention-days: 1
+          if-no-files-found: error
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        if: steps.handoff.outcome == 'success'
+        with:
+          name: poc-scripts
+          path: ${{ runner.temp }}/handoff-out/poc-scripts.age
+          retention-days: 1
+          if-no-files-found: error
+
+      # The state with this job's count in it, so poc-decide and the
+      # cross-check carry poc-write's usage forward.
+      - name: Seal the state with poc-write's count
+        id: handoff-state
+        if: steps.plan.outputs.merge == 'true'
+        run: |
+          sum=$(bash .github/security-audit/seal.sh seal .github/security-audit/keys/agents.pub "$RUNNER_TEMP/state" "$RUNNER_TEMP/handoff-out/audit-poc-write.age")
+          echo "sha256=$sum" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        if: steps.handoff-state.outcome == 'success'
+        with:
+          name: audit-poc-write
+          path: ${{ runner.temp }}/handoff-out/audit-poc-write.age
+          retention-days: 1
+          if-no-files-found: error
+
+      - name: Name the job's cause
+        id: cause
+        if: always()
+        env:
+          CHECK: ${{ steps.check-poc-write.outcome }}
+          OUTCOME: ${{ steps.outcome-poc-write.outputs.cause }}
+        run: |
+          if [ "$CHECK" = failure ]; then cause=run_check_failed
+          elif [ -n "$OUTCOME" ]; then cause="$OUTCOME"
+          else cause=job_failed
+          fi
+          echo "cause=$cause" >> "$GITHUB_OUTPUT"
+          echo "poc-write job: $cause"
+
+  # Runs every script in a bubblewrap sandbox with no network, and holds no
+  # Claude token and only the sandbox key. Each run record is sealed to the
+  # agents key as soon as it is written, so this job can open none of them.
+  poc-run:
+    needs: [prepare, poc-write, build-site]
+    if: needs.prepare.outputs.go == 'true' && github.ref == 'refs/heads/main' && contains(fromJSON(needs.prepare.outputs.run_jobs), 'poc-run')
+    runs-on: ubuntu-24.04
+    environment: audit-sandbox
+    timeout-minutes: 90
+    permissions:
+      contents: read
+    outputs:
+      records: ${{ steps.records.outputs.records }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - uses: shivammathur/setup-php@eb7c497e18156a6bbabfef1d3a82760b9eda3962 # v2
+        with:
+          php-version: '8.3'
+          extensions: pdo_sqlite, gd, curl
+          coverage: none
+
+      - name: Install bubblewrap and age
+        run: sudo apt-get install -y bubblewrap age
+
+      # Ubuntu 24.04 blocks the unprivileged user namespaces bubblewrap needs.
+      - name: Allow unprivileged user namespaces
+        run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
+        with:
+          name: poc-scripts-sandbox
+          path: ${{ runner.temp }}/handoff
+
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
+        with:
+          name: audit-site
+          path: ${{ runner.temp }}/site-artifact
+
+      - name: Check and open the scripts and the site
+        id: open
+        env:
+          AUDIT_SANDBOX_AGE_KEY: ${{ secrets.AUDIT_SANDBOX_AGE_KEY }}
+          SCRIPTS_SHA256: ${{ needs.poc-write.outputs.sandbox_sha256 }}
+          SITE_SHA256: ${{ needs.build-site.outputs.sha256 }}
+        run: |
+          actual=$(sha256sum "$RUNNER_TEMP/site-artifact/audit-site.tar.gz" | cut -d' ' -f1)
+          if [ "$actual" != "$SITE_SHA256" ]; then
+            echo "::error::audit-site is not the file build-site uploaded (expected $SITE_SHA256, got $actual)"
+            exit 1
+          fi
+          mkdir -p "$RUNNER_TEMP/site" "$RUNNER_TEMP/scripts"
+          tar -xzf "$RUNNER_TEMP/site-artifact/audit-site.tar.gz" -C "$RUNNER_TEMP/site"
+          bash .github/security-audit/seal.sh open AUDIT_SANDBOX_AGE_KEY "$SCRIPTS_SHA256" "$RUNNER_TEMP/handoff/poc-scripts-sandbox.age" "$RUNNER_TEMP/scripts"
+
+      # The manifest is agent-written, so each entry is checked before use: at
+      # most the first six items, slots a and b once each, a mode run-in-
+      # sandbox.sh knows, and script and fixture paths that resolve to regular
+      # files inside the opened scripts. A bad entry runs nothing and has no
+      # record. The log names items by position only, never by fingerprint.
+      - name: Run each script in the sandbox and seal its record
+        id: run
+        run: |
+          scripts="$(cd "$RUNNER_TEMP/scripts" && pwd -P)"
+          manifest="$scripts/poc-manifest.json"
+          mkdir -p "$RUNNER_TEMP/sealed" "$RUNNER_TEMP/record"
+          if [ ! -f "$manifest" ] || [ -L "$manifest" ]; then
+            echo "no poc-manifest.json, so no script runs"
+            exit 0
+          fi
+          inside() { # relative path -> its resolved path inside the scripts, or nothing
+            case "$1" in ''|/*|*..*) return 1 ;; esac
+            [ ! -L "$scripts/$1" ] || return 1
+            local p
+            p=$(realpath -e -- "$scripts/$1" 2>/dev/null) || return 1
+            case "$p" in "$scripts"/*) ;; *) return 1 ;; esac
+            [ -f "$p" ] || return 1
+            printf '%s' "$p"
+          }
+          count=$(jq 'if (.items | type) == "array" then [(.items | length), 6] | min else 0 end' "$manifest")
+          missing=0
+          for ((i = 0; i < count; i++)); do
+            n=$((i + 1))
+            for slot in a b; do
+              entry=$(jq -c --argjson i "$i" --arg slot "$slot" '
+                [.items[$i] | objects | .scripts | arrays | .[] | objects | select(.slot == $slot)] | first // empty' "$manifest")
+              if [ -z "$entry" ]; then echo "item $n slot $slot: no script listed"; continue; fi
+              fp=$(jq -r --argjson i "$i" '.items[$i] | objects | .fingerprint | strings' "$manifest")
+              mode=$(jq -r '.mode | strings' <<<"$entry")
+              script=$(jq -r '.script | strings' <<<"$entry")
+              fixture=$(jq -r '.fixture | strings' <<<"$entry")
+              if ! [[ "$fp" =~ ^[A-Za-z0-9][A-Za-z0-9._:/@+-]*$ ]] || { [ "$mode" != http ] && [ "$mode" != drush ]; }; then
+                echo "item $n slot $slot: malformed entry, not run"; continue
+              fi
+              if ! script_path=$(inside "$script"); then echo "item $n slot $slot: script path refused, not run"; continue; fi
+              fixture_path=""
+              if [ -n "$fixture" ] && ! fixture_path=$(inside "$fixture"); then
+                echo "item $n slot $slot: fixture path refused, not run"; continue
+              fi
+              name="poc-run-$n-$slot"
+              mkdir "$RUNNER_TEMP/record/$name"
+              rc=0
+              if [ -n "$fixture_path" ]; then
+                bash .github/security-audit/run-in-sandbox.sh "$fp" "$slot" "$mode" "$RUNNER_TEMP/site" "$script_path" "$fixture_path" > "$RUNNER_TEMP/record/$name/$name.json" || rc=$?
+              else
+                bash .github/security-audit/run-in-sandbox.sh "$fp" "$slot" "$mode" "$RUNNER_TEMP/site" "$script_path" > "$RUNNER_TEMP/record/$name/$name.json" || rc=$?
+              fi
+              if [ "$rc" -ne 0 ] || [ ! -s "$RUNNER_TEMP/record/$name/$name.json" ]; then
+                echo "item $n slot $slot: run-in-sandbox.sh exited $rc and printed no record"
+                rm -rf "$RUNNER_TEMP/record/$name"
+                missing=$((missing + 1))
+                continue
+              fi
+              bash .github/security-audit/seal.sh seal .github/security-audit/keys/agents.pub "$RUNNER_TEMP/record/$name" "$RUNNER_TEMP/sealed/$name.age" > /dev/null
+              rm -rf "$RUNNER_TEMP/record/$name"
+              echo "item $n slot $slot: record sealed"
+            done
+          done
+          if [ "$missing" -gt 0 ]; then
+            echo "::error::$missing script(s) produced no run record"
+            exit 1
+          fi
+
+      # Seals any record the step above wrote but did not seal before it
+      # stopped, and lists every sealed record with its sha256.
+      - name: Seal any record left and list the sealed records
+        id: records
+        if: always() && steps.open.outcome == 'success'
+        run: |
+          shopt -s nullglob
+          for dir in "$RUNNER_TEMP"/record/poc-run-*; do
+            name=$(basename "$dir")
+            if [ -s "$dir/$name.json" ] && [ ! -e "$RUNNER_TEMP/sealed/$name.age" ]; then
+              bash .github/security-audit/seal.sh seal .github/security-audit/keys/agents.pub "$dir" "$RUNNER_TEMP/sealed/$name.age" > /dev/null
+            fi
+            rm -rf "$dir"
+          done
+          map='{}'
+          for f in "$RUNNER_TEMP"/sealed/poc-run-*.age; do
+            map=$(jq -c --arg name "$(basename "$f" .age)" --arg sum "$(sha256sum "$f" | cut -d' ' -f1)" '. + {($name): $sum}' <<<"$map")
+          done
+          echo "records=$map" >> "$GITHUB_OUTPUT"
+          echo "$(jq length <<<"$map") sealed run record(s)"
+
+      # The reopen-records canary: this job's own key must open none of the
+      # records it sealed. A run with no record seals a probe record the same
+      # way first, so the check never passes on an empty set.
+      - name: Canary, the sandbox key opens no sealed record
+        if: always() && needs.prepare.outputs.canary == 'reopen-records' && steps.records.outcome == 'success'
+        env:
+          AUDIT_SANDBOX_AGE_KEY: ${{ secrets.AUDIT_SANDBOX_AGE_KEY }}
+        run: |
+          shopt -s nullglob
+          files=("$RUNNER_TEMP"/sealed/poc-run-*.age)
+          if [ "${#files[@]}" -eq 0 ]; then
+            mkdir -p "$RUNNER_TEMP/probe/poc-run-0-a"
+            jq -n --arg token "$(od -An -tx1 -N32 /dev/urandom | tr -d ' \n')" '{fingerprint: "canary-reopen-records", stdout: $token}' \
+              > "$RUNNER_TEMP/probe/poc-run-0-a/poc-run-0-a.json"
+            bash .github/security-audit/seal.sh seal .github/security-audit/keys/agents.pub "$RUNNER_TEMP/probe/poc-run-0-a" "$RUNNER_TEMP/probe/poc-run-0-a.age" > /dev/null
+            files=("$RUNNER_TEMP/probe/poc-run-0-a.age")
+          fi
+          opened=0
+          for f in "${files[@]}"; do
+            dir=$(mktemp -d)
+            if bash .github/security-audit/seal.sh open AUDIT_SANDBOX_AGE_KEY "$(sha256sum "$f" | cut -d' ' -f1)" "$f" "$dir"; then
+              opened=$((opened + 1))
+            fi
+            rm -rf "$dir"
+          done
+          if [ "$opened" -ne 0 ]; then
+            echo "::error::AUDIT_SANDBOX_AGE_KEY opened $opened of ${#files[@]} sealed record(s)"
+            exit 1
+          fi
+          echo "AUDIT_SANDBOX_AGE_KEY opened none of ${#files[@]} sealed record(s)"
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        if: always() && steps.records.outcome == 'success'
+        with:
+          name: poc-run-records
+          path: ${{ runner.temp }}/sealed/
+          retention-days: 1
+          if-no-files-found: ignore
+
+  poc-decide:
+    needs: [prepare, source, poc-write, poc-run]
+    if: needs.prepare.outputs.go == 'true' && github.ref == 'refs/heads/main' && contains(fromJSON(needs.prepare.outputs.run_jobs), 'poc-decide')
+    runs-on: ubuntu-24.04
+    environment: claude-agents
+    timeout-minutes: 60
+    permissions:
+      contents: read
+    env:
+      AUDIT_INPUT_DIR: /mnt/audit/poc-decide/in
+      AUDIT_OUTPUT_DIR: /mnt/audit/poc-decide/out
+    outputs:
+      sha256: ${{ steps.handoff.outputs.sha256 }}
+      validators: ${{ steps.validators.outputs.validators }}
+      cause: ${{ steps.cause.outputs.cause }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Install age, and envsubst where the image lacks it
+        run: |
+          pkgs=(age)
+          command -v envsubst >/dev/null || pkgs+=(gettext-base)
+          sudo apt-get install -y "${pkgs[@]}"
+
+      - name: Create the working directories
+        run: |
+          sudo mkdir -p "$AUDIT_INPUT_DIR/scripts" "$AUDIT_INPUT_DIR/records" "$AUDIT_OUTPUT_DIR"
+          sudo chown -R "$(id -u):$(id -g)" /mnt/audit/poc-decide
+
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
+        with:
+          name: audit-poc-write
+          path: ${{ runner.temp }}/handoff
+
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
+        with:
+          name: poc-scripts
+          path: ${{ runner.temp }}/handoff
+
+      # The state goes to the output directory, where apply-decide promotes
+      # the run records beside the decisions; the scripts go to the input
+      # directory, the root the manifest's paths are relative to.
+      - name: Check and open the state and the scripts
+        env:
+          AUDIT_AGENTS_AGE_KEY: ${{ secrets.AUDIT_AGENTS_AGE_KEY }}
+          STATE_SHA256: ${{ needs.poc-write.outputs.state_sha256 }}
+          SCRIPTS_SHA256: ${{ needs.poc-write.outputs.scripts_sha256 }}
+        run: |
+          bash .github/security-audit/seal.sh open AUDIT_AGENTS_AGE_KEY "$STATE_SHA256" "$RUNNER_TEMP/handoff/audit-poc-write.age" "$AUDIT_OUTPUT_DIR"
+          bash .github/security-audit/seal.sh open AUDIT_AGENTS_AGE_KEY "$SCRIPTS_SHA256" "$RUNNER_TEMP/handoff/poc-scripts.age" "$AUDIT_INPUT_DIR/scripts"
+
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
+        if: needs.poc-run.outputs.records != '{}'
+        with:
+          name: poc-run-records
+          path: ${{ runner.temp }}/handoff/records
+
+      # Only the records in poc-run's name-to-sha256 map are opened, each
+      # checked against its sha256 and required to hold exactly one regular
+      # file with its own name.
+      - name: Check and open the run records
+        if: needs.poc-run.outputs.records != '{}'
+        env:
+          AUDIT_AGENTS_AGE_KEY: ${{ secrets.AUDIT_AGENTS_AGE_KEY }}
+          RECORDS: ${{ needs.poc-run.outputs.records }}
+        run: |
+          jq -r 'to_entries[] | "\(.key) \(.value)"' <<<"$RECORDS" | while read -r name sum; do
+            if ! [[ "$name" =~ ^poc-run-[1-9][0-9]*-[ab]$ && "$sum" =~ ^[0-9a-f]{64}$ ]]; then
+              echo "::error::malformed entry in the run record map"
+              exit 1
+            fi
+            dir=$(mktemp -d)
+            bash .github/security-audit/seal.sh open AUDIT_AGENTS_AGE_KEY "$sum" "$RUNNER_TEMP/handoff/records/$name.age" "$dir"
+            if [ "$(find "$dir" -mindepth 1 -printf '%P\n')" != "$name.json" ] || [ -L "$dir/$name.json" ] || [ ! -f "$dir/$name.json" ]; then
+              echo "::error::$name does not hold exactly one regular file $name.json"
+              exit 1
+            fi
+            mv "$dir/$name.json" "$AUDIT_INPUT_DIR/records/"
+            rmdir "$dir"
+          done
+
+      - name: Compose the poc-decide agent's arguments
+        id: args-poc-decide
+        run: |
+          bash .github/claude-review/tools/agent/compose-agent-args.sh --audit > "$RUNNER_TEMP/agent-args"
+          line=$(grep '^AGENT_ARGS_AUDIT_POC_DECIDE=' "$RUNNER_TEMP/agent-args")
+          echo "claude_args=${line#AGENT_ARGS_AUDIT_POC_DECIDE=}" >> "$GITHUB_OUTPUT"
+          bash .github/claude-review/tools/agent/compose-agent-args.sh --audit-models poc_decide >> "$GITHUB_OUTPUT"
+
+      - name: Render the poc-decide prompt
+        id: prompt-poc-decide
+        run: |
+          export RUN_ID="$GITHUB_RUN_ID" SOURCE_REF="$GITHUB_SHA" GITHUB_ENV_PATH="$GITHUB_ENV"
+          export OUTPUT_DIR="$AUDIT_OUTPUT_DIR" INPUT_DIR="$AUDIT_INPUT_DIR"
+          envsubst "$PROMPT_VARS" < .github/security-audit/prompts/poc-decide.md > "$RUNNER_TEMP/prompt-poc-decide.md"
+          bash .github/claude-review/tools/agent/emit-block.sh prompt "$RUNNER_TEMP/prompt-poc-decide.md" >> "$GITHUB_OUTPUT"
+
+      - name: Fingerprint the checkout and ~/.claude before the poc-decide agent
+        id: before-poc-decide
+        run: |
+          bash .github/security-audit/check-agent-run.sh --fingerprint "$RUNNER_TEMP/fingerprint-poc-decide"
+          echo "started=$(date +%s)" >> "$GITHUB_OUTPUT"
+
+      - name: poc-decide agent
+        id: agent-poc-decide
+        continue-on-error: true
+        timeout-minutes: 45
+        uses: anthropics/claude-code-action@ae68417a745a5df4b2124873632bd73a2255e6f6 # v1.0.259
+        env:
+          ANTHROPIC_DEFAULT_SONNET_MODEL: ${{ steps.args-poc-decide.outputs.ANTHROPIC_DEFAULT_SONNET_MODEL }}
+          ANTHROPIC_DEFAULT_HAIKU_MODEL: ${{ steps.args-poc-decide.outputs.ANTHROPIC_DEFAULT_HAIKU_MODEL }}
+          CLAUDE_CODE_SUBAGENT_MODEL: ${{ steps.args-poc-decide.outputs.CLAUDE_CODE_SUBAGENT_MODEL }}
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          github_token: ${{ github.token }}
+          prompt: ${{ steps.prompt-poc-decide.outputs.prompt }}
+          claude_args: ${{ steps.args-poc-decide.outputs.claude_args }}
+          show_full_output: 'false'
+          display_report: 'false'
+
+      - name: Record when the poc-decide agent ended
+        id: after-poc-decide
+        if: always()
+        run: echo "ended=$(date +%s)" >> "$GITHUB_OUTPUT"
+
+      - name: Run check (poc-decide agent)
+        id: check-poc-decide
+        if: always()
+        env:
+          TRACE: ${{ steps.agent-poc-decide.outputs.execution_file }}
+          MODEL: ${{ steps.args-poc-decide.outputs.CLAUDE_CODE_SUBAGENT_MODEL }}
+        run: bash .github/security-audit/check-agent-run.sh poc-decide "$TRACE" "$AGENT_TOOLS" "$AUDIT_OUTPUT_DIR" "$RUNNER_TEMP/fingerprint-poc-decide" "$MODEL"
+
+      - name: Outcome (poc-decide agent)
+        id: outcome-poc-decide
+        if: always()
+        env:
+          TRACE: ${{ steps.agent-poc-decide.outputs.execution_file }}
+          OUTCOME: ${{ steps.agent-poc-decide.outcome }}
+          STARTED: ${{ steps.before-poc-decide.outputs.started }}
+          ENDED: ${{ steps.after-poc-decide.outputs.ended }}
+        run: |
+          cause=$(bash .github/security-audit/agent-outcome.sh "$TRACE" "$OUTCOME" "$STARTED" "$ENDED" 45)
+          echo "cause=$cause" >> "$GITHUB_OUTPUT"
+          echo "poc-decide agent: $cause"
+
+      - name: Count the poc-decide agent's subagents
+        if: always() && steps.check-poc-decide.outcome == 'success'
+        env:
+          TRACE: ${{ steps.agent-poc-decide.outputs.execution_file }}
+        run: python3 -I .github/security-audit/merge-records.py --state "$AUDIT_OUTPUT_DIR" count --job poc-decide --cap 6 --trace "$TRACE"
+
+      - name: Apply the decisions
+        if: always() && steps.check-poc-decide.outcome == 'success'
+        env:
+          TRACE: ${{ steps.agent-poc-decide.outputs.execution_file }}
+        run: >-
+          python3 -I .github/security-audit/merge-records.py --state "$AUDIT_OUTPUT_DIR" apply-decide
+          --manifest "$AUDIT_INPUT_DIR/scripts/poc-manifest.json" --records "$AUDIT_INPUT_DIR/records"
+          --scripts "$AUDIT_INPUT_DIR/scripts" --entries "$AUDIT_OUTPUT_DIR" --trace "$TRACE"
+
+      - name: Validators (after the decisions)
+        id: validators
+        if: always() && steps.check-poc-decide.outcome == 'success'
+        run: |
+          errors="$AUDIT_OUTPUT_DIR/validator-errors.txt"
+          f=0 l=0
+          node .github/security-audit/skill/validate-findings.cjs "$AUDIT_OUTPUT_DIR/findings.json" > "$errors" 2>&1 || f=$?
+          node .github/security-audit/skill/validate-coverage-ledger.cjs "$AUDIT_OUTPUT_DIR/coverage-ledger.json" >> "$errors" 2>&1 || l=$?
+          echo "validate-findings exit $f, validate-coverage-ledger exit $l, $(grep -c '^ERROR' "$errors" || true) error line(s)"
+          if [ "$f" -eq 0 ] && [ "$l" -eq 0 ]; then result=pass; else result=fail; fi
+          echo "validators=$result" >> "$GITHUB_OUTPUT"
+
+      - name: Seal audit-poc to the agents key
+        id: handoff
+        run: |
+          mkdir -p "$RUNNER_TEMP/handoff-out"
+          sum=$(bash .github/security-audit/seal.sh seal .github/security-audit/keys/agents.pub "$AUDIT_OUTPUT_DIR" "$RUNNER_TEMP/handoff-out/audit-poc.age")
+          echo "sha256=$sum" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        if: steps.handoff.outcome == 'success'
+        with:
+          name: audit-poc
+          path: ${{ runner.temp }}/handoff-out/audit-poc.age
+          retention-days: 1
+          if-no-files-found: error
+
+      - name: Name the job's cause
+        id: cause
+        if: always()
+        env:
+          CHECK: ${{ steps.check-poc-decide.outcome }}
+          OUTCOME: ${{ steps.outcome-poc-decide.outputs.cause }}
+        run: |
+          if [ "$CHECK" = failure ]; then cause=run_check_failed
+          elif [ -n "$OUTCOME" ]; then cause="$OUTCOME"
+          else cause=job_failed
+          fi
+          echo "cause=$cause" >> "$GITHUB_OUTPUT"
+          echo "poc-decide job: $cause"
