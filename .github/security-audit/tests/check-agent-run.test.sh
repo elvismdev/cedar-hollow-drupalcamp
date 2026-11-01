@@ -361,9 +361,13 @@ assert_eq "0" "$(rc source "$tmp/t.json")" "a run with no subagents at all passe
 # that folder as its path.
 JOB_DIR="$tmp/audit/source"
 mkdir -p "$JOB_DIR/in" "$JOB_DIR/out"
-jobdir_rc () { bash "$C" source "$tmp/jd.json" "$TOOLS" "$JOB_DIR/out" "$FP" "$M" >/dev/null 2>&1; echo $?; }
+jobdir_rc () { AUDIT_INPUT_DIR="${JD_IN-$JOB_DIR/in}" bash "$C" source "$tmp/jd.json" "$TOOLS" "$JOB_DIR/out" "$FP" "$M" >/dev/null 2>&1; echo $?; }
 trace "$tmp/jd.json" "$INIT" "$(top Glob "{\"pattern\":\"**/*\",\"path\":\"$JOB_DIR\"}")" "$(result "$M")"
 assert_eq "0" "$(jobdir_rc)" "a Glob of the job folder holding only in and out passes"
+JD_IN="" ; assert_eq "1" "$(jobdir_rc)" "the job folder is no root when AUDIT_INPUT_DIR is unset"
+JD_IN="$tmp/elsewhere/in" ; assert_eq "1" "$(jobdir_rc)" "the job folder is no root when AUDIT_INPUT_DIR is another job's in"
+JD_IN="$JOB_DIR/in/" ; assert_eq "1" "$(jobdir_rc)" "the job folder is no root when AUDIT_INPUT_DIR is not exactly <job>/in"
+unset JD_IN
 touch "$JOB_DIR/extra"
 assert_eq "1" "$(jobdir_rc)" "a Glob of the job folder fails once it holds anything else"
 rm "$JOB_DIR/extra"

@@ -184,10 +184,11 @@ failed=0
 roots=(--root "$out_root")
 if [ -n "${AUDIT_INPUT_DIR:-}" ]; then roots+=(--root "$AUDIT_INPUT_DIR"); fi
 # The job folder holding in/ and out/ (/mnt/audit/<job>) is a read root too,
-# but only when, on disk now, it holds nothing else: then a search from it
-# reaches only what the two roots already allow.
+# but only when the input root is exactly <job>/in and the output root
+# exactly <job>/out, and, on disk now, it holds nothing else: then a search
+# from it reaches only what the two roots already allow.
 job_dir="$(dirname "$out_root")"
-if [ "$(basename "$out_root")" = out ] && [ -d "$job_dir" ] && [ ! -L "$job_dir" ] \
+if [ "$out_root" = "$job_dir/out" ] && [ "${AUDIT_INPUT_DIR:-}" = "$job_dir/in" ] && [ -d "$job_dir" ] && [ ! -L "$job_dir" ] \
   && [ "$(find "$job_dir" -mindepth 1 -maxdepth 1 -printf '%f\n' 2>/dev/null | sort | paste -sd' ' -)" = "in out" ] \
   && [ -d "$job_dir/in" ] && [ ! -L "$job_dir/in" ] && [ -d "$job_dir/out" ] && [ ! -L "$job_dir/out" ]; then
   roots+=(--root "$job_dir")
