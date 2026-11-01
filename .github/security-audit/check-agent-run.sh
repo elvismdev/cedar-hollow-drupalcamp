@@ -30,9 +30,14 @@
 #     trusted scripts write (SHARED below), wherever it is.
 #   - In poc-write only, a subagent's Read, Glob or Grep may not reach another
 #     agent's agents/<id>/: a target inside one fails, and so does a Glob or Grep
-#     rooted at agents/ or above it, which would search them all. A subagent
-#     Glob pattern with a .. segment there fails, because its target cannot be
-#     judged without matching it on disk.
+#     rooted at agents/ or above it, which would search them all. Every brace
+#     group in the path, the Glob pattern and the Grep glob is expanded first
+#     and each expansion is judged, so {.,}./x is judged as ../x and ./x. A
+#     Glob pattern with a .. segment at or after its first wildcard, or a Grep
+#     glob with any .. segment, fails, because where it lands cannot be judged
+#     without matching it on disk; so do braces that cannot be expanded with
+#     confidence (a backslash, a nested or unbalanced brace, or more than 1024
+#     expansions).
 #   - Every model in a result's modelUsage, and on every assistant message
 #     except Claude Code's own <synthetic> ones, is the pinned model or the
 #     allowlisted helper.
@@ -219,21 +224,81 @@ for (const m of msgs) {
   }
 }
 
-// The target a read-side call reaches, or null when it cannot be judged.
-function readTarget(c) {
-  const a = isObj(c.input) ? c.input : {};
-  if (c.name === 'Read') return typeof a.file_path === 'string' ? resolve(a.file_path, ws) : null;
-  const base = typeof a.path === 'string' && a.path !== '' ? resolve(a.path, ws) : ws;
-  if (c.name === 'Grep') return base;
-  if (typeof a.pattern !== 'string') return base;
-  const segs = a.pattern.split('/');
-  if (segs.some((s) => s.split(/[{},]/).includes('..'))) return null;
-  const literal = [];
-  for (const s of segs) {
-    if (/[*?{}[\]]/.test(s)) break;
-    literal.push(s);
+// Every expansion of a string's brace groups, or null when they cannot be
+// expanded with confidence: a backslash, a nested or unbalanced brace, or more
+// than MAX_EXPANSIONS results.
+const MAX_EXPANSIONS = 1024;
+function expandBraces(s) {
+  if (s.includes('\\')) return null;
+  let results = [''];
+  let i = 0;
+  while (i < s.length) {
+    const ch = s[i];
+    if (ch === '}') return null;
+    if (ch === '{') {
+      const end = s.indexOf('}', i + 1);
+      if (end === -1) return null;
+      const body = s.slice(i + 1, end);
+      if (body.includes('{')) return null;
+      const next = [];
+      for (const r of results) for (const alt of body.split(',')) next.push(r + alt);
+      if (next.length > MAX_EXPANSIONS) return null;
+      results = next;
+      i = end + 1;
+    } else {
+      results = results.map((r) => r + ch);
+      i += 1;
+    }
   }
-  return resolve(literal.join('/') || '.', base);
+  return results;
+}
+
+// Every target a read-side call reaches, one per brace expansion, or null
+// when any of them cannot be judged.
+function readTargets(c) {
+  const a = isObj(c.input) ? c.input : {};
+  if (c.name === 'Read') {
+    if (typeof a.file_path !== 'string') return null;
+    const ps = expandBraces(a.file_path);
+    return ps && ps.map((p) => resolve(p, ws));
+  }
+  let bases = [ws];
+  if (typeof a.path === 'string' && a.path !== '') {
+    const ps = expandBraces(a.path);
+    if (!ps) return null;
+    bases = ps.map((p) => resolve(p, ws));
+  }
+  if (c.name === 'Grep') {
+    if (typeof a.glob === 'string') {
+      const gs = expandBraces(a.glob);
+      if (!gs || gs.some((g) => g.split(/[/,!]/).includes('..'))) return null;
+    }
+    return bases;
+  }
+  if (typeof a.pattern !== 'string') return bases;
+  const pats = expandBraces(a.pattern);
+  if (!pats) return null;
+  const targets = [];
+  for (const p of pats) {
+    const segs = p.split('/');
+    const w = segs.findIndex((s) => /[*?[\]]/.test(s));
+    if (w !== -1 && segs.slice(w).includes('..')) return null;
+    const literal = (w === -1 ? segs : segs.slice(0, w)).join('/') || '.';
+    for (const b of bases) targets.push(resolve(literal, b));
+  }
+  return targets;
+}
+
+// The label for the first target that reaches another agent, else null.
+function isolationRefusal(name, targets, id) {
+  if (targets === null) return 'a subagent search cannot be judged (.. or braces), so its reach is unknown';
+  for (const t of targets) {
+    if (name !== 'Read' && under(agentsDir, t)) return 'a subagent searches agents/ or above it, reaching other agents';
+    if (under(t, agentsDir) && t !== agentsDir && (id === null || !under(t, path.join(agentsDir, id)))) {
+      return "a subagent reads another agent's agents/<id>/";
+    }
+  }
+  return null;
 }
 
 let attributed = 0;
@@ -259,14 +324,8 @@ for (const call of calls) {
   }
 
   if (job === 'poc-write' && ['Read', 'Glob', 'Grep'].includes(c.name)) {
-    const t = readTarget(c);
-    if (t === null) {
-      refuse(call, 'a subagent search climbs with .., so its reach cannot be judged');
-    } else if (c.name !== 'Read' && under(agentsDir, t)) {
-      refuse(call, 'a subagent searches agents/ or above it, reaching other agents');
-    } else if (under(t, agentsDir) && t !== agentsDir && (id === null || !under(t, path.join(agentsDir, id)))) {
-      refuse(call, "a subagent reads another agent's agents/<id>/");
-    }
+    const why = isolationRefusal(c.name, readTargets(c), id);
+    if (why) refuse(call, why);
   }
 }
 
