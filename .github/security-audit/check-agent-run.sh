@@ -10,7 +10,9 @@
 # The tool names, each tool's closed input fields, the character allowlist and
 # the read and write roots are checked by the review practice's
 # check-trace-tools.sh, given the allowed tools, the output root (read and
-# write), $AUDIT_INPUT_DIR (read, when set) and --grep-any-glob-in-subfolders,
+# write), $AUDIT_INPUT_DIR (read, when set), the job folder that holds the
+# output root (read, only when it holds nothing but in/ and out/ on disk) and
+# --grep-any-glob-in-subfolders,
 # so a Grep rooted in a folder below the checkout's top level may use negated
 # globs and brace lists of folders. The rules below are the audit's own:
 #
@@ -174,6 +176,15 @@ failed=0
 
 roots=(--root "$out_root")
 if [ -n "${AUDIT_INPUT_DIR:-}" ]; then roots+=(--root "$AUDIT_INPUT_DIR"); fi
+# The job folder holding in/ and out/ (/mnt/audit/<job>) is a read root too,
+# but only when, on disk now, it holds nothing else: then a search from it
+# reaches only what the two roots already allow.
+job_dir="$(dirname "$out_root")"
+if [ "$(basename "$out_root")" = out ] && [ -d "$job_dir" ] && [ ! -L "$job_dir" ] \
+  && [ "$(find "$job_dir" -mindepth 1 -maxdepth 1 -printf '%f\n' 2>/dev/null | sort | paste -sd' ' -)" = "in out" ] \
+  && [ -d "$job_dir/in" ] && [ ! -L "$job_dir/in" ] && [ -d "$job_dir/out" ] && [ ! -L "$job_dir/out" ]; then
+  roots+=(--root "$job_dir")
+fi
 if ! bash "$CTT" "$trace" --tools "$allowed" "${roots[@]}" --write-root "$out_root" \
   --grep-any-glob-in-subfolders; then
   failed=1

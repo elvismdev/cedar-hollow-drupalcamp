@@ -339,6 +339,29 @@ assert_eq "1" "$(rc source "$tmp/t.json")" "a spawned count with no subagent cal
 trace "$tmp/t.json" "$INIT" "$(top Read "{\"file_path\":\"$WS/tracked.txt\"}")" "$(result "$M")"
 assert_eq "0" "$(rc source "$tmp/t.json")" "a run with no subagents at all passes"
 
+# The job folder holding in/ and out/ is a read root only while it holds
+# nothing else on disk. Glob 3 of audit run 41347206214 was pattern **/* with
+# that folder as its path.
+JOB_DIR="$tmp/audit/source"
+mkdir -p "$JOB_DIR/in" "$JOB_DIR/out"
+jobdir_rc () { bash "$C" source "$tmp/jd.json" "$TOOLS" "$JOB_DIR/out" "$FP" "$M" >/dev/null 2>&1; echo $?; }
+trace "$tmp/jd.json" "$INIT" "$(top Glob "{\"pattern\":\"**/*\",\"path\":\"$JOB_DIR\"}")" "$(result "$M")"
+assert_eq "0" "$(jobdir_rc)" "a Glob of the job folder holding only in and out passes"
+touch "$JOB_DIR/extra"
+assert_eq "1" "$(jobdir_rc)" "a Glob of the job folder fails once it holds anything else"
+rm "$JOB_DIR/extra"
+rmdir "$JOB_DIR/in"
+assert_eq "1" "$(jobdir_rc)" "a Glob of the job folder fails when in/ is missing"
+mkdir "$JOB_DIR/in"
+mv "$JOB_DIR/in" "$tmp/real-in" && ln -s "$tmp/real-in" "$JOB_DIR/in"
+assert_eq "1" "$(jobdir_rc)" "a Glob of the job folder fails when in/ is a link"
+rm "$JOB_DIR/in" && mv "$tmp/real-in" "$JOB_DIR/in"
+trace "$tmp/jd.json" "$INIT" "$(top Glob "{\"pattern\":\"**/*\",\"path\":\"$tmp/audit\"}")" "$(result "$M")"
+assert_eq "1" "$(jobdir_rc)" "a Glob of the folder above the job folder still fails"
+trace "$tmp/jd.json" "$INIT" "$(top Glob "{\"pattern\":\"**/*\",\"path\":\"$JOB_DIR\"}")" "$(result "$M")"
+assert_eq "1" "$(bash "$C" source "$tmp/jd.json" "$TOOLS" "$OUT" "$FP" "$M" >/dev/null 2>&1; echo $?)" \
+  "a Glob of another job folder is not made a root by this one"
+
 # The fingerprint: the checkout and the watched parts of ~/.claude.
 assert_eq "0" "$(rc source "$tmp/clean.json")" "unchanged state passes"
 echo "b" >> "$WS/tracked.txt"
