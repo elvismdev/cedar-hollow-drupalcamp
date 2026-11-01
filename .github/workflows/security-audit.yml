@@ -41,6 +41,12 @@ defaults:
     shell: bash
 
 env:
+  # Every subagent runs in the foreground, even when its call omits
+  # run_in_background, so its calls reach the trace the run check reads.
+  # Measured locally on Claude Code 2.1.309 through the Agent SDK, where an
+  # omitted run_in_background otherwise starts a background subagent whose
+  # calls never reach the trace; confirmed in CI by the subagent-bash canary.
+  CLAUDE_CODE_DISABLE_BACKGROUND_TASKS: "1"
   # The names envsubst replaces in a prompt, and no others.
   PROMPT_VARS: '$RUN_ID $SOURCE_REF $OUTPUT_DIR $INPUT_DIR $BUDGET $SCOPE_PATHS $GITHUB_ENV_PATH $HOME $RUNNER_TEMP'
   # The tools check-agent-run.sh accepts in a trace: the subagent tool under
@@ -255,9 +261,6 @@ jobs:
           ANTHROPIC_DEFAULT_SONNET_MODEL: ${{ steps.args-source.outputs.ANTHROPIC_DEFAULT_SONNET_MODEL }}
           ANTHROPIC_DEFAULT_HAIKU_MODEL: ${{ steps.args-source.outputs.ANTHROPIC_DEFAULT_HAIKU_MODEL }}
           CLAUDE_CODE_SUBAGENT_MODEL: ${{ steps.args-source.outputs.CLAUDE_CODE_SUBAGENT_MODEL }}
-          # Subagents run in the foreground even when a call omits
-          # run_in_background, so their calls reach the trace.
-          CLAUDE_CODE_DISABLE_BACKGROUND_TASKS: "1"
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           github_token: ${{ github.token }}
@@ -378,9 +381,6 @@ jobs:
           ANTHROPIC_DEFAULT_SONNET_MODEL: ${{ steps.args-repair.outputs.ANTHROPIC_DEFAULT_SONNET_MODEL }}
           ANTHROPIC_DEFAULT_HAIKU_MODEL: ${{ steps.args-repair.outputs.ANTHROPIC_DEFAULT_HAIKU_MODEL }}
           CLAUDE_CODE_SUBAGENT_MODEL: ${{ steps.args-repair.outputs.CLAUDE_CODE_SUBAGENT_MODEL }}
-          # Subagents run in the foreground even when a call omits
-          # run_in_background, so their calls reach the trace.
-          CLAUDE_CODE_DISABLE_BACKGROUND_TASKS: "1"
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           github_token: ${{ github.token }}
@@ -675,9 +675,6 @@ jobs:
           ANTHROPIC_DEFAULT_SONNET_MODEL: ${{ steps.args-poc-write.outputs.ANTHROPIC_DEFAULT_SONNET_MODEL }}
           ANTHROPIC_DEFAULT_HAIKU_MODEL: ${{ steps.args-poc-write.outputs.ANTHROPIC_DEFAULT_HAIKU_MODEL }}
           CLAUDE_CODE_SUBAGENT_MODEL: ${{ steps.args-poc-write.outputs.CLAUDE_CODE_SUBAGENT_MODEL }}
-          # Subagents run in the foreground even when a call omits
-          # run_in_background, so their calls reach the trace.
-          CLAUDE_CODE_DISABLE_BACKGROUND_TASKS: "1"
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           github_token: ${{ github.token }}
@@ -1155,9 +1152,6 @@ jobs:
           ANTHROPIC_DEFAULT_SONNET_MODEL: ${{ steps.args-poc-decide.outputs.ANTHROPIC_DEFAULT_SONNET_MODEL }}
           ANTHROPIC_DEFAULT_HAIKU_MODEL: ${{ steps.args-poc-decide.outputs.ANTHROPIC_DEFAULT_HAIKU_MODEL }}
           CLAUDE_CODE_SUBAGENT_MODEL: ${{ steps.args-poc-decide.outputs.CLAUDE_CODE_SUBAGENT_MODEL }}
-          # Subagents run in the foreground even when a call omits
-          # run_in_background, so their calls reach the trace.
-          CLAUDE_CODE_DISABLE_BACKGROUND_TASKS: "1"
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           github_token: ${{ github.token }}
@@ -1412,9 +1406,6 @@ jobs:
           ANTHROPIC_DEFAULT_SONNET_MODEL: ${{ steps.args-cross-check.outputs.ANTHROPIC_DEFAULT_SONNET_MODEL }}
           ANTHROPIC_DEFAULT_HAIKU_MODEL: ${{ steps.args-cross-check.outputs.ANTHROPIC_DEFAULT_HAIKU_MODEL }}
           CLAUDE_CODE_SUBAGENT_MODEL: ${{ steps.args-cross-check.outputs.CLAUDE_CODE_SUBAGENT_MODEL }}
-          # Subagents run in the foreground even when a call omits
-          # run_in_background, so their calls reach the trace.
-          CLAUDE_CODE_DISABLE_BACKGROUND_TASKS: "1"
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           github_token: ${{ github.token }}
@@ -1502,9 +1493,6 @@ jobs:
           ANTHROPIC_DEFAULT_SONNET_MODEL: ${{ steps.args-tie-break.outputs.ANTHROPIC_DEFAULT_SONNET_MODEL }}
           ANTHROPIC_DEFAULT_HAIKU_MODEL: ${{ steps.args-tie-break.outputs.ANTHROPIC_DEFAULT_HAIKU_MODEL }}
           CLAUDE_CODE_SUBAGENT_MODEL: ${{ steps.args-tie-break.outputs.CLAUDE_CODE_SUBAGENT_MODEL }}
-          # Subagents run in the foreground even when a call omits
-          # run_in_background, so their calls reach the trace.
-          CLAUDE_CODE_DISABLE_BACKGROUND_TASKS: "1"
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           github_token: ${{ github.token }}
