@@ -122,7 +122,7 @@ TRACE="${1:-}"
 [ -n "$TRACE" ] || usage
 shift
 # The tools whose input fields the path check below knows.
-SUPPORTED=" Read Glob Grep Write Edit Agent Task "
+SUPPORTED=(Read Glob Grep Write Edit Agent Task)
 allowed_names=(Read Glob Grep)
 extra_roots=()
 write_roots=()
@@ -140,11 +140,16 @@ while [ "$#" -gt 0 ]; do
     *) usage ;;
   esac
 done
+# Each name must equal a supported name as a whole.
 for n in "${allowed_names[@]}"; do
-  case "$SUPPORTED" in
-    *" $n "*) ;;
-    *) echo "check-trace-tools: --tools names a tool whose input fields are not checked here" >&2; exit 2 ;;
-  esac
+  known=0
+  for k in "${SUPPORTED[@]}"; do
+    if [ "$n" = "$k" ]; then known=1; fi
+  done
+  if [ "$known" -eq 0 ]; then
+    echo "check-trace-tools: --tools names a tool whose input fields are not checked here" >&2
+    exit 2
+  fi
 done
 
 # "Read, Glob and Grep" for the default list: the names joined for a message.

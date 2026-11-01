@@ -265,6 +265,8 @@ assert_contains "$(run "$tmp/o.json" "${A[@]}")" "outside Read, Glob, Grep, Writ
 printf '[%s]' "$(call Write '{"file_path":"/mnt/a/out/x","content":""}')" > "$tmp/o.json"
 assert_eq "1" "$(rc "$tmp/o.json" --tools Read,Write --root /mnt/a/out)" "with no write root every Write is refused"
 assert_eq "2" "$(rc "$tmp/o.json" --tools Read,Bash)" "--tools may name only tools whose fields are checked"
+assert_eq "2" "$(rc "$tmp/o.json" --tools "Read Glob")" "--tools matches whole names, so a space-joined list is refused"
+assert_eq "2" "$(rc "$tmp/o.json" --tools "Read,Gre")" "--tools refuses part of a name"
 assert_eq "2" "$(rc "$tmp/o.json" --root mnt/a)" "a relative --root is a usage error"
 assert_eq "2" "$(rc "$tmp/o.json" --write-root)" "a --write-root with no directory is a usage error"
 assert_eq "2" "$(rc "$tmp/o.json" --bogus x)" "an unknown option is a usage error"
