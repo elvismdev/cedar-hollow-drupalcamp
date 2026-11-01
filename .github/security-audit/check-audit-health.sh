@@ -7,14 +7,15 @@
 # update time, which anyone can change by commenting:
 #   gh api repos/<repo>/actions/workflows/security-audit.yml --jq .state
 #   gh run list -R <repo> --workflow security-audit.yml --branch main \
-#     --status success --limit 10 --json databaseId,createdAt,conclusion
+#     --status completed --limit 10 --json databaseId,createdAt,conclusion
 #   gh run view <id> -R <repo> --json jobs     (per run, newest first)
 # A run counts as an audit only when its job named report, the job that
-# publishes, concluded success. A run that ended after prepare on a Saturday
-# other than the first skips report and still concludes success, so without
-# this a run of quiet Saturdays would hide audits that keep failing. It reads
-# the newest successful runs on main one at a time and stops at the first
-# that qualifies, inspecting at most 10.
+# publishes, concluded success, whatever the run's own conclusion: a run
+# that ended after prepare on a Saturday other than the first skips report
+# and concludes success, and a run whose report published an incomplete
+# audit after another job failed concludes failure. It reads the newest
+# completed runs on main one at a time and stops at the first that
+# qualifies, inspecting at most 10.
 #
 # It prints a ::warning:: annotation when the state is not active, when none
 # of those runs is an audit whose report succeeded, or when the newest such
@@ -57,13 +58,13 @@ if [ "$state" != active ]; then
 fi
 
 rc=0
-runs="$(gh run list -R "$repo" --workflow "$WORKFLOW" --branch main --status success --limit "$MAX_RUNS" --json databaseId,createdAt,conclusion 2>"$err")" || rc=$?
+runs="$(gh run list -R "$repo" --workflow "$WORKFLOW" --branch main --status completed --limit "$MAX_RUNS" --json databaseId,createdAt,conclusion 2>"$err")" || rc=$?
 if [ "$rc" -ne 0 ]; then
   warn "could not read the run history of $WORKFLOW in $repo"
   exit 0
 fi
 candidates="$(jq -r --argjson max "$MAX_RUNS" 'if type == "array" then .[:$max][] else empty end
-  | select(.conclusion == "success" and (.databaseId | type) == "number")
+  | select((.databaseId | type) == "number")
   | "\(.databaseId) \(.createdAt // "")"' <<<"$runs" 2>/dev/null)" || candidates=""
 created=""
 while read -r id when; do
@@ -78,7 +79,7 @@ while read -r id when; do
   if [ "$report" = success ]; then created="$when"; break; fi
 done <<<"$candidates"
 if [ -z "$created" ]; then
-  warn "none of the last $MAX_RUNS successful runs of $WORKFLOW on main has a successful $REPORT_JOB job"
+  warn "none of the last $MAX_RUNS completed runs of $WORKFLOW on main has a successful $REPORT_JOB job"
   exit 0
 fi
 started="$(date -u -d "$created" +%s 2>/dev/null)" || started=""

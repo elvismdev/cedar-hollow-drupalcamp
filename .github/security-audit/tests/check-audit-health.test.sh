@@ -2,7 +2,8 @@
 # Tests for check-audit-health.sh against fake-gh.sh: the workflow states
 # active and disabled_inactivity, a 404, no audit run, an audit 41 days old,
 # quiet runs whose report job was skipped, a run whose report job failed, a
-# schedule whose recent runs all failed, and errors, each exiting 0.
+# failed run whose report succeeded, a schedule whose recent runs all failed,
+# and errors, each exiting 0.
 set -euo pipefail
 # shellcheck source=../../claude-review/tools/agent/test/assert.sh
 . "$(dirname "$0")/../../claude-review/tools/agent/test/assert.sh"
@@ -56,7 +57,7 @@ assert_exit 0 "$RC" "a healthy audit exits 0"
 no_warning "a healthy audit is not warned about"
 assert_contains "$OUT" "3 days ago" "the last audit's age is reported"
 assert_contains "$(cat "$FIX/calls.log")" "gh api repos/$REPO/actions/workflows/security-audit.yml --jq .state" "the state is read from the workflow"
-assert_contains "$(cat "$FIX/calls.log")" "gh run list -R $REPO --workflow security-audit.yml --branch main --status success --limit 10 --json databaseId,createdAt,conclusion" "successful runs on main are read from run history"
+assert_contains "$(cat "$FIX/calls.log")" "gh run list -R $REPO --workflow security-audit.yml --branch main --status completed --limit 10 --json databaseId,createdAt,conclusion" "completed runs on main of any conclusion are read from run history"
 assert_contains "$(cat "$FIX/calls.log")" "gh run view 101 -R $REPO --json jobs" "the run's jobs are read"
 
 # An audit 39 days old is within the limit.
@@ -93,12 +94,19 @@ runs 2:success:skipped 9:success:failure
 check "$REPO"
 assert_contains "$OUT" "has a successful report job" "only quiet runs and a failed report are warned about"
 
-# A schedule whose runs all failed: the success filter drops them.
+# A schedule whose runs all failed in report: they do not count.
 new_fixture failing active
 runs 2:failure:failure 30:failure:failure 60:success:success
 check "$REPO"
-assert_contains "$OUT" "60 days ago" "failed runs do not count"
-case "$(cat "$FIX/calls.log")" in *"run view 101"*|*"run view 102"*) echo "FAIL: a failed run's jobs were read" >&2; exit 1;; esac
+assert_contains "$OUT" "60 days ago" "runs whose report failed do not count"
+assert_eq "3" "$(views)" "the jobs of failed runs are read too"
+
+# A run that concluded failure but whose report succeeded is an audit.
+new_fixture failed-run-good-report active
+runs 2:failure:success 60:success:success
+check "$REPO"
+no_warning "a failed run whose report succeeded counts as an audit"
+assert_contains "$OUT" "2 days ago" "its age is the failed run's"
 
 # At most 10 runs are inspected.
 new_fixture bounded active
