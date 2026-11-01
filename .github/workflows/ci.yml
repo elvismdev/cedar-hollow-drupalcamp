@@ -67,8 +67,12 @@ jobs:
       - run: npm run build
         working-directory: web/themes/custom/cedar_hollow
       # Every story runs as a test in headless Chromium and fails on an axe violation.
+      # --with-deps runs apt-get update, which can hang on an unreachable
+      # Ubuntu mirror, so a stalled install fails here instead of at the job's
+      # limit.
       - name: Chromium for Storybook Test
         run: npx playwright install --with-deps chromium
+        timeout-minutes: 10
         working-directory: web/themes/custom/cedar_hollow
       - name: Storybook Test
         run: npm run test:storybook
