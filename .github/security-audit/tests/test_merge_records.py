@@ -335,19 +335,24 @@ class DecideTest(MergeTest):
                                         ("t-rejected", "decider-r", [])):
             u = self.unit_for(fp)
             self.assertEqual(u["status"], "candidate")
-            self.assertEqual(u["wave"], 2)
-            self.assertEqual(u["agent_id"], decider)
+            self.assertEqual(u["wave"], 1)
+            self.assertEqual(u["agent_id"], "hunter-" + fp)
+            self.assertEqual(u["attempts"], [])
             self.assertEqual(u["result_fingerprints"], [fp])
             self.assertEqual(u["unresolved"], unresolved)
-            self.assertEqual(len(u["attempts"]), 1)
-            self.assertEqual(u["attempts"][0]["agent_id"], "hunter-" + fp)
-            self.assertEqual(u["attempts"][0]["reassignment_reason"], "proof-of-concept decision")
-            self.assertEqual([c["agent_id"] for c in u["local_checks"]], [decider, decider])
+            self.assertEqual([c["agent_id"] for c in u["local_checks"]], ["hunter-" + fp, decider, decider])
             self.assertEqual([c["artifact"] for c in u["local_checks"]],
-                             ["agents/%s/artifacts/a.json" % decider, "agents/%s/artifacts/b.json" % decider])
-            for check in u["local_checks"]:
+                             [None, "agents/%s/artifacts/a.json" % decider, "agents/%s/artifacts/b.json" % decider])
+            demonstrated = {"t-confirmed": ("demonstrated", "demonstrated"),
+                            "t-lead": ("demonstrated", "not_demonstrated"),
+                            "t-rejected": ("not_demonstrated", "not_demonstrated")}[fp]
+            invariant = "Only the owner can read a row." if fp == "t-confirmed" else self.record(fp)["title"]
+            for slot, check, state in zip("ab", u["local_checks"][1:], demonstrated):
                 self.assertEqual(check["reviewed_paths"], [ENTRY_FILE, SINK_FILE])
                 self.assertEqual(check["method"], "local")
+                self.assertEqual(check["invariant"], invariant)
+                self.assertEqual(check["result"], "script %s: %s; decision: %s" % (
+                    slot, state, self.record(fp)["verdict"]))
             self.assertEqual(u["reviewed_paths"], [ENTRY_FILE, SINK_FILE])
             self.assertTrue(os.path.isfile(os.path.join(self.out, "agents", decider, "artifacts", "a.json")))
         self.assertEqual(self.record("t-rejected")["verdict"], "rejected")

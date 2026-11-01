@@ -37,6 +37,19 @@
 # copied, never moved, to agents/<decider-id>/artifacts/<slot>.json under
 # <entries>.
 #
+# Ledger: a decision adds one local check per promoted run record to every
+# unit linked to the fingerprint (result_fingerprints), beside the unit's
+# existing checks. The unit keeps its owner, wave and status (candidate, for a
+# confirmed, lead or rejected decision alike, since only a candidate unit may
+# hold result fingerprints), and its reviewed_paths become the union of all its
+# checks' paths. Each check has the decider as agent_id, the files in the
+# decision record's trace as reviewed_paths, method "local", the promoted
+# artifact, the record's intended_behavior (confirmed) or title (otherwise) as
+# the invariant, and "script <slot>: <demonstrated|not_demonstrated>;
+# decision: <decision>" as the result. The unit's unresolved list drops the
+# previous record's blockers and gains the new lead's blockers. A failed poc
+# phase (fail-poc) adds "poc phase failed: <job>" to the lead and its units.
+#
 # Run ids are the GitHub run id from run-metadata.json, stored as numbers.
 # Fails closed: a state file that cannot be read safely stops the subcommand
 # with exit status 1 before anything is written.
@@ -72,7 +85,6 @@ SOURCE_BLOCKER = "no sandbox in the source job"
 DECISION_DISCARDED = "poc decision discarded"
 PROMOTION_FAILED = "poc evidence promotion failed"
 DISPUTE_UNRESOLVED = "cross-check dispute unresolved"
-REASSIGNMENT = "proof-of-concept decision"
 
 FINGERPRINT = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:/@+-]*$")
 AGENT_ID = re.compile(r"^[a-z0-9][a-z0-9_-]{0,63}$")
@@ -835,26 +847,14 @@ def unit_agent_ids(unit):
     return ids
 
 
-def archive_and_reassign(unit, owner, checks, unresolved):
-    """Moves the unit's current assignment into attempts and makes the decider
-    the owner of a new wave holding only the decision's local checks."""
-    unit.setdefault("attempts", []).append({
-        "wave": unit["wave"],
-        "status": unit["status"],
-        "agent_id": unit["agent_id"],
-        "reviewed_paths": unit.get("reviewed_paths", []),
-        "local_checks": unit.get("local_checks", []),
-        "result_fingerprints": unit.get("result_fingerprints", []),
-        "unresolved": unit.get("unresolved", []),
-        "reassignment_reason": REASSIGNMENT,
-    })
-    unit["wave"] = unit["wave"] + 1
-    unit["status"] = "candidate"
-    unit["agent_id"] = owner
-    unit["local_checks"] = checks
-    paths = []
-    for check in checks:
-        for path in check["reviewed_paths"]:
+def add_checks(unit, checks, unresolved):
+    """Adds the decision's local checks beside the unit's existing ones; the
+    unit keeps its owner, wave and status, and its reviewed_paths become the
+    union of all its checks' paths."""
+    unit["local_checks"] = list(unit.get("local_checks") or []) + checks
+    paths = list(unit.get("reviewed_paths") or [])
+    for check in unit["local_checks"]:
+        for path in check.get("reviewed_paths") or []:
             add_unique(paths, path)
     unit["reviewed_paths"] = sorted(paths, key=js_order)
     unit["unresolved"] = unresolved
@@ -921,7 +921,7 @@ def cmd_apply_decide(state, args):
     for fp in sorted(selected - set(plans), key=js_order):
         add_blocker(state, fp, DECISION_DISCARDED)
 
-    # Apply records, then one new attempt per linked unit.
+    # Apply records, then add the checks to every linked unit.
     old_blockers = {}
     for fp, (agent_id, entry, checks) in plans.items():
         before = state.record(fp)
@@ -943,7 +943,7 @@ def cmd_apply_decide(state, args):
                 for blocker in record["blockers"]:
                     if fp in mine or blocker in unit.get("unresolved", []):
                         add_unique(unresolved, blocker)
-        archive_and_reassign(unit, plans[mine[0]][0], checks, unresolved)
+        add_checks(unit, checks, unresolved)
 
     for fp in selected:
         history = state.fp_history(fp)
