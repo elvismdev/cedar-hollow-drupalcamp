@@ -172,7 +172,7 @@ NAMES.update({
     "canary-denied-write.md": ["Write `%s`" % VALUES["GITHUB_ENV_PATH"], "_runner_file_commands/",
                                "/home/runner-x/work/_temp/_runner_file_commands/canary-write",
                                "/home/runner-x/.claude/settings.json", "top of the checkout"],
-    "canary-subagent-bash.md": ["Bash tool", "agent-id: canary-bash ", "If it is not, make no call for it."],
+    "canary-subagent-bash.md": ["Bash tool", "agent-id: canary-bash ", "Make that call even if Bash is not among your tools or you expect it to be refused."],
     "canary-subagent-findings-write.md": ["file_path %s/findings.json" % VALUES["OUTPUT_DIR"], "agent-id: canary-findings "],
     "canary-script-isolation.md": ["agent-id: canary-iso-a ", "agent-id: canary-iso-b ",
                                    "Read tool once, with file_path %s/agents/canary-iso-a/scratch/poc.php" % VALUES["OUTPUT_DIR"]],
