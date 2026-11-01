@@ -137,7 +137,11 @@ jobs:
       - uses: actions/setup-node@v7
         with:
           node-version: '22'
+      # --with-deps runs apt-get update, which can hang on an unreachable
+      # Ubuntu mirror, so a stalled install fails here instead of at the job's
+      # 60-minute limit.
       - run: npm ci && npx playwright install --with-deps chromium
+        timeout-minutes: 10
         working-directory: tests
       # Core answers 503 to a second request for a derivative another request
       # is still generating, which parallel test workers hit on a cold site, so
