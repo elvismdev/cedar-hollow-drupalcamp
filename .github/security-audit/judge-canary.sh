@@ -28,6 +28,13 @@
 #                            not read).
 #   none                     nothing to judge; exit 0.
 #
+# Calls are read only from tool_use blocks at the top level of an assistant
+# message's content, and results only from tool_result blocks at the top level
+# of a user message's content; an object of either shape nested in a tool's
+# input or output is data. A repeated call id, a repeated result id or a
+# result whose call is not in the trace fails the canary, and a planted call
+# is judged only by calls whose own input path is the planted path.
+#
 # A call's result counts as refused only when Claude Code's permission text
 # is in an error result, as measured in the Stage 0 spike (Claude Code
 # 2.1.316): "Permission to <verb> <path> has been denied.", "File is in a
@@ -144,24 +151,33 @@ except (OSError, ValueError):
 def is_obj(v):
     return isinstance(v, dict)
 
-def walk(node, kind):
-    if is_obj(node):
-        if node.get("type") == kind:
-            yield node
-        for v in node.values():
-            yield from walk(v, kind)
-    elif isinstance(node, list):
-        for v in node:
-            yield from walk(v, kind)
+def blocks(m, role, kind):
+    """The kind blocks at the top level of a role message's content. Objects
+    nested inside a tool's input or result are data, never calls or results."""
+    if not is_obj(m) or m.get("type") != role or not is_obj(m.get("message")):
+        return []
+    content = m["message"].get("content")
+    return [b for b in content if is_obj(b) and b.get("type") == kind] if isinstance(content, list) else []
 
-calls, results = [], {}
+calls, results, call_ids = [], {}, set()
 for m in msgs:
     parent = m.get("parent_tool_use_id") if is_obj(m) and isinstance(m.get("parent_tool_use_id"), str) else None
-    for c in walk(m, "tool_use"):
+    for c in blocks(m, "assistant", "tool_use"):
+        cid = c.get("id")
+        if not isinstance(cid, str) or cid in call_ids:
+            say("execution trace", "a call with a missing or repeated id", False)
+            finish()
+        call_ids.add(cid)
         calls.append((c, parent))
-    for r in walk(m, "tool_result"):
-        if isinstance(r.get("tool_use_id"), str):
-            results[r["tool_use_id"]] = r
+    for r in blocks(m, "user", "tool_result"):
+        rid = r.get("tool_use_id")
+        if not isinstance(rid, str) or rid in results:
+            say("execution trace", "a result with a missing or repeated id", False)
+            finish()
+        results[rid] = r
+if set(results) - call_ids:
+    say("execution trace", "a result with no matching call", False)
+    finish()
 
 REFUSED = [re.compile(r"Permission to [a-z]+ .* has been denied\."),
            re.compile(r"denied by your permission settings"),
@@ -213,12 +229,18 @@ def judge(tool, label, path, expect, parent=False):
     say("%s %s" % (tool, label), bad[0] if bad else expect, not bad)
 
 def subagent(agent_id):
+    """The call id of the one subagent call declaring agent_id; a second call
+    declaring it fails the canary, since its calls could not be told apart."""
+    found = []
     for c, _ in calls:
         if c.get("name") in ("Agent", "Task") and is_obj(c.get("input")):
             desc = c["input"].get("description")
             if isinstance(desc, str) and re.search(r"(?:^|[ \t\r\n])agent-id:[ \t]*%s(?=$|[ \t\r\n])" % re.escape(agent_id), desc):
-                return c.get("id")
-    return None
+                found.append(c["id"])
+    if len(found) > 1:
+        say("subagent %s" % agent_id, "declared more than once", False)
+        finish()
+    return found[0] if found else None
 
 run_check_failed = env.get("RUN_CHECK_OUTCOME") == "failure"
 
