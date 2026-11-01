@@ -588,6 +588,42 @@ class HostileEntryTest(MergeTest):
         self.assertEqual(self.record("fp-1")["verdict"], "needs_validation")
         self.assertIn("entry edited after it was written", self.discarded())
 
+    def test_malformed_decide_entries_are_discarded_not_fatal(self):
+        listed = self.decided("fp-1", "needs_validation", lead("fp-1"))
+        listed["fingerprint"] = ["fp-1"]
+        huge = lead("fp-1")
+        huge["trace"][0]["line"] = 10 ** 400
+        for name, entry, reason in (
+                ("list fingerprint", listed, "entry does not match the poc-decide shape"),
+                ("deep nesting", "[" * 200000 + "]" * 200000, "entry unreadable or not strict JSON"),
+                ("400-digit integer", self.decided("fp-1", "needs_validation", huge,
+                                                   a="not_demonstrated", b="not_demonstrated"),
+                 "entry does not match the poc-decide shape")):
+            with self.subTest(name):
+                self.tearDown()
+                self.setUp()
+                manifest = self.base()
+                self.subagent("decider-1", entry)
+                self.decide(manifest)
+                self.assertEqual(self.discarded().count(reason), 1)
+                self.assertIn("poc decision discarded", self.record("fp-1")["blockers"])
+
+    def test_malformed_cross_check_and_tie_break_entries_are_discarded_not_fatal(self):
+        self.seed([confirmed("fp-1")], [unit("u1", fps=["fp-1"], unresolved=[])])
+        self.subagent("cc-1", {"decision": "verified", "fingerprint": {"a": 1}})
+        self.cross_check()
+        self.assertIn("entry does not match the cross-check shape", self.discarded())
+        self.tearDown()
+        self.setUp()
+        self.seed([confirmed("fp-1")], [unit("u1", fps=["fp-1"], unresolved=[])])
+        self.subagent("cc-1", {"decision": "replace", "fingerprint": "fp-1", "reason": "Other cause.",
+                               "record": confirmed("fp-1", root_cause="Another cause")})
+        self.assertEqual(len(self.cross_check()), 1)
+        self.subagent("tie-1", {"fingerprint": ["fp-1"], "answer": "original", "reason": "Read it."})
+        self.tie_break()
+        self.assertIn("entry does not match the tie-break shape", self.discarded())
+        self.assertIsNone(self.record("fp-1"))
+
 
 
 class HistoryTest(MergeTest):

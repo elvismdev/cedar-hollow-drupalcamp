@@ -114,6 +114,12 @@ SHA256 = re.compile(r"^[0-9a-f]{64}$")
 RECORD_NAME = re.compile(r"^poc-run-[0-9]{1,4}-[ab]\.json$")
 AGENT_DECLARATION = re.compile(r"(?:^|\s)agent-id:\s*(\S+)")
 SUBAGENT_TOOLS = ("Agent", "Task")
+# The largest finite JavaScript number: an integer beyond it parses as
+# Infinity in the skill's validators, which is not an integer.
+MAX_JS_NUMBER = 1.7976931348623157e308
+# What a malformed agent entry can raise while it is checked; each is caught
+# at the entry boundary so the entry is discarded and counted, never fatal.
+ENTRY_ERRORS = (TypeError, RecursionError, OverflowError, ValueError, KeyError, AttributeError, IndexError)
 SEVERITY_RANK = {"informational": 0, "low": 1, "medium": 2, "high": 3, "critical": 4}
 
 # Unicode Default_Ignorable_Code_Point, which the skill's validators treat as
@@ -150,7 +156,10 @@ def _unique_pairs(pairs):
 def parse_strict(data):
     """One JSON value from UTF-8 bytes: no duplicate keys, NaN or Infinity."""
     text = data.decode("utf-8")
-    return json.loads(text, object_pairs_hook=_unique_pairs, parse_constant=_reject_constant)
+    try:
+        return json.loads(text, object_pairs_hook=_unique_pairs, parse_constant=_reject_constant)
+    except RecursionError:
+        raise ValueError("nested too deeply")
 
 
 def read_fd(fd, limit):
@@ -322,7 +331,8 @@ def schema_errors(value, node):
         errors.append("enum")
     if "type" in node:
         want, got = node["type"], json_type(value)
-        ok = got == want or (want == "integer" and got == "number" and float(value).is_integer())
+        ok = got == want or (want == "integer" and got == "number" and (
+            float(value).is_integer() if isinstance(value, float) else abs(value) <= MAX_JS_NUMBER))
         if not ok:
             return errors + ["type"]
     if isinstance(value, dict):
@@ -712,6 +722,17 @@ DECIDE_KEYS = {"fingerprint", "script_a", "script_b", "decision", "record"}
 SCRIPT_STATES = ("demonstrated", "not_demonstrated")
 
 
+def entry_ok(check, entry, *args):
+    """Runs one entry check, treating any error the entry's shape provokes as
+    a failed check."""
+    if not isinstance(entry, dict) or not isinstance(entry.get("fingerprint"), str):
+        return False
+    try:
+        return bool(check(entry, *args))
+    except ENTRY_ERRORS:
+        return False
+
+
 def decide_entry_valid(entry, selected):
     if set(entry) != DECIDE_KEYS or entry.get("fingerprint") not in selected:
         return False
@@ -915,7 +936,7 @@ def cmd_apply_decide(state, args):
     raw = read_entries(state, "poc-decide", args.entries, args.trace)
     valid = {}
     for agent_id, entry in raw.items():
-        if decide_entry_valid(entry, selected):
+        if entry_ok(decide_entry_valid, entry, selected):
             valid[agent_id] = entry
         else:
             state.discard("poc-decide", agent_id, "entry does not match the poc-decide shape")
@@ -1087,7 +1108,7 @@ def cmd_apply_cross_check(state, args):
     raw = read_entries(state, "cross-check", args.entries, args.trace)
     valid = {}
     for agent_id, entry in raw.items():
-        if cross_entry_valid(entry, selected):
+        if entry_ok(cross_entry_valid, entry, selected):
             valid[agent_id] = entry
         else:
             state.discard("cross-check", agent_id, "entry does not match the cross-check shape")
@@ -1136,6 +1157,11 @@ def remove_disputed(state, dispute, because, tie_break):
     state.incomplete("cross_check_dispute")
 
 
+def tie_entry_valid(entry, eligible):
+    return (set(entry) == {"fingerprint", "answer", "reason"} and entry["fingerprint"] in eligible
+            and entry["answer"] in ("original", "replacement", "neither") and visible_text(entry["reason"]))
+
+
 def cmd_apply_tie_break(state, args):
     cc = state.meta.get("cross_check")
     if not isinstance(cc, dict) or not cc.get("applied"):
@@ -1150,8 +1176,7 @@ def cmd_apply_tie_break(state, args):
     raw = read_entries(state, "tie-break", args.entries, args.trace)
     valid = {}
     for agent_id, entry in raw.items():
-        if (set(entry) == {"fingerprint", "answer", "reason"} and entry["fingerprint"] in eligible
-                and entry["answer"] in ("original", "replacement", "neither") and visible_text(entry["reason"])):
+        if entry_ok(tie_entry_valid, entry, eligible):
             valid[agent_id] = entry
         else:
             state.discard("tie-break", agent_id, "entry does not match the tie-break shape")
