@@ -14,7 +14,7 @@
 # It also puts the argument string in ONE place.
 #
 # Usage: compose-agent-args.sh            (reads AGENT_* and REVIEW_*_DIR from the environment)
-#        compose-agent-args.sh --audit   (the security audit's steps, below)
+#        compose-agent-args.sh --audit | --audit-models <step>   (the security audit's steps, below)
 set -uo pipefail
 
 # The review agent reads and searches; it never runs commands or edits. A
@@ -62,6 +62,7 @@ args() { # model turns tools
 # subagents, so they get their own lists:
 #
 #   compose-agent-args.sh --audit                prints the six AGENT_ARGS_AUDIT_* lines
+#   compose-agent-args.sh --audit-models <step>  prints that step's three model lines
 #
 # --audit reads HOME, RUNNER_TEMP and GITHUB_WORKSPACE to write the runner's
 # paths into the deny rules, and prints nothing (exit 1) when one is unset,
@@ -143,6 +144,18 @@ audit_args() { # step
     "$BASE" "$(model_flag "$model")" "$(dir_flag "$in")" "$(dir_flag "$out")" "$turns" "$allow" "$deny"
 }
 
+if [ "${1:-}" = "--audit-models" ]; then
+  [ "$#" -eq 2 ] || { echo "usage: compose-agent-args.sh --audit-models <step>" >&2; exit 2; }
+  if ! spec=$(audit_step "$2"); then
+    echo "compose-agent-args: unknown audit step" >&2
+    exit 2
+  fi
+  read -r _ model _ _ <<<"$spec"
+  printf 'ANTHROPIC_DEFAULT_SONNET_MODEL=%s\nANTHROPIC_DEFAULT_HAIKU_MODEL=%s\nCLAUDE_CODE_SUBAGENT_MODEL=%s\n' \
+    "$model" "$model" "$model"
+  exit 0
+fi
+
 if [ "${1:-}" = "--audit" ]; then
   [ "$#" -eq 1 ] || { echo "usage: compose-agent-args.sh --audit" >&2; exit 2; }
   for v in HOME RUNNER_TEMP GITHUB_WORKSPACE; do
@@ -161,7 +174,7 @@ if [ "${1:-}" = "--audit" ]; then
   exit 0
 fi
 
-[ "$#" -eq 0 ] || { echo "usage: compose-agent-args.sh [--audit]" >&2; exit 2; }
+[ "$#" -eq 0 ] || { echo "usage: compose-agent-args.sh [--audit | --audit-models <step>]" >&2; exit 2; }
 
 printf 'AGENT_ARGS_REVIEW=%s\n' \
   "$(args "${AGENT_MODEL_REVIEW:-}" "${AGENT_TURNS_REVIEW:-60}" "$TOOLS_READ")"

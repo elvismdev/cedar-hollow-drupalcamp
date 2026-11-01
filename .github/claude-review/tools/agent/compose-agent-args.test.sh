@@ -85,12 +85,13 @@ assert_eq "0" "$(printf '%s\n' "$out" | grep -c 'disallowedTools [^ ]* [^-]')" \
   "the deny list is one comma-separated argument"
 
 # ---------------------------------------------------------------------------
-# The security audit's variables (--audit). The
+# The security audit's variables (--audit) and models (--audit-models). The
 # checks above, which require Agent and Task denied, apply to the review
 # variable only: every audit step but repair delegates to subagents.
 # Rule lists hold * and are split on commas below, so no pathname expansion.
 set -f
 PARSE="$ROOT/tools/agent/test/helpers/parse-claude-args.py"
+PARSE_ENV="$ROOT/tools/agent/test/helpers/parse-env-file.py"
 RUNNER_ENV=(HOME=/home/runner RUNNER_TEMP=/home/runner/work/_temp GITHUB_WORKSPACE=/home/runner/work/ddemo/ddemo)
 AUDIT_DENY="Bash,MultiEdit,NotebookEdit,WebFetch,WebSearch,Skill,ListAgents,ScheduleWakeup,Monitor,SendMessage,CronCreate,CronDelete,CronList,TaskCreate,TaskStop,TodoWrite,AskUserQuestion,EnterPlanMode,ExitPlanMode,EnterWorktree,ExitWorktree,ToolSearch,DesignSync,PushNotification,RemoteTrigger,ReportFindings,Workflow"
 PATH_RULES="Read(//proc/**),Glob(//proc/**),Grep(//proc/**),Edit(//proc/**),Read(//sys/**),Glob(//sys/**),Grep(//sys/**),Edit(//sys/**),Read(//home/runner/work/_temp/**),Glob(//home/runner/work/_temp/**),Grep(//home/runner/work/_temp/**),Edit(//home/runner/work/_temp/**),Read(//home/runner/work/_actions/**),Glob(//home/runner/work/_actions/**),Grep(//home/runner/work/_actions/**),Edit(//home/runner/work/_actions/**),Read(//home/runner/runners/**),Glob(//home/runner/runners/**),Grep(//home/runner/runners/**),Edit(//home/runner/runners/**),Read(//home/runner/.*),Glob(//home/runner/.*),Grep(//home/runner/.*),Edit(//home/runner/.*),Read(//home/runner/.*/**),Glob(//home/runner/.*/**),Grep(//home/runner/.*/**),Edit(//home/runner/.*/**),Read(//home/runner/work/ddemo/ddemo/.git/**),Glob(//home/runner/work/ddemo/ddemo/.git/**),Grep(//home/runner/work/ddemo/ddemo/.git/**),Edit(//home/runner/work/ddemo/ddemo/**)"
@@ -175,6 +176,22 @@ done
 out=$(env -u RUNNER_TEMP HOME=/home/runner GITHUB_WORKSPACE=/w bash "$R" --audit 2>/dev/null)
 assert_exit 1 $? "--audit refuses an unset RUNNER_TEMP"
 
+# --audit-models: the step's model three times, read as the runner reads $GITHUB_ENV.
+tmp=$(mktemp -d)
+trap 'rm -rf "$tmp"' EXIT
+for spec in "source claude-opus-5-5" "repair claude-opus-5-5" "poc_write claude-opus-5-5" \
+            "poc_decide claude-opus-5-5" "cross_check claude-fable-5-1" "tie_break claude-sonnet-5-5"; do
+  # shellcheck disable=SC2086
+  set -- $spec
+  bash "$R" --audit-models "$1" > "$tmp/env"
+  assert_exit 0 $? "--audit-models $1"
+  assert_eq "{\"ANTHROPIC_DEFAULT_SONNET_MODEL\": \"$2\", \"ANTHROPIC_DEFAULT_HAIKU_MODEL\": \"$2\", \"CLAUDE_CODE_SUBAGENT_MODEL\": \"$2\"}" \
+    "$(python3 -I "$PARSE_ENV" "$tmp/env")" "--audit-models $1 sets the three model variables to $2"
+done
+bash "$R" --audit-models nope >/dev/null 2>&1
+assert_exit 2 $? "--audit-models refuses an unknown step"
+bash "$R" --audit-models >/dev/null 2>&1
+assert_exit 2 $? "--audit-models needs a step"
 bash "$R" --bogus >/dev/null 2>&1
 assert_exit 2 $? "an unknown option is refused"
 pass
