@@ -364,6 +364,31 @@ for st in (jobs.get("poc-run") or {}).get("steps") or []:
         if w.get("tools") != "none" or w.get("github-token") != "":
             err("poc-run's setup-php must set tools: none and github-token: '' so no token reaches composer's auth.json")
 
+# ---------------------------------------------------------------- hand-off hashes
+# Every seal.sh open takes its expected sha256 from a needs.<job>.outputs value
+# (or a step that copies one) through env:, never computed in the step. The
+# key canaries open a token they sealed themselves, and the record opener's
+# sha comes from poc-run's record map.
+SHA_SOURCE = re.compile(r"^\$\{\{ (needs\.[a-z-]+\.outputs\.[a-z_0-9]+|steps\.(choose|prior)\.outputs\.sha256) \}\}$")
+for name, job in jobs.items():
+    for st in (job or {}).get("steps") or []:
+        body = st.get("run") or ""
+        for m in re.finditer(r'seal\.sh open [A-Z_]+ "\$(?:\{)?([A-Za-z_][A-Za-z0-9_]*)', body):
+            var = m.group(1)
+            if var in ("own", "other") and "/dev/urandom" in body:
+                continue
+            if var == "sum" and norm((st.get("env") or {}).get("RECORDS")) == "${{ needs.poc-run.outputs.records }}" \
+                    and '<<<"$RECORDS" | while read -r name sum' in body and not re.search(r"\bsum=", body):
+                continue
+            value = norm((st.get("env") or {}).get(var))
+            if not SHA_SOURCE.match(value) or re.search(r"(^|[\s;(])%s=" % re.escape(var), body):
+                err("%s step %r opens a hand-off with a sha256 not taken from needs.<job>.outputs: $%s" % (name, st.get("name"), var))
+for name in ("cross-check", "report"):
+    choose = next((st for st in (jobs.get(name) or {}).get("steps") or [] if st.get("id") == "choose"), {})
+    for k, v in (choose.get("env") or {}).items():
+        if k.endswith("SHA256") and not re.match(r"^\$\{\{ needs\.[a-z-]+\.outputs\.[a-z_0-9]+ \}\}$", norm(v)):
+            err("%s choose step's %s must come from needs.<job>.outputs" % (name, k))
+
 # ---------------------------------------------------------------- key canaries
 for name, own, other, key in (("source", "agents", "sandbox", "AUDIT_AGENTS_AGE_KEY"),
                               ("poc-run", "sandbox", "agents", "AUDIT_SANDBOX_AGE_KEY")):
@@ -546,6 +571,8 @@ mutate "the judge reading the wrong run check" '("RUN_CHECK_OUTCOME: ${{ steps.c
 mutate "sandbox-secrets not judged" '("bash .github/security-audit/judge-canary.sh sandbox-secrets -", "true", 1)'
 mutate "the judge with a missing argument" '("judge-canary.sh reopen-records - \"$f\"", "judge-canary.sh reopen-records", 1)'
 
+mutate "a hand-off sha computed from the downloaded file" '("          mkdir -p \"$RUNNER_TEMP/state\"\n          bash .github/security-audit/seal.sh open AUDIT_AGENTS_AGE_KEY \"$SHA256\"", "          mkdir -p \"$RUNNER_TEMP/state\"\n          SHA256=$(sha256sum \"$RUNNER_TEMP/handoff/audit-source.age\" | cut -d\" \" -f1)\n          bash .github/security-audit/seal.sh open AUDIT_AGENTS_AGE_KEY \"$SHA256\"", 1)'
+mutate "a hand-off sha from an unchecked step" '("SHA256: ${{ needs.source.outputs.sha256 }}\n        run: |\n          mkdir -p \"$RUNNER_TEMP/state\"", "SHA256: ${{ steps.plan.outputs.agent }}\n        run: |\n          mkdir -p \"$RUNNER_TEMP/state\"", 1)'
 mutate "poc-run installing composer" '("          tools: none\n          github-token: \x27\x27", "          github-token: \x27\x27", 1)'
 mutate "poc-run passing its token to setup-php" '("          tools: none\n          github-token: \x27\x27", "          tools: none", 1)'
 mutate "an ok cause after a failed trusted step" '("          if [ \"$JOB_STATUS\" != success ] && [ \"$cause\" = ok ]; then cause=agent_failed; fi\n          echo \"cause=$cause\" >> \"$GITHUB_OUTPUT\"\n          echo \"poc-decide job: $cause\"", "          echo \"cause=$cause\" >> \"$GITHUB_OUTPUT\"\n          echo \"poc-decide job: $cause\"", 1)'
