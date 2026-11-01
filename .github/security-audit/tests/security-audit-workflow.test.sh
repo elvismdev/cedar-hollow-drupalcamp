@@ -56,6 +56,10 @@ if can.get("type") != "choice" or can.get("default") != "none" or set(can.get("o
         or len(can.get("options") or []) != len(canaries):
     err("canary must be a choice defaulting to none whose options are prepare.sh's, %s" % sorted(canaries))
 
+# Subagents run in the foreground in every agent step: set once, for the
+# whole workflow.
+if str((wf.get("env") or {}).get("CLAUDE_CODE_DISABLE_BACKGROUND_TASKS")) != "1":
+    err("the workflow-level env must set CLAUDE_CODE_DISABLE_BACKGROUND_TASKS to 1, so subagents run in the foreground")
 if wf.get("permissions") != {}:
     err("the workflow's top-level permissions must be {}")
 conc = wf.get("concurrency") or {}
@@ -274,6 +278,15 @@ if not ("own-marker" in order and "publish" in order and upload_state.get("id") 
     err("the report must decide whether the body names this run, upload audit-state, and only then publish")
 if not any((s.get("env") or {}).get("GH_TOKEN") == "${{ github.token }}" for s in [publish]):
     err("the report posts with GITHUB_TOKEN")
+
+# ---------------------------------------------------------------- run check tools
+# Foreground subagents hand their report back with SubagentHandback, so the
+# run check of every step that delegates must accept it; the repair step,
+# which starts no subagent, does not.
+if (wf.get("env") or {}).get("AGENT_TOOLS", "").split(",") != ["Read", "Glob", "Grep", "Write", "Edit", "Agent", "Task", "SubagentHandback"]:
+    err("AGENT_TOOLS must be Read,Glob,Grep,Write,Edit,Agent,Task,SubagentHandback")
+if "SubagentHandback" in (wf.get("env") or {}).get("REPAIR_TOOLS", ""):
+    err("REPAIR_TOOLS must not accept SubagentHandback: the repair step starts no subagent")
 
 # ---------------------------------------------------------------- prompts
 vars_line = re.search(r"^VARS='([^']*)'", read(SA + "/tests/prompts.test.sh"), re.M)
@@ -717,5 +730,10 @@ mutate "marker=true for the previous run's marker" '("jq -rR --arg id \"$GITHUB_
 
 mutate "publishing before audit-state is uploaded" "(\"steps.own-marker.outputs.own == 'false' || steps.upload-state.outcome == 'success')\", \"steps.own-marker.outputs.own != 'x')\", 1)"
 mutate_moved_upload
+
+mutate "background subagents allowed" '("  CLAUDE_CODE_DISABLE_BACKGROUND_TASKS: \"1\"\n", "", 1)'
+mutate "background subagents set to 0" '("  CLAUDE_CODE_DISABLE_BACKGROUND_TASKS: \"1\"", "  CLAUDE_CODE_DISABLE_BACKGROUND_TASKS: \"0\"", 1)'
+
+mutate "a run check refusing subagent handbacks" '("  AGENT_TOOLS: Read,Glob,Grep,Write,Edit,Agent,Task,SubagentHandback", "  AGENT_TOOLS: Read,Glob,Grep,Write,Edit,Agent,Task", 1)'
 
 pass "security-audit workflow structure"

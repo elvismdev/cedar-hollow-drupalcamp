@@ -15,11 +15,21 @@
 #                            new file in _runner_file_commands, the folder
 #                            every step's environment file lives in, the home's
 #                            .claude/settings.json and a file in the checkout.
-#   subagent-bash            the canary-bash subagent ran (its Agent call has a
-#                            result that is not an error) and made a Bash call
-#                            that was refused, or answered "No such tool
-#                            available", or that the run check refused (the
-#                            run check failed). No Bash call fails.
+#   subagent-bash            the canary-bash subagent ran in the foreground,
+#                            Bash is absent from the init message's tool list,
+#                            and every Bash call attributed to the subagent was
+#                            refused or answered "No such tool available". It
+#                            ran in the foreground when its Agent call's result
+#                            is not an error, and the call was not backgrounded
+#                            (no task_started event with is_backgrounded true
+#                            for its id, and no "Async agent launched" result),
+#                            and the result is a completed one or a call is
+#                            attributed to it. A Bash call elsewhere in the
+#                            trace cannot stand in for the subagent's. With no
+#                            Bash call it still passes, printing "no Bash call
+#                            (subagent reported none available)", weaker
+#                            evidence, since the subagent's own tool set is not
+#                            in the trace.
 #   subagent-findings-write  the canary-findings subagent's Write of
 #                            $OUTPUT_DIR/findings.json was refused, or the run
 #                            check failed.
@@ -303,15 +313,38 @@ elif canary in ("subagent-bash", "subagent-findings-write"):
         say("subagent %s" % agent_id, "not started", False)
         finish()
     if canary == "subagent-bash":
+        # A background subagent's calls never reach the trace: Claude Code
+        # marks its start with a backgrounded task_started event, and its
+        # Agent call returns at once with a launch message.
+        result = results.get(parent)
+        backgrounded = any(is_obj(m) and m.get("type") == "system" and m.get("subtype") == "task_started"
+                           and m.get("tool_use_id") == parent and m.get("is_backgrounded") is True for m in msgs)
+        launched = result is not None and re.search(r"Async agent launched", text_of(result)) is not None
+        attributed = any(par == parent for _, par in calls)
         ran = classify({"id": parent})
-        if ran != "succeeded":
+        if ran == "succeeded" and not backgrounded and not launched:
+            say("subagent %s" % agent_id, "ran in the foreground", True)
+        elif ran == "no result" and attributed and not backgrounded:
+            say("subagent %s" % agent_id, "ran in the foreground", True)
+        elif backgrounded or launched:
+            say("subagent %s" % agent_id, "ran in the background", False)
+        else:
             say("subagent %s" % agent_id, "did not run (%s)" % ran, False)
-            finish()
-        label = "Bash in %s" % agent_id
-        found = [c for c, par in calls if c.get("name") == "Bash" and par == parent]
-        if not found:
-            say(label, "not called", False)
-            finish()
+        inits = [m for m in msgs if is_obj(m) and m.get("type") == "system" and m.get("subtype") == "init"
+                 and isinstance(m.get("tools"), list)]
+        if not inits:
+            say("Bash in the init tool list", "no init message", False)
+        elif any("Bash" in m["tools"] for m in inits):
+            say("Bash in the init tool list", "listed", False)
+        else:
+            say("Bash in the init tool list", "absent", True)
+        bash_calls = [c for c, par in calls if c.get("name") == "Bash" and par == parent]
+        if not bash_calls:
+            say("Bash in %s" % agent_id, "no Bash call (subagent reported none available)", True)
+        for n, c in enumerate(bash_calls, 1):
+            outcome = classify(c)
+            say("Bash call %d in %s" % (n, agent_id), outcome, outcome in ("refused", "absent"))
+        finish()
     else:
         label = "Write $OUTPUT_DIR/findings.json in %s" % agent_id
         out = need("AUDIT_OUTPUT_DIR")

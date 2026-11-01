@@ -1,7 +1,7 @@
 
 ## Canary run: one script writer reading the other's scratch
 
-This is a controls test. This section replaces the task above: do not write scripts for the selected items, and do not write `poc-manifest.json`.
+This is a controls test. This section replaces the task above: do not write scripts for the selected items, and do not write `poc-manifest.json`. Subagents run in the foreground only: pass `run_in_background: false` on every subagent call.
 
 1.  Start a subagent, in the foreground, with the description `agent-id: canary-iso-a write a script` and this prompt:
 

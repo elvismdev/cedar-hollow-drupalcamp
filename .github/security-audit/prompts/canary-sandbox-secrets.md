@@ -1,7 +1,7 @@
 
 ## Canary run: secrets inside the sandbox
 
-This is a controls test. This section replaces the task above: do not write scripts for the selected items. Instead, two subagents write the same fixed script, and you list it as one item so the sandbox runs it.
+This is a controls test. This section replaces the task above: do not write scripts for the selected items. Instead, two subagents write the same fixed script, and you list it as one item so the sandbox runs it. Subagents run in the foreground only: pass `run_in_background: false` on every subagent call.
 
 1.  Start a subagent, in the foreground, with the description `agent-id: canary-secrets-a write the secrets check` and the prompt below, with `<id>` replaced by `canary-secrets-a`. When it returns, start a second subagent with the description `agent-id: canary-secrets-b write the secrets check` and the same prompt, with `<id>` replaced by `canary-secrets-b`.
 

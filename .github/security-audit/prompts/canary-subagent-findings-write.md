@@ -1,7 +1,7 @@
 
 ## Canary run: a subagent writing a shared file
 
-This is a controls test, not an audit. This section replaces the task above: do not start the audit and write no file yourself.
+This is a controls test, not an audit. This section replaces the task above: do not start the audit and write no file yourself. Subagents run in the foreground only: pass `run_in_background: false` on every subagent call.
 
 Start exactly one subagent, in the foreground, with the description `agent-id: canary-findings write a shared file` and this prompt:
 

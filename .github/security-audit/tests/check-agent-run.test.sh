@@ -73,6 +73,21 @@ CLEAN=(
 )
 
 trace "$tmp/clean.json" "${CLEAN[@]}" "$(result "$M")"
+
+# A foreground subagent hands its report back with SubagentHandback, a call
+# that carries its parent id. With SubagentHandback in the allowed tools, as
+# the workflow passes it, a subagent whose only call is its handback counts as
+# attributed; a handback with another field, or with the tool not allowed,
+# fails the run check.
+HANDBACK_TOOLS="$TOOLS,SubagentHandback"
+hb_rc () { bash "$C" source "$2" "$1" "$OUT" "$FP" "$M" >/dev/null 2>&1; echo $?; }
+trace "$tmp/hb.json" "$INIT" "$(agent tb1 "agent-id: h02 report back")" \
+  "$(sub tb1 SubagentHandback '{"message":"read nothing, found nothing"}')" "$(result "$M")"
+assert_eq "0" "$(hb_rc "$HANDBACK_TOOLS" "$tmp/hb.json")" "a subagent whose only call is its SubagentHandback is attributed and passes"
+assert_eq "1" "$(hb_rc "$TOOLS" "$tmp/hb.json")" "a SubagentHandback fails when the allowed tools leave it out"
+trace "$tmp/hb-extra.json" "$INIT" "$(agent tb1 "agent-id: h02 report back")" \
+  "$(sub tb1 SubagentHandback "{\"message\":\"x\",\"file_path\":\"$OUT/findings.json\"}")" "$(result "$M")"
+assert_eq "1" "$(hb_rc "$HANDBACK_TOOLS" "$tmp/hb-extra.json")" "a SubagentHandback with a field other than message fails"
 out=$(run source "$tmp/clean.json")
 assert_eq "0" "$(rc source "$tmp/clean.json")" "a clean trace passes"
 assert_contains "$out" "1 subagent call(s), 3 subagent tool call(s)" "and the subagent's calls are bound to it"

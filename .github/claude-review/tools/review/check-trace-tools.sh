@@ -96,8 +96,10 @@
 #
 #   --tools <names>      comma-separated allowed tools, replacing Read,Glob,Grep.
 #                        Only tools whose input fields are listed here may be
-#                        named: Read, Glob, Grep, Write, Edit, and the subagent
-#                        tool under both of its names, Agent and Task.
+#                        named: Read, Glob, Grep, Write, Edit, the subagent
+#                        tool under both of its names, Agent and Task, and
+#                        SubagentHandback, the tool a foreground subagent
+#                        hands its report back with.
 #   --root <dir>         an absolute directory added to the read roots
 #                        (repeatable). A Grep whose path lies in one outside the
 #                        workspace is treated as the head and input directory
@@ -123,6 +125,8 @@
 #   - Agent and Task: description, prompt, subagent_type, run_in_background.
 #     A model field is refused with the rest, so a subagent cannot be given
 #     another model through its call.
+#   - SubagentHandback: exactly message, a non-empty string, and nothing else.
+#     It names no file, so no path rule applies.
 #
 # A Write or Edit file_path passes the same character allowlist, must be
 # absolute, must hold no .. segment even when it would normalise back inside,
@@ -143,7 +147,7 @@ TRACE="${1:-}"
 [ -n "$TRACE" ] || usage
 shift
 # The tools whose input fields the path check below knows.
-SUPPORTED=(Read Glob Grep Write Edit Agent Task)
+SUPPORTED=(Read Glob Grep Write Edit Agent Task SubagentHandback)
 allowed_names=(Read Glob Grep)
 extra_roots=()
 write_roots=()
@@ -270,6 +274,7 @@ FIELDS = {
     'Edit': {'file_path', 'old_string', 'new_string', 'replace_all'},
     'Agent': {'description', 'prompt', 'subagent_type', 'run_in_background'},
     'Task': {'description', 'prompt', 'subagent_type', 'run_in_background'},
+    'SubagentHandback': {'message'},
 }
 
 def under(p, root):
@@ -407,6 +412,12 @@ def refusal(call):
     if name in ('Write', 'Edit'):
         return write_refusal(args.get('file_path'))
     if name in ('Agent', 'Task'):
+        return None
+    if name == 'SubagentHandback':
+        if args.get('message') is None or args.get('message') == '':
+            return ('empty field', 'message')
+        if not isinstance(args['message'], str):
+            return ('field not a string', 'message')
         return None
     if name == 'Grep' and 'glob' in args and args['glob'] is not None:
         g = args['glob']

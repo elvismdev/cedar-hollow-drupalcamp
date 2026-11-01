@@ -41,12 +41,19 @@ defaults:
     shell: bash
 
 env:
+  # Every subagent runs in the foreground, even when its call omits
+  # run_in_background, so its calls reach the trace the run check reads.
+  # Measured locally on Claude Code 2.1.309 through the Agent SDK, where an
+  # omitted run_in_background otherwise starts a background subagent whose
+  # calls never reach the trace. The subagent-bash canary checks it in CI.
+  CLAUDE_CODE_DISABLE_BACKGROUND_TASKS: "1"
   # The names envsubst replaces in a prompt, and no others.
   PROMPT_VARS: '$RUN_ID $SOURCE_REF $OUTPUT_DIR $INPUT_DIR $BUDGET $SCOPE_PATHS $GITHUB_ENV_PATH $HOME $RUNNER_TEMP'
   # The tools check-agent-run.sh accepts in a trace: the subagent tool under
-  # both of its names, and Write and Edit, which the Edit(//<out>/**) allow
+  # both of its names, SubagentHandback, which a foreground subagent hands its
+  # report back with, and Write and Edit, which the Edit(//<out>/**) allow
   # rule limits to the job's output directory.
-  AGENT_TOOLS: Read,Glob,Grep,Write,Edit,Agent,Task
+  AGENT_TOOLS: Read,Glob,Grep,Write,Edit,Agent,Task,SubagentHandback
   REPAIR_TOOLS: Read,Glob,Grep,Write,Edit
 
 jobs:
