@@ -795,6 +795,22 @@ class CrossCheckTest(MergeTest):
         self.run_merge("status")
         self.assert_validators_pass()
 
+    def test_a_lowered_severity_cannot_carry_a_changed_execution(self):
+        self.seed_records([confirmed("e-1", overall="high", impact="high")])
+        smuggled = confirmed("e-1", overall="medium", impact="high", observed="FABRICATED result.",
+                             payloads=["GET /evil"])
+        self.replace("checker-1", smuggled)
+        self.assertEqual(self.cross_check(), [])
+        self.subagent("tie-1", {"fingerprint": "e-1", "answer": "replacement", "reason": "Agree."})
+        self.tie_break()
+        record = self.record("e-1")
+        self.assertEqual(record["execution"]["observed_result"], "HTTP 200 with another user's row.")
+        self.assertEqual(record["execution"]["payloads"], ["GET /demo/1"])
+        self.assertEqual(record["severity"]["overall_severity"], "high")
+        cc = self.load("run-metadata.json")["cross_check"]
+        self.assertEqual(cc["refused"], [{"fingerprint": "e-1", "rule": "execution"}])
+        self.assertEqual(cc["settled"], ["e-1"])
+
     def test_tie_break_outcomes_order_and_limit_of_three(self):
         fps = ["t-1", "t-2", "t-3", "t-4"]
         self.seed_records([confirmed(fp) for fp in fps])

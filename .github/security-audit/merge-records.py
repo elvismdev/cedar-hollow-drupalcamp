@@ -1054,14 +1054,20 @@ def payloads(record):
 
 
 def cross_check_outcome(original, replacement):
-    """Technical Plan section 7's rules in order: 'apply', 'dispute:<rule>' or
-    'refuse:<rule>'."""
+    """Technical Plan section 7's rules in order, except that a confirmed
+    record's execution change is refused before its severity is compared:
+    'apply', 'dispute:<rule>' or 'refuse:<rule>'."""
     old, new = original["verdict"], replacement["verdict"]
     if old != new:
         if new == "confirmed":
             return "refuse:promotion"
         return "dispute:verdict"
     if old == "confirmed":
+        # Only the scripts establish the execution, so a change to it is
+        # refused before the severity rules can send it to a tie-break.
+        if (payloads(original) != payloads(replacement)
+                or original["execution"]["observed_result"] != replacement["execution"]["observed_result"]):
+            return "refuse:execution"
         before, after = original["severity"], replacement["severity"]
         moves = [SEVERITY_RANK[after["overall_severity"]] - SEVERITY_RANK[before["overall_severity"]],
                  SEVERITY_RANK[after["impact"]["score"]] - SEVERITY_RANK[before["impact"]["score"]]]
@@ -1069,9 +1075,6 @@ def cross_check_outcome(original, replacement):
             return "refuse:severity_raise"
         if any(m < 0 for m in moves):
             return "dispute:severity_lowered"
-        if (payloads(original) != payloads(replacement)
-                or original["execution"]["observed_result"] != replacement["execution"]["observed_result"]):
-            return "refuse:execution"
     cause = "root_cause" if old == "confirmed" else "claimed_root_cause"
     if trace_set(original) != trace_set(replacement) or norm(original.get(cause)) != norm(replacement.get(cause)):
         return "dispute:material"
