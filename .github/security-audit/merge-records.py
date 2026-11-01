@@ -552,32 +552,53 @@ def entry_path(entries, agent_id):
 
 
 def read_entries(state, job, entries, trace_path):
-    """Returns {agent_id: entry} for every subagent the trace shows writing its
-    own entry.json; anything else is discarded and recorded."""
+    """Returns {agent_id: entry} for every subagent whose entry.json on disk is
+    byte for byte the content of that subagent's last Write to it in the
+    trace. An entry that any other agent (the top-level agent included)
+    wrote or edited, that its own subagent edited, or that differs from that
+    last Write is discarded and recorded."""
     messages = read_trace(trace_path)
     bindings = subagent_bindings(messages)
-    written = set()
+    paths = {entry_path(entries, agent_id): agent_id for agent_id in set(bindings.values())}
+    last, refused = {}, {}
     for message in messages:
         if not isinstance(message, dict):
             continue
         parent = message.get("parent_tool_use_id")
-        agent_id = bindings.get(parent) if isinstance(parent, str) else None
-        if agent_id is None:
-            continue
+        author = bindings.get(parent) if isinstance(parent, str) else None
         for call in tool_uses(message):
             args = call.get("input") if isinstance(call.get("input"), dict) else {}
             target = args.get("file_path")
-            if call.get("name") in ("Write", "Edit") and isinstance(target, str) and target.startswith("/"):
-                if os.path.normpath(target) == entry_path(entries, agent_id):
-                    written.add(agent_id)
+            if not isinstance(target, str) or not target.startswith("/"):
+                continue
+            owner = paths.get(os.path.normpath(target))
+            if owner is None or call.get("name") == "Read":
+                continue
+            if author != owner:
+                refused.setdefault(owner, "entry written by another agent")
+            elif call.get("name") == "Write" and isinstance(args.get("content"), str):
+                last[owner] = args["content"]
+            else:
+                refused.setdefault(owner, "entry edited after it was written")
     result = {}
     for agent_id in sorted(set(bindings.values())):
-        if agent_id not in written:
+        if agent_id in refused:
+            state.discard(job, agent_id, refused[agent_id])
+            continue
+        if agent_id not in last:
             state.discard(job, agent_id, "no entry written by this subagent")
             continue
         try:
-            entry = read_json(entry_path(entries, agent_id), MAX_ENTRY_BYTES)
-        except (OSError, ValueError, Refused):
+            data = read_bytes(entry_path(entries, agent_id), MAX_ENTRY_BYTES)
+        except (OSError, Refused):
+            state.discard(job, agent_id, "entry unreadable or not strict JSON")
+            continue
+        if data != last[agent_id].encode("utf-8", "surrogatepass"):
+            state.discard(job, agent_id, "entry on disk differs from the subagent's write")
+            continue
+        try:
+            entry = parse_strict(data)
+        except ValueError:
             state.discard(job, agent_id, "entry unreadable or not strict JSON")
             continue
         if not isinstance(entry, dict):

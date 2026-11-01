@@ -162,12 +162,13 @@ class MergeTest(unittest.TestCase):
         call_id = "toolu_%d" % self.calls
         path = os.path.join(self.out, "agents", agent_id, "scratch", "entry.json")
         os.makedirs(os.path.dirname(path), exist_ok=True)
-        self.write(path, entry)
+        text = entry if isinstance(entry, str) else json.dumps(entry)
+        self.write(path, text)
         self.messages.append({"type": "assistant", "message": {"content": [
             {"type": "tool_use", "id": call_id, "name": "Agent",
              "input": {"description": "agent-id: %s check" % agent_id, "prompt": "p"}}]}})
         writer = {"type": "tool_use", "id": call_id + "w", "name": "Write",
-                  "input": {"file_path": path, "content": "{}"}}
+                  "input": {"file_path": path, "content": text}}
         if write_by_subagent:
             self.messages.append({"type": "assistant", "parent_tool_use_id": call_id,
                                   "message": {"content": [writer]}})
@@ -487,7 +488,7 @@ class DecideTest(MergeTest):
         reasons = self.discarded()
         self.assertEqual(reasons.count("entry unreadable or not strict JSON"), 2)
         self.assertEqual(reasons.count("entry does not match the poc-decide shape"), 2)
-        self.assertIn("no entry written by this subagent", reasons)
+        self.assertIn("entry written by another agent", reasons)
         self.assert_validators_pass()
 
     def test_two_entries_for_one_fingerprint_keep_neither(self):
@@ -539,6 +540,54 @@ class CountTest(MergeTest):
         result = self.run_merge("count", "--job", "source", "--cap", "1", "--trace",
                                 os.path.join(self.tmp, "missing.json"), ok=False)
         self.assertEqual(result.returncode, 1)
+
+
+class HostileEntryTest(MergeTest):
+    """Agent-written input shaped to crash the merge, override a decision or
+    skew a count; each case comes from a review probe."""
+
+    def base(self):
+        self.seed([lead("fp-1")], [unit("u1", fps=["fp-1"])])
+        self.select()
+        return self.manifest(["fp-1"])
+
+    def entry_file(self, agent_id):
+        return os.path.join(self.out, "agents", agent_id, "scratch", "entry.json")
+
+    def test_an_entry_overwritten_by_the_top_level_agent_is_discarded(self):
+        manifest = self.base()
+        self.subagent("decider-1", self.decided("fp-1", "needs_validation", lead("fp-1"),
+                                                a="not_demonstrated", b="not_demonstrated"))
+        forged = json.dumps(self.decided("fp-1", "confirmed", confirmed("fp-1", overall="high", impact="high")))
+        self.write(self.entry_file("decider-1"), forged)
+        self.messages.append({"type": "assistant", "message": {"content": [
+            {"type": "tool_use", "id": "toolu_top", "name": "Write",
+             "input": {"file_path": self.entry_file("decider-1"), "content": forged}}]}})
+        self.decide(manifest)
+        self.assertEqual(self.record("fp-1")["verdict"], "needs_validation")
+        self.assertEqual(self.load("run-metadata.json")["poc"]["confirmed"], [])
+        self.assertIn("entry written by another agent", self.discarded())
+
+    def test_an_entry_changed_on_disk_after_its_write_is_discarded(self):
+        manifest = self.base()
+        self.subagent("decider-1", self.decided("fp-1", "needs_validation", lead("fp-1"),
+                                                a="not_demonstrated", b="not_demonstrated"))
+        self.write(self.entry_file("decider-1"), self.decided("fp-1", "confirmed", confirmed("fp-1")))
+        self.decide(manifest)
+        self.assertEqual(self.record("fp-1")["verdict"], "needs_validation")
+        self.assertIn("entry on disk differs from the subagent's write", self.discarded())
+
+    def test_an_entry_its_subagent_edited_is_discarded(self):
+        manifest = self.base()
+        self.subagent("decider-1", self.decided("fp-1", "confirmed", confirmed("fp-1")))
+        self.messages.append({"type": "assistant", "parent_tool_use_id": "toolu_%d" % self.calls,
+                              "message": {"content": [{"type": "tool_use", "id": "toolu_edit", "name": "Edit",
+                                                       "input": {"file_path": self.entry_file("decider-1"),
+                                                                 "old_string": "a", "new_string": "a"}}]}})
+        self.decide(manifest)
+        self.assertEqual(self.record("fp-1")["verdict"], "needs_validation")
+        self.assertIn("entry edited after it was written", self.discarded())
+
 
 
 class HistoryTest(MergeTest):
