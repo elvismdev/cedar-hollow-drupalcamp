@@ -233,6 +233,131 @@ for input in \
   case "$out" in *"$canary"*) echo "FAIL: a value reached the log for ${input%% *}" >&2; exit 1;; esac
 done
 
+# Options. The security audit's agents also write and delegate, so the tool
+# list, the read roots and the write roots can be widened, each a closed set.
+A=(--tools "Read,Glob,Grep,Write,Edit,Agent,Task" --root /mnt/a/in --root /mnt/a/out --write-root /mnt/a/out)
+ok_opt () { printf '[%s]' "$(call "$1" "$2")" > "$tmp/o.json"; assert_eq "0" "$(rc "$tmp/o.json" "${A[@]}")" "$3"; }
+no_opt () { # name input-json label message
+  printf '[%s]' "$(call "$1" "$2")" > "$tmp/o.json"
+  assert_eq "1" "$(rc "$tmp/o.json" "${A[@]}")" "$4"
+  assert_contains "$(run "$tmp/o.json" "${A[@]}")" "$1 call 1: $3" "$4 says why"
+}
+ok_opt Read '{"file_path":"/mnt/a/in/state/findings.json"}' "a read in an added root passes"
+ok_opt Read '{"file_path":"/w/repo/web/index.php"}' "the workspace stays a root"
+ok_opt Write '{"file_path":"/mnt/a/out/agents/h1/scratch/entry.json","content":"{\"x\":\"a b ~ ..\"}"}' "a Write under a write root passes, whatever its content"
+ok_opt Edit '{"file_path":"/mnt/a/out/run-metadata.json","old_string":"a","new_string":"b","replace_all":false}' "an Edit with every field passes"
+ok_opt Agent '{"description":"agent-id: h1 hunt","prompt":"p","subagent_type":"general-purpose","run_in_background":false}' "an Agent call with every field passes"
+ok_opt Task '{"description":"agent-id: h1 hunt","prompt":"p"}' "the subagent tool's other name passes"
+ok_opt Grep '{"pattern":"x","path":"/mnt/a/out","glob":"**"}' "a Grep glob of ** in an added root outside the workspace passes"
+no_opt Read '{"file_path":"/mnt/a/other/x"}' "path outside the allowed roots (field file_path)" "a read beside the added roots is refused"
+no_opt Write '{"file_path":"agents/h1/scratch/entry.json","content":""}' "write path is relative (field file_path)" "a relative Write is refused"
+no_opt Write '{"file_path":"/mnt/a/out/agents/../x.json","content":""}' "write path contains .. (field file_path)" "a Write with .. is refused even when it stays inside"
+no_opt Edit '{"file_path":"/mnt/a/out/x/../../in/y","old_string":"a","new_string":"b"}' "write path contains .. (field file_path)" "an Edit with .. is refused"
+no_opt Write '{"file_path":"/mnt/a/in/x.json","content":""}' "path outside the write roots (field file_path)" "a Write in a read-only root is refused"
+no_opt Write '{"file_path":"/w/repo/web/index.php","content":""}' "path outside the write roots (field file_path)" "a Write in the workspace is refused"
+no_opt Write '{"file_path":"/w/repo/.git/config","content":""}' "path under .git (field file_path)" "a Write into .git is refused"
+no_opt Write '{"file_path":"/mnt/a/out-other/x","content":""}' "path outside the write roots (field file_path)" "a sibling sharing the write root's prefix is refused"
+no_opt Write '{"file_path":" /mnt/a/out/x","content":""}' "character outside the allowlist (field file_path)" "a Write path with a leading space is refused"
+no_opt Write '{"content":"x"}' "empty field (field file_path)" "a Write with no file_path is refused"
+no_opt Agent '{"description":"agent-id: h1","prompt":"p","model":"other"}' "unknown field" "an Agent call naming a model is refused"
+no_opt Bash '{"command":"id"}' "tool not allowed" "a tool outside --tools is still refused"
+assert_contains "$(run "$tmp/o.json" "${A[@]}")" "outside Read, Glob, Grep, Write, Edit, Agent and Task" "and the message names the allowed list"
+printf '[%s]' "$(call Write '{"file_path":"/mnt/a/out/x","content":""}')" > "$tmp/o.json"
+assert_eq "1" "$(rc "$tmp/o.json" --tools Read,Write --root /mnt/a/out)" "with no write root every Write is refused"
+assert_eq "2" "$(rc "$tmp/o.json" --tools Read,Bash)" "--tools may name only tools whose fields are checked"
+assert_eq "2" "$(rc "$tmp/o.json" --tools "Read Glob")" "--tools matches whole names, so a space-joined list is refused"
+assert_eq "2" "$(rc "$tmp/o.json" --tools "Read,Gre")" "--tools refuses part of a name"
+assert_eq "2" "$(rc "$tmp/o.json" --root mnt/a)" "a relative --root is a usage error"
+assert_eq "2" "$(rc "$tmp/o.json" --write-root)" "a --write-root with no directory is a usage error"
+assert_eq "2" "$(rc "$tmp/o.json" --bogus x)" "an unknown option is a usage error"
+assert_eq "2" "$(rc)" "no trace argument is a usage error"
+wcanary="Wq$(od -An -N8 -tx1 /dev/urandom | tr -d ' \n')"
+printf '[%s]' "$(call Write "{\"file_path\":\"/tmp/$wcanary\",\"content\":\"$wcanary\"}")" > "$tmp/o.json"
+case "$(run "$tmp/o.json" "${A[@]}")" in *"$wcanary"*) echo "FAIL: a Write value reached the log" >&2; exit 1;; esac
+# An added root inside the workspace does not lift the Grep glob rule there.
+printf '[%s]' "$(call Grep '{"pattern":"x","path":"/w/repo/web","glob":"**"}')" > "$tmp/o.json"
+assert_eq "1" "$(rc "$tmp/o.json" --root /w/repo/web)" "an added root inside the workspace keeps the glob rule"
+
+# --grep-any-glob-in-subfolders: a Grep whose path is a folder inside the roots,
+# other than the workspace's top level, takes any glob. Without the option, or
+# with no path or the top level as the path, the extension-shaped rule holds.
+G=(--tools "Read,Glob,Grep" --root /mnt/a/out --grep-any-glob-in-subfolders)
+grep_glob () { # path-json-or-empty glob expected-rc message [options...]
+  local input
+  if [ -n "$1" ]; then input="{\"pattern\":\"x\",\"path\":$1,\"glob\":\"$2\"}"; else input="{\"pattern\":\"x\",\"glob\":\"$2\"}"; fi
+  printf '[%s]' "$(call Grep "$input")" > "$tmp/g.json"
+  shift 2; local want="$1" msg="$2"; shift 2
+  assert_eq "$want" "$(rc "$tmp/g.json" "$@")" "$msg"
+}
+grep_glob '"web/modules/custom"' '!**/node_modules/**' 0 "a negated glob with a subfolder path passes" "${G[@]}"
+grep_glob '"/w/repo/web"' '{web/modules/custom/**,tests/**,scripts/**}' 0 "a brace folder list with a subfolder path passes" "${G[@]}"
+grep_glob '"/mnt/a/out/agents"' '!*.json' 0 "a negated glob in an added root passes" "${G[@]}"
+grep_glob '' '!**/node_modules/**' 1 "the same negated glob with no path fails" "${G[@]}"
+grep_glob '".git"' '!**/node_modules/**' 1 "the same glob with path .git fails" "${G[@]}"
+grep_glob '".git/hooks"' '!**/node_modules/**' 1 "the same glob with path .git/hooks fails" "${G[@]}"
+grep_glob '"/w/repo"' '{web/modules/custom/**,tests/**}' 1 "a brace folder list with the checkout root as path fails" "${G[@]}"
+grep_glob '"."' '{web/modules/custom/**,tests/**}' 1 "a brace folder list with . as path fails" "${G[@]}"
+grep_glob '"/w/repo/web/"' '**' 0 "a trailing slash on a subfolder path passes" "${G[@]}"
+grep_glob '"web"' '../.git/**' 1 "a .. glob from a subfolder still fails" "${G[@]}"
+grep_glob '"web"' '!../x' 1 "a negated .. glob from a subfolder still fails" "${G[@]}"
+grep_glob '"web"' '* *' 1 "a space in the glob still fails" "${G[@]}"
+# A path above the checkout, inside an added root, reaches .git/config too.
+W=(--tools "Read,Glob,Grep" --root /w --grep-any-glob-in-subfolders)
+grep_glob '"/w"' '**/.git/config' 1 "a Grep rooted above the checkout in an added root keeps the extension rule" "${W[@]}"
+grep_glob '"/w/repo/.."' '**/.git/config' 1 "and so does one that climbs there with .." "${W[@]}"
+grep_glob '"/w/repo/web"' '!**/node_modules/**' 0 "a real subfolder under the same options still passes" "${W[@]}"
+grep_glob '"web/modules/custom"' '!**/node_modules/**' 1 "without the option the negated glob fails as before"
+grep_glob '"web/modules/custom"' '{web/**,tests/**}' 1 "without the option a brace folder list in the workspace fails as before"
+
+# Brace groups are expanded and every expansion judged, with no options too:
+# {.,}. spells .. without a literal .. segment.
+no_path Glob '{"pattern":"{.,}./{.,}./etc/*"}' "a brace-spelled .. Glob pattern from the workspace is refused"
+no_path Glob '{"pattern":".gi{t,x}/config"}' "a brace-spelled .git Glob pattern is refused"
+label_is Glob '{"pattern":".gi{t,x}/config"}' "path under .git (field pattern)" "label: brace-spelled .git"
+printf '[%s]' "$(call Grep '{"pattern":"x","path":"/rt/head","glob":"{.,}./**"}')" > "$tmp/b.json"
+assert_eq "1" "$(rc "$tmp/b.json")" "a brace-spelled .. Grep glob in the head is refused"
+ok_path Grep '{"pattern":"x","path":"/rt/head","glob":"*.{php,twig}"}' "an extension brace group in the head passes"
+ok_path Grep '{"pattern":"x","path":"/rt/head","glob":"{src,tests}/**/*.php"}' "a folder brace group in the head passes"
+ok_path Glob '{"pattern":"{src,tests}/**/*.php","path":"/rt/head"}' "a folder brace group Glob in the head passes"
+ok_path Glob '{"pattern":"**/*.{php,twig}"}' "an extension brace group Glob in the workspace passes"
+label_is Glob '{"pattern":"{a,b"}' "braces cannot be expanded (field pattern)" "an unbalanced Glob brace is refused"
+label_is Grep '{"pattern":"x","path":"/rt/head","glob":"{a,b"}' "braces cannot be expanded (field glob)" "an unbalanced Grep brace is refused"
+# Nested groups expand as in bash and minimatch, and each expansion is judged.
+ok_path Glob '{"pattern":"{a,{b,c}}/*.php"}' "a nested brace group inside the workspace passes"
+ok_path Grep '{"pattern":"x","path":"/rt/head","glob":"{web/modules/custom/**,tests/**,web/themes/custom/**/*.{php,twig,yml}}"}' "a nested folder and extension list in the head passes"
+ok_path Glob '{"pattern":"{web/modules/custom/**,tests/**,web/themes/custom/**/*.{php,twig,yml}}","path":"/rt/head"}' "the same nested list as a Glob in the head passes"
+no_path Glob '{"pattern":"{.,{.,}.}/{.,{.,}.}/etc/*"}' "a nested brace-spelled .. Glob pattern from the workspace is refused"
+printf '[%s]' "$(call Grep '{"pattern":"x","path":"/rt/head","glob":"{.,{.,}.}/**"}')" > "$tmp/b.json"
+assert_eq "1" "$(rc "$tmp/b.json")" "a nested brace-spelled .. Grep glob in the head is refused"
+# A group with no comma is literal; it is judged as written and without its
+# braces, since glob engines differ on it.
+no_path Glob '{"pattern":"{..}/{..}/etc/*"}' "a literal {..} group is judged as .. and refused"
+printf '[%s]' "$(call Grep '{"pattern":"x","path":"/rt/head","glob":"{..}/**"}')" > "$tmp/b.json"
+assert_eq "1" "$(rc "$tmp/b.json")" "a literal {..} Grep glob in the head is refused"
+ok_path Grep '{"pattern":"x","glob":"*.{php}"}' "a literal one-extension group still passes"
+# Sequence expressions ({a..e}, {1..300}) are ranges in bash and minimatch,
+# which the expander does not compute, so a group whose body holds .. is
+# refused: .gi{s..u}/config would reach .git/config.
+label_is Glob '{"pattern":".gi{s..u}/config"}' "braces cannot be expanded (field pattern)" "a letter sequence expression is refused"
+label_is Glob '{"pattern":"{1..300}/*.php"}' "braces cannot be expanded (field pattern)" "a number sequence expression is refused"
+label_is Grep '{"pattern":"x","path":"/rt/head","glob":".gi{s..u}/**"}' "braces cannot be expanded (field glob)" "a sequence expression in a Grep glob is refused"
+# Every expansion of a Grep path must be a subfolder before the glob rule is
+# lifted; a brace in a path is also outside the path allowlist.
+printf '[%s]' "$(call Grep '{"pattern":"x","path":"{web,.}","glob":"!**/node_modules/**"}')" > "$tmp/b.json"
+assert_eq "1" "$(rc "$tmp/b.json" --grep-any-glob-in-subfolders)" "a Grep path {web,.} with a negated glob is refused"
+
+# More than 256 expansions cannot be judged.
+label_is Glob '{"pattern":"{a,b,c,d}{a,b,c,d}{a,b,c,d}{a,b,c,d}{a,b}/*.php"}' "braces cannot be expanded (field pattern)" "512 expansions are refused"
+ok_path Glob '{"pattern":"{a,b,c,d}{a,b,c,d}{a,b,c,d}{a,b,c,d}/*.php"}' "256 expansions pass"
+label_is Glob '{"pattern":"a}/*.php"}' "braces cannot be expanded (field pattern)" "a stray closing brace is refused"
+printf '[%s]' "$(call Grep '{"pattern":"x","path":"/mnt/a/out/x","glob":"!{.,}./**"}')" > "$tmp/b.json"
+assert_eq "1" "$(rc "$tmp/b.json" --root /mnt/a/out --grep-any-glob-in-subfolders)" "a brace-spelled .. is refused in subfolder mode too"
+# Without the expander the check fails closed.
+mkdir -p "$tmp/noexp"
+cp "$C" "$tmp/noexp/check-trace-tools.sh"
+printf '[%s]' "$(call Read '{"file_path":"/w/repo/a"}')" > "$tmp/b.json"
+assert_eq "1" "$(bash "$tmp/noexp/check-trace-tools.sh" "$tmp/b.json" >/dev/null 2>&1; echo $?)" "a missing expander fails closed"
+
 # It fails closed on what it cannot read.
 assert_eq "1" "$(rc "$tmp/absent.json")" "a missing trace fails"
 : > "$tmp/empty.json"
