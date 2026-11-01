@@ -33,6 +33,7 @@
 # screen-failure body has none.
 import argparse
 import errno
+import functools
 import json
 import os
 import re
@@ -66,8 +67,18 @@ COMMIT = re.compile(r"^[0-9a-f]{7,64}$")
 RUN_ID = re.compile(r"^[1-9][0-9]{0,19}$")
 LABEL = re.compile(r"^[a-z0-9_:. -]{1,80}$")
 ARTIFACT = re.compile(r"^agents/([a-z0-9][a-z0-9_-]{0,63})/artifacts/([ab])\.json$")
-LINK = re.compile(r"(?i)\b(?:https?)://[^\s]*")
-MENTION = re.compile(r"(?<![A-Za-z0-9_])@(?=[A-Za-z0-9_-])")
+# Applied in this order on every pass of clean(). Each removes a form GitHub
+# would turn into a link or a notification.
+STRIPS = (
+    (re.compile(r"\]\([^)\s]*\)?"), "]"),
+    (re.compile(r"\[[^\]\n]*\]:\s*\S+"), "[link removed]"),
+    (re.compile(r"(?i)https?://\S*"), "[link removed]"),
+    (re.compile(r"(?i)www\.\S*"), "[link removed]"),
+    (re.compile(r"//[^\s/]\S*"), "[link removed]"),
+    (re.compile(r"[^\s@]*[A-Za-z0-9_]@[A-Za-z0-9_]\S*"), "[address removed]"),
+    (re.compile(r"@(?=[A-Za-z0-9_-])"), ""),
+)
+MAX_CLEAN_PASSES = 20
 
 
 class Refused(Exception):
@@ -151,14 +162,33 @@ def read_artifact(state_dir, relative):
 # ---------------------------------------------------------------- text
 
 
+def clean_pass(text):
+    text = unicodedata.normalize("NFKC", text)
+    text = "".join(ch for ch in text if ch in "\n\t" or unicodedata.category(ch) not in ("Cc", "Cf", "Cs"))
+    for pattern, replacement in STRIPS:
+        text = pattern.sub(replacement, text)
+    return text
+
+
 def clean(text):
-    """Record or agent text made safe to publish, before any Markdown escaping."""
+    """Record or agent text made safe to publish, before any Markdown escaping:
+    NFKC normalisation, then every Cc, Cf and Cs character but newline and tab
+    removed, then links, addresses and mentions stripped, repeated until the
+    text stops changing, so a character removed by one step cannot join the
+    pieces of a link or a mention another step already passed over."""
     if not isinstance(text, str):
         text = "" if text is None else str(text)
-    text = LINK.sub("[link removed]", text)
-    text = MENTION.sub("", text)
-    text = "".join(ch for ch in text if ch in "\n\t" or unicodedata.category(ch) not in ("Cc", "Cf", "Cs"))
-    return text
+    return clean_str(text)
+
+
+@functools.lru_cache(maxsize=None)
+def clean_str(text):
+    for _ in range(MAX_CLEAN_PASSES):
+        cleaned = clean_pass(text)
+        if cleaned == text:
+            return text
+        text = cleaned
+    return "[text removed]"
 
 
 def inline(text):

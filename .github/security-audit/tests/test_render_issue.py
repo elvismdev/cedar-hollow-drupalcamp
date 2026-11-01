@@ -250,6 +250,28 @@ class ChangesTest(RenderTest):
         self.assertNotIn("not valid!", body)
 
 
+class HostileTextTest(RenderTest):
+    """Text shaped to slip a live mention or link past the cleaner, from the
+    review probe."""
+
+    EVIL = ("A @\u200bowner B http\u200b://evil.example/x C _https://evil.example/y_ D www.evil.example "
+            "E [click](//evil.example) F <\u200b!-- G user@evil.example H \uff20fullwidth "
+            "I ![img](/evil.png) J [ref][r] K [r]: /evil-ref L //evil.example/z M a@\u2060b")
+
+    def test_hidden_mentions_and_links_are_removed(self):
+        record = lead("fp-1", title=self.EVIL)
+        record["description"] = self.EVIL
+        self.seed([record], final_meta(settled=["fp-1"]))
+        body = self.render()
+        published = body.split("<!-- security-audit-state")[0]
+        self.assertNotRegex(published, r"@[A-Za-z0-9_-]")
+        self.assertNotIn("evil", published)
+        self.assertNotRegex(published.lower(), r"https?:|www\.|//[^\s/]|\]\(|\]:")
+        self.assertNotIn("<!--", published)
+        self.assertIn("A owner B [link removed]", published)
+        self.assertIn("fullwidth", published)
+
+
 class SizeTest(RenderTest):
     def test_the_issue_size_cut_keeps_header_tables_and_marker(self):
         records, ledger = [], []
