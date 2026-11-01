@@ -307,6 +307,19 @@ settings_case '{"hooks":{"Stop":[]},"permissions":{"deny":[]},"theme":"dark"}' 1
 settings_case '{"hooks":{"Stop":[]},"permissions":{"deny":["Bash"]},"theme":"light","extra":1}' 0 "a change to other keys passes"
 settings_case '{"theme":"dark", "permissions":{"deny":["Bash"]},  "hooks":{"Stop":[]}}' 0 "reordering the keys passes"
 settings_case 'not json' 1 "a settings file that no longer parses fails"
+# claude-code-action creates settings.json holding only
+# enableAllProjectMcpServers when none exists before the agent step.
+saved=$(cat "$HOME/.claude/settings.json")
+rm "$HOME/.claude/settings.json"
+bash "$C" --fingerprint "$FP" >/dev/null
+echo '{"enableAllProjectMcpServers":true}' > "$HOME/.claude/settings.json"
+assert_eq "0" "$(rc source "$tmp/clean.json")" "a settings.json created with no hooks or permissions passes"
+echo '{"enableAllProjectMcpServers":true,"hooks":{"Stop":[]}}' > "$HOME/.claude/settings.json"
+assert_eq "1" "$(rc source "$tmp/clean.json")" "a settings.json created with hooks fails"
+echo '{"permissions":{"allow":["Bash"]}}' > "$HOME/.claude/settings.json"
+assert_eq "1" "$(rc source "$tmp/clean.json")" "a settings.json created with permissions fails"
+echo "$saved" > "$HOME/.claude/settings.json"
+bash "$C" --fingerprint "$FP" >/dev/null
 echo "# changed" > "$HOME/.claude/CLAUDE.md"
 assert_eq "1" "$(rc source "$tmp/clean.json")" "a changed ~/.claude/CLAUDE.md fails"
 echo "# memory" > "$HOME/.claude/CLAUDE.md"

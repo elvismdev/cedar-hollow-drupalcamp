@@ -90,8 +90,10 @@ usage() {
 }
 
 # One labelled line per watched thing. A path that does not exist is skipped
-# by the tree hash and recorded as absent for settings.json, so creating one
-# changes the fingerprint too.
+# by the tree hash. A missing settings.json is hashed as a file with no hooks
+# and no permissions, because claude-code-action creates one holding only
+# enableAllProjectMcpServers during the agent step; creating one that sets
+# either key still changes the fingerprint.
 #
 # Fails closed: it returns non-zero, naming the part, when the workspace is not
 # the top of a git repository, when git, jq or find fails (git's refusal of a
@@ -113,7 +115,8 @@ fingerprint() {
     settings=$(jq -cS '{hooks, permissions}' "$claude/settings.json" 2>/dev/null | sha256sum | cut -d' ' -f1) \
       || { echo "check-agent-run: ~/.claude/settings.json exists but cannot be read as JSON" >&2; return 1; }
   else
-    settings=absent
+    settings=$(jq -ncS '{} | {hooks, permissions}' | sha256sum | cut -d' ' -f1) \
+      || { echo "check-agent-run: jq failed" >&2; return 1; }
   fi
   for p in CLAUDE.md agents commands hooks; do
     if [ -e "$claude/$p" ]; then paths+=("$claude/$p"); fi
