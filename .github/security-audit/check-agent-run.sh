@@ -215,7 +215,9 @@ for (const call of calls) {
   if (!SUBAGENT_TOOLS.has(c.name)) continue;
   const input = isObj(c.input) ? c.input : {};
   const desc = typeof input.description === 'string' ? input.description : '';
-  const ids = [...desc.matchAll(/(?:^|\s)agent-id:\s*(\S+)/g)].map((x) => x[1]);
+  // ASCII only: "agent-id:", then spaces or tabs, then the id, which must end
+  // at an ASCII blank or the end of the text.
+  const ids = [...desc.matchAll(/(?:^|[ \t\r\n])agent-id:[ \t]*([A-Za-z0-9_-]+)(?=$|[ \t\r\n])/g)].map((x) => x[1]);
   let id = null;
   if (ids.length !== 1 || !ID.test(ids[0])) {
     refuse(call, 'does not declare exactly one valid agent id');
