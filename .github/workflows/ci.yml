@@ -204,13 +204,22 @@ jobs:
       - name: Shellcheck
         run: |
           find .github/claude-review .claude/hooks -name '*.sh' -print0 | xargs -0 shellcheck -S warning
-          shellcheck -S warning .github/security-audit/*.sh .github/security-audit/tests/*.sh
+          shellcheck -S warning .github/security-audit/*.sh .github/security-audit/tests/*.sh scripts/rebuild.sh
       - name: Workflow and action checks
         run: bash .github/claude-review/tools/check-actions.sh
       - name: Pinned Claude Code version matches the review action
         run: bash .github/claude-review/tools/check-cli-version.sh
         env:
           GH_TOKEN: ${{ github.token }}
+      # The audit's sandbox test builds a Drupal site on SQLite with
+      # scripts/rebuild.sh, which puts a site build in this required check: a
+      # broken build blocks pull requests and, because Dev deploys need CI
+      # green on main, stops Dev deploys until it is fixed.
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: pdo_sqlite, gd, curl
+          tools: composer:v2
       - name: Install bubblewrap and age
         run: sudo apt-get install -y bubblewrap age
       # Ubuntu 24.04 blocks the unprivileged user namespaces bubblewrap needs.
@@ -219,7 +228,7 @@ jobs:
       - name: Run the security audit tests
         run: |
           shopt -s nullglob
-          suites=(.github/security-audit/tests/*.test.sh)
+          suites=(.github/security-audit/tests/*.test.sh scripts/rebuild.test.sh)
           for suite in "${suites[@]}"; do
             echo "::group::$suite"
             bash "$suite" || failed+=("$suite")
