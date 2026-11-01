@@ -62,7 +62,8 @@
 # decision record's trace as reviewed_paths, method "local", the promoted
 # artifact, the record's intended_behavior (confirmed) or title (otherwise) as
 # the invariant, and "script <slot>: <demonstrated|not_demonstrated>;
-# decision: <decision>" as the result. The unit's unresolved list drops the
+# decision: <decision>" as the result. For every applied decision, whether or
+# not any run record was promoted, the unit's unresolved list drops the
 # previous record's blockers and gains the new lead's blockers. A failed poc
 # phase (fail-poc) adds "poc phase failed: <job>" to the lead and its units.
 #
@@ -980,7 +981,7 @@ def cmd_apply_decide(state, args):
         elif fp in poc.get("confirmed", []):
             poc["confirmed"].remove(fp)
     for unit in state.ledger:
-        mine = [fp for fp in sorted(plans, key=js_order) if fp in (unit.get("result_fingerprints") or []) and plans[fp][2]]
+        mine = [fp for fp in sorted(plans, key=js_order) if fp in (unit.get("result_fingerprints") or [])]
         if not mine or unit.get("status") != "candidate" or not safe_agent_id(unit.get("agent_id")):
             continue
         checks = [c for fp in mine for c in plans[fp][2]]

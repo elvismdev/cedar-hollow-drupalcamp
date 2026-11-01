@@ -360,6 +360,20 @@ class DecideTest(MergeTest):
         self.assertEqual(self.record("t-lead")["blockers"], ["the fixture cannot create a second site"])
         self.assert_validators_pass()
 
+    def test_a_decision_without_promoted_records_still_updates_the_unit(self):
+        manifest = self.setup_items(["n-1"])
+        for name in os.listdir(self.records):
+            os.remove(os.path.join(self.records, name))
+        new_lead = lead("n-1", blockers=["the scripts produced no run record"])
+        self.subagent("decider-n", self.decided("n-1", "needs_validation", new_lead,
+                                                a="not_demonstrated", b="not_demonstrated"))
+        self.decide(manifest)
+        self.assertEqual(self.record("n-1")["blockers"], ["the scripts produced no run record"])
+        u = self.unit_for("n-1")
+        self.assertEqual(u["unresolved"], ["the scripts produced no run record"])
+        self.assertEqual([c["agent_id"] for c in u["local_checks"]], ["hunter-n-1"])
+        self.assert_validators_pass()
+
     def test_poc_failed_adds_the_blocker_to_record_and_unit(self):
         self.seed([lead("p-1"), lead("p-2")], [unit("p-1", fps=["p-1"]), unit("p-2", fps=["p-2"])])
         self.select()
