@@ -307,5 +307,9 @@ assert_exit 2 "$rc" "reopen-records without the sandbox key proves nothing and i
 echo "not an age file" > "$tmp/plain.age"
 rc=0; AUDIT_SANDBOX_AGE_KEY="$sandbox_key" bash "$SA/judge-canary.sh" reopen-records - "$tmp/plain.age" > /dev/null || rc=$?
 assert_exit 1 "$rc" "a file that is not sealed does not pass as refused"
+head -c 60 "$tmp/poc-run-1-a.age" > "$tmp/poc-run-2-a.age"
+rc=0; out=$(AUDIT_SANDBOX_AGE_KEY="$sandbox_key" bash "$SA/judge-canary.sh" reopen-records - "$tmp/poc-run-2-a.age") || rc=$?
+assert_exit 1 "$rc" "a sealed record that fails to open for another reason (a cut header) does not pass as refused"
+assert_contains "$out" "failed for a reason other than the key" "the other failure is named"
 
 pass
