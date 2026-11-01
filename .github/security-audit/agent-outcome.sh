@@ -20,6 +20,8 @@
 #                evidence an agent ran, as in the review action's "Prove an
 #                agent ran" step, and the time limit was not reached.
 #   no_outputs   an expected output file is missing or empty.
+#   agent_failed the step did not succeed and none of the above holds; a
+#                failed step is never ok.
 #   ok           otherwise.
 #
 # The step outcome is the step's outcome, not its conclusion, so a step with
@@ -87,5 +89,6 @@ else
   for f in "$@"; do
     if [ ! -s "$f" ]; then cause=no_outputs; break; fi
   done
+  if [ -z "$cause" ] && [ "$outcome" != "success" ]; then cause=agent_failed; fi
 fi
 echo "${cause:-ok}"

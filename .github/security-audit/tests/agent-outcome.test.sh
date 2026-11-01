@@ -110,6 +110,11 @@ assert_eq "no_outputs" "$(cause "$tmp/clean.json" success "$T0" $((T0 + 60)) 30 
 assert_eq "no_outputs" "$(cause "$tmp/clean.json" success "$T0" $((T0 + 60)) 30 "$tmp/blank.json")" "an empty expected output is no_outputs"
 assert_eq "ok" "$(cause "$tmp/clean.json" success "$T0" $((T0 + 60)) 30)" "with no expected outputs a clean run is ok"
 
+# A failed step that matches no other cause is never ok.
+assert_eq "agent_failed" "$(cause "$tmp/clean.json" failure "$T0" $((T0 + 60)) 30 "${OUTPUTS[@]}")" "a failed step with its outputs, a short run and no quota string is agent_failed"
+assert_eq "agent_failed" "$(cause "$tmp/clean.json" cancelled "$T0" $((T0 + 60)) 30 "${OUTPUTS[@]}")" "a cancelled step is not ok either"
+assert_eq "no_outputs" "$(cause "$tmp/clean.json" failure "$T0" $((T0 + 60)) 30 "$tmp/absent")" "a failed step missing an output is still no_outputs"
+
 # Arguments.
 assert_eq "exit 2" "$(cause "$tmp/clean.json" success "$T0" $((T0 + 60)))" "a missing timeout is a usage error"
 assert_eq "exit 2" "$(cause "$tmp/clean.json" success "$T0" later 30)" "an end that is not epoch seconds is a usage error"
