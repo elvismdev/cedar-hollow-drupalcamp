@@ -164,6 +164,12 @@ assert_eq '["/a", "stray"]' "$(printf '%s' "$parsed" | python3 -I -c 'import jso
   "the parser shows a bare word swallowed by --add-dir"
 assert_eq '["Read", "Edit(//x/**)"]' "$(printf '%s' "$parsed" | python3 -I -c 'import json,sys; print(json.dumps(json.load(sys.stdin)["allowedTools"]))')" \
   "the parser keeps a quoted rule whole"
+# A flag seen bare and later with values takes those values, as the action
+# does, instead of failing on the bare one.
+parsed=$(python3 -I "$PARSE" "--allowedTools --model m --allowedTools 'Read,Glob' --add-dir --max-turns 2 --add-dir /a")
+assert_exit 0 $? "the parser accepts a bare flag repeated with values"
+assert_eq '["Read", "Glob"] ["/a"]' "$(printf '%s' "$parsed" | python3 -I -c 'import json,sys; p=json.load(sys.stdin); print(json.dumps(p["allowedTools"]), json.dumps(p["addDirs"]))')" \
+  "a bare flag repeated with values keeps the values"
 
 # Fails closed on a runner path that is unset, relative, would end the
 # quoting, or ends in or doubles a slash (which would shift the _actions rule).

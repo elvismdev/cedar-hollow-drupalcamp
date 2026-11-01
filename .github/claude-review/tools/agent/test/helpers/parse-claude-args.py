@@ -40,7 +40,9 @@ def parse(text):
                     while i + 1 < len(words) and not words[i + 1].startswith("--"):
                         i += 1
                         values.append(words[i])
-                    flags.setdefault(flag, []).extend(values)
+                    # As the action does: append to earlier values, or start
+                    # afresh when the flag was absent or seen bare (null).
+                    flags[flag] = (flags.get(flag) or []) + values
                 else:
                     flags[flag] = nxt
                     i += 1
