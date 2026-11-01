@@ -335,6 +335,13 @@ no_path Glob '{"pattern":"{..}/{..}/etc/*"}' "a literal {..} group is judged as 
 printf '[%s]' "$(call Grep '{"pattern":"x","path":"/rt/head","glob":"{..}/**"}')" > "$tmp/b.json"
 assert_eq "1" "$(rc "$tmp/b.json")" "a literal {..} Grep glob in the head is refused"
 ok_path Grep '{"pattern":"x","glob":"*.{php}"}' "a literal one-extension group still passes"
+# Sequence expressions ({a..e}, {1..300}) are ranges in bash and minimatch,
+# which the expander does not compute, so a group whose body holds .. is
+# refused: .gi{s..u}/config would reach .git/config.
+label_is Glob '{"pattern":".gi{s..u}/config"}' "braces cannot be expanded (field pattern)" "a letter sequence expression is refused"
+label_is Glob '{"pattern":"{1..300}/*.php"}' "braces cannot be expanded (field pattern)" "a number sequence expression is refused"
+label_is Grep '{"pattern":"x","path":"/rt/head","glob":".gi{s..u}/**"}' "braces cannot be expanded (field glob)" "a sequence expression in a Grep glob is refused"
+
 # More than 256 expansions cannot be judged.
 label_is Glob '{"pattern":"{a,b,c,d}{a,b,c,d}{a,b,c,d}{a,b,c,d}{a,b}/*.php"}' "braces cannot be expanded (field pattern)" "512 expansions are refused"
 ok_path Glob '{"pattern":"{a,b,c,d}{a,b,c,d}{a,b,c,d}{a,b,c,d}/*.php"}' "256 expansions pass"

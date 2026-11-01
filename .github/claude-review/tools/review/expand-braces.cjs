@@ -7,18 +7,24 @@
 // and every expansion is judged instead. Groups are expanded left to right as
 // a cartesian product, splitting each group's body on commas.
 //
-// Expansion follows bash and minimatch: a group whose body holds a comma at
-// its own level is a list of alternatives, each of which may hold further
-// groups to any depth ({a,{b,c}} gives a, b, c); groups are expanded left to
-// right as a cartesian product. A group with no comma at its own level, such
-// as {a}, is literal and keeps its braces, though groups inside it still
-// expand. Because glob engines differ on such a group, every expansion that
-// still holds a brace is also returned with its braces removed, so a caller
-// judges {..}/x both as written and as ../x.
+// Comma lists expand as in bash and minimatch: a group whose body holds a
+// comma at its own level is a list of alternatives, each of which may hold
+// further groups to any depth ({a,{b,c}} gives a, b, c); groups are expanded
+// left to right as a cartesian product. A group with no comma at its own
+// level, such as {a}, is literal and keeps its braces, though groups inside it
+// still expand. Because glob engines differ on such a group, every expansion
+// that still holds a brace is also returned with its braces removed, so a
+// caller judges {a}/x both as written and as a/x.
+//
+// Sequence expressions are not expanded: bash and minimatch read {a..e} or
+// {1..300} as a range, which this does not, so any group whose body contains
+// .. is refused rather than judged as something the glob engine would not
+// match (.gi{s..u}/config reaches .git/config).
 //
 // When the braces cannot be expanded with confidence the result is null, and
 // callers refuse the value: a backslash (an escape this does not interpret),
-// an unbalanced or stray brace, or more than MAX_EXPANSIONS expansions.
+// an unbalanced or stray brace, a group whose body contains .., or more than
+// MAX_EXPANSIONS expansions.
 //
 // As a module: require(...).expandBraces(string) -> string[] | null.
 // As a command: reads a JSON array of strings on stdin and prints a JSON
@@ -27,7 +33,7 @@
 
 const MAX_EXPANSIONS = 256;
 
-class TooMany extends Error {}
+class NotExpandable extends Error {}
 
 // The index of the brace closing the one at i, or -1.
 function closing(s, i) {
@@ -60,7 +66,7 @@ function alternatives(body) {
 }
 
 function product(heads, tails) {
-  if (heads.length * tails.length > MAX_EXPANSIONS) throw new TooMany();
+  if (heads.length * tails.length > MAX_EXPANSIONS) throw new NotExpandable();
   const out = [];
   for (const h of heads) for (const t of tails) out.push(h + t);
   return out;
@@ -73,6 +79,7 @@ function expand(s) {
   const j = closing(s, i);
   const prefix = s.slice(0, i);
   const body = s.slice(i + 1, j);
+  if (body.includes('..')) throw new NotExpandable();
   const rest = expand(s.slice(j + 1));
   const parts = alternatives(body);
   let middle;
@@ -82,7 +89,7 @@ function expand(s) {
     middle = [];
     for (const p of parts) {
       middle.push(...expand(p));
-      if (middle.length > MAX_EXPANSIONS) throw new TooMany();
+      if (middle.length > MAX_EXPANSIONS) throw new NotExpandable();
     }
   }
   return product(middle.map((m) => prefix + m), rest);
@@ -103,7 +110,7 @@ function expandBraces(s) {
   try {
     results = expand(s);
   } catch (err) {
-    if (err instanceof TooMany) return null;
+    if (err instanceof NotExpandable) return null;
     throw err;
   }
   const out = new Set(results);
