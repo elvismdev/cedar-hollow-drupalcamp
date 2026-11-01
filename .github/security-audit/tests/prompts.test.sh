@@ -164,6 +164,65 @@ for f, needles in NAMES.items():
             fail("%s: does not name %s" % (f, needle))
 
 
+# The run check's own lists, read from the scripts, so a prompt cannot drift
+# from what check-agent-run.sh refuses or check-trace-tools.sh accepts.
+with open(os.path.join(sa, "check-agent-run.sh"), encoding="utf-8") as fh:
+    car = fh.read()
+sets = {}
+for name in ("SHARED", "TRUSTED", "STATE"):
+    m = re.search(r"const %s = new Set\(\[(.*?)\]\);" % name, car, re.S)
+    sets[name] = set(re.findall(r"'([^']+)'", m.group(1))) if m else set()
+    if len(sets[name]) < 4:
+        fail("check-agent-run.sh's %s set could not be read" % name)
+with open(os.path.join(sa, "..", "claude-review", "tools", "review", "check-trace-tools.sh"), encoding="utf-8") as fh:
+    ctt = fh.read()
+m = re.search(r"^FIELDS = (\{.*?^\})", ctt, re.S | re.M)
+FIELDS = __import__('ast').literal_eval(m.group(1)) if m else {}
+if set(FIELDS) < {"Read", "Glob", "Grep", "Write", "Edit", "Agent"}:
+    fail("check-trace-tools.sh's FIELDS could not be read")
+
+RESERVED_FOR_SUBAGENTS = sets["SHARED"] | sets["TRUSTED"]
+LATER = {"poc-write.md", "poc-decide.md", "cross-check.md", "tie-break.md"}
+for f in names_md:
+    text = rendered(f)
+    blocks = re.findall(r"```text\n(Tool rules for this agent.*?)```", text, re.S)
+    outside = re.sub(r"```text\n(Tool rules for this agent.*?)```", "", text, flags=re.S)
+    if f != "repair.md" and len(blocks) != 1:
+        fail("%s: expected one subagent tool-rules block" % f)
+    for block in blocks:
+        for n in sorted(RESERVED_FOR_SUBAGENTS):
+            if n not in block:
+                fail("%s: the subagent tool rules do not forbid %s, which check-agent-run.sh refuses" % (f, n))
+    for n in sorted(sets["TRUSTED"]):
+        if n not in outside:
+            fail("%s: the agent's own rules do not forbid %s" % (f, n))
+    if f in LATER:
+        for n in sorted(sets["STATE"]):
+            if n not in outside:
+                fail("%s: the agent's own rules do not say %s is refused in this job" % (f, n))
+    # Every field a prompt lists for a tool is one check-trace-tools.sh accepts.
+    for tool, fields in re.findall(r"^- (Read|Glob|Grep|Write|Edit):.*Fields: ([^.]*)\.", text, re.M):
+        extra = {x.strip() for x in fields.split(",")} - FIELDS.get(tool, set())
+        if extra:
+            fail("%s: lists %s fields check-trace-tools.sh refuses: %s" % (f, tool, sorted(extra)))
+    for fields in re.findall(r"\(fields ([a-z_]+) and ([a-z_]+)\)", text):
+        if not set(fields) <= FIELDS.get("Write", set()):
+            fail("%s: lists Write fields check-trace-tools.sh refuses: %s" % (f, fields))
+    for sentence in re.findall(r"subagent call passes only (.*?)\. ", text):
+        named = set(re.findall(r"`([a-z_]+)(?:: [^`]*)?`", sentence))
+        if not named or not named <= FIELDS.get("Agent", set()):
+            fail("%s: names subagent call fields check-trace-tools.sh refuses: %s" % (f, sorted(named)))
+
+
+# poc-decide names every field the skill's confirmed branch requires, which
+# record_valid in merge-records.py enforces through report-schema.json.
+confirmed = next((b for b in mr.schema()["items"]["oneOf"] if b["properties"]["verdict"].get("const") == "confirmed"), None)
+line = next((l for l in rendered("poc-decide.md").splitlines() if l.startswith('- "confirmed" only when')), "")
+for field in (confirmed or {}).get("required", ["<schema unreadable>"]):
+    if not re.search(r"\b%s\b" % re.escape(field), line):
+        fail("poc-decide.md: the confirmed record's field list omits %s" % field)
+
+
 def json_blocks(text):
     out = []
     for block in re.findall(r"```json\n(.*?)```", text, re.S):
