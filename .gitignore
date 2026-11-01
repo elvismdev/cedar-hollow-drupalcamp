@@ -119,3 +119,4 @@
 # drupal/ai_best_practices: per-developer settings, see its README
 /ai_best_practices.yaml
 /scripts/__pycache__/
+/.github/security-audit/**/__pycache__/
