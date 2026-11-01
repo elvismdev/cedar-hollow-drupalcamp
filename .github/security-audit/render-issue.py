@@ -20,9 +20,12 @@
 # when the ledger check pointing at it names the same agent id as the
 # artifact's agents/<id>/ directory. The scripts themselves are not shown.
 #
-# The body never exceeds 60,000 characters: finding sections are cut first,
-# then table rows, then changes-section entries (fingerprints, then deferred
-# units), each cut stated with its count and issue_size added to the status.
+# The body's UTF-8 encoding never exceeds 60,000 bytes, which also bounds its
+# code points and UTF-16 units: finding sections are cut first, then table
+# rows, then changes-section entries (fingerprints, then deferred units), each
+# cut stated with its count and issue_size added to the status. If even the
+# header is too long, the body is replaced by a fixed issue_size notice and
+# the state marker, when the marker fits.
 #
 # Usage:
 #   render-issue.py --state <dir> --state-sha256 <hex> --run-id <id> \
@@ -70,7 +73,7 @@ EXCERPT = 1500
 
 SCREEN_FAILED = "Output failed or could not run the secret screen"
 BODY_LEFT_OUT = ("# Security audit\n\n**Status: incomplete (issue_size).** The body was left out because even "
-                 "its header would exceed 60,000 characters.")
+                 "its header would exceed 60,000 bytes.")
 OWNER_CHOICE = ("Attack paths, including those of High and Critical findings and of leads, "
                 "are published here by the repository owner's choice.")
 EXCLUDED_PATHS = [
@@ -543,7 +546,7 @@ def changes_section(run, kept=None):
                                                      waited if isinstance(waited, int) else 0))
     if kept is not None and kept < total:
         lines.append("")
-        lines.append("%d line(s) of the changes section left out because the issue would exceed 60,000 characters."
+        lines.append("%d line(s) of the changes section left out because the issue would exceed 60,000 bytes."
                      % (total - kept))
     return lines
 
@@ -569,39 +572,45 @@ def render(run, sections_kept, rows_kept, changes_kept=None):
         lead_rows = run.leads[:max(rows_kept - len(run.confirmed), 0)]
         lines += confirmed_table(confirmed_rows) + [""] + leads_table(lead_rows) + [""]
         if cut_rows > 0:
-            lines += ["%d table row(s) left out because the issue would exceed 60,000 characters." % cut_rows, ""]
+            lines += ["%d table row(s) left out because the issue would exceed 60,000 bytes." % cut_rows, ""]
         if cut_sections > 0:
-            lines += ["%d finding section(s) left out because the issue would exceed 60,000 characters." % cut_sections, ""]
+            lines += ["%d finding section(s) left out because the issue would exceed 60,000 bytes." % cut_sections, ""]
         for record in run.confirmed[:sections_kept]:
             lines += section(run, record)
     lines += changes_section(run, changes_kept) + marker(run)
     return "\n".join(lines) + "\n"
 
 
+def size(body):
+    """The body's length as GitHub's limit counts it here: UTF-8 bytes, which
+    are never fewer than its code points or UTF-16 units."""
+    return len(body.encode("utf-8"))
+
+
 def build(run):
     total = len(run.confirmed) + len(run.leads)
     sections = len(run.confirmed)
     body = render(run, sections, total)
-    while len(body) > MAX_BODY and sections > 0:
+    while size(body) > MAX_BODY and sections > 0:
         sections -= 1
         body = render(run, sections, total)
     rows = total
-    while len(body) > MAX_BODY and rows > 0:
+    while size(body) > MAX_BODY and rows > 0:
         rows -= 1
         body = render(run, 0, rows)
-    if len(body) > MAX_BODY:
+    if size(body) > MAX_BODY:
         low, high = 0, change_count(run)
         while low < high:
             mid = (low + high + 1) // 2
-            if len(render(run, 0, 0, mid)) <= MAX_BODY:
+            if size(render(run, 0, 0, mid)) <= MAX_BODY:
                 low = mid
             else:
                 high = mid - 1
         body = render(run, 0, 0, low)
-    if len(body) > MAX_BODY:
+    if size(body) > MAX_BODY:
         body = BODY_LEFT_OUT + "\n"
         tail = "\n".join(marker(run)) + "\n"
-        if len(body) + len(tail) <= MAX_BODY:
+        if size(body) + size(tail) <= MAX_BODY:
             body += tail
     return body
 

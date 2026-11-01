@@ -282,9 +282,9 @@ class SizeTest(RenderTest):
         self.seed(records, final_meta([r["fingerprint"] for r in records], [r["fingerprint"] for r in records]),
                   ledger=ledger)
         body = self.render()
-        self.assertLessEqual(len(body), 60000)
+        self.assertLessEqual(len(body.encode("utf-8")), 60000)
         self.assertIn("issue_size", self.line(body, "**Status:"))
-        match = re.search(r"(\d+) finding section\(s\) left out because the issue would exceed 60,000 characters",
+        match = re.search(r"(\d+) finding section\(s\) left out because the issue would exceed 60,000 bytes",
                           body)
         self.assertIsNotNone(match)
         kept = body.count("\n### ")
@@ -335,13 +335,21 @@ class BoundTest(RenderTest):
         prior = {"run_id": "8000", "sha256": SHA, "fingerprints": ["gone-%04d" % i for i in range(2000)]}
         self.seed([], final_meta(), ledger=units)
         body = self.render(marker=prior)
-        self.assertLessEqual(len(body), 60000)
+        self.assertLessEqual(len(body.encode("utf-8")), 60000)
         self.assertIn("issue_size", self.line(body, "**Status:"))
         match = re.search(r"(\d+) line\(s\) of the changes section left out because the issue would exceed "
-                          r"60,000 characters", body)
+                          r"60,000 bytes", body)
         self.assertIsNotNone(match)
         self.assertGreater(int(match.group(1)), 0)
         self.assertTrue(body.rstrip().endswith("-->"))
+
+    def test_the_bound_counts_utf8_bytes(self):
+        records = [lead("l-%04d" % i, title="\U0001F600" * 400) for i in range(400)]
+        self.seed(records, final_meta(settled=[r["fingerprint"] for r in records]))
+        body = self.render()
+        self.assertLessEqual(len(body.encode("utf-8")), 60000)
+        self.assertIn("issue_size", self.line(body, "**Status:"))
+        self.assertIn("table row(s) left out because the issue would exceed 60,000 bytes", body)
 
     def test_a_check_must_name_the_artifacts_agent(self):
         u = self.artifacts("c-1", "decider-1")
