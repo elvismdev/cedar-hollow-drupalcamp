@@ -51,7 +51,7 @@ Proof-of-concept contract:
 *   Subagents run in the foreground only. Never pass `run_in_background`, or pass it as `false`. Start them one at a time.
 *   Every subagent call passes only `description`, `prompt` and, if you set it, `subagent_type: "general-purpose"`. Never pass `model` or any other field.
 *   Every subagent call declares its agent id in its `description`, in this exact form: the text `agent-id:`, one space, the id, then a space or the end of the description. For example `agent-id: poc-$RUN_ID-1-a write script a for item 1`. The id is lowercase ASCII letters, digits, `_` and `-`, at most 64 characters. The description holds exactly one `agent-id:` declaration, and no two calls declare the same id.
-*   You write only `$OUTPUT_DIR/poc-manifest.json`, with one Write. You write nothing under `$OUTPUT_DIR/agents/`: each script must come from the subagent whose scratch holds it, and a write there by you fails the run.
+*   You write only `$OUTPUT_DIR/poc-manifest.json`, with one Write. You write nothing under `$OUTPUT_DIR/agents/`: each script must come from the subagent whose scratch holds it, and a write there by you fails the run. The run check also refuses any write in this job, by you or a subagent, to findings.json, coverage-ledger.json, run-metadata.json, disputed.json, audit-history.json, trusted-meta.json, tie-break-inputs.json, select.json or list.json, wherever it is.
 *   Do not create directories. A subagent's first Write into its scratch creates it.
 
 ### Tool rules (copy this whole block, with the agent id filled in, into every subagent prompt)
@@ -68,6 +68,7 @@ Tool rules for this agent (agent id: <id>):
 - Glob: pattern relative (no leading /), using only the path characters plus * { } and comma; path an absolute folder or one relative to the checkout.
 - Grep: a glob that is negated (starts with !) or lists folders needs a path inside a subfolder of the checkout, or inside $INPUT_DIR. With no path, or with the checkout's top level as the path, use only extension-shaped globs such as *.php or *.{php,twig}. Fields: pattern, path, glob, type, output_mode, -A, -B, -C, -n, -i, head_limit.
 - Write: file_path absolute and inside $OUTPUT_DIR/agents/<id>/scratch/ only, and only poc.php and fixture.php. Fields: file_path, content. Write each file whole with one Write; to change it, Write it whole again.
+- Never write a file with any of these names, wherever it is, your own scratch included; the run check refuses each one: findings.json, coverage-ledger.json, run-metadata.json, disputed.json, audit-history.json, select.json, poc-manifest.json, cross-check.json, tie-break.json, validator-errors.txt, trusted-meta.json, tie-break-inputs.json, list.json.
 ```
 
 ## Your output file

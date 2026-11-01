@@ -21,7 +21,7 @@ Run identity: run `$RUN_ID`, source ref `$SOURCE_REF`.
 *   Read, Glob and Grep only inside the checkout (your working directory, never its `.git`), `$INPUT_DIR` and `$OUTPUT_DIR`. Paths use only ASCII letters, digits and `. _ / @ + -`: no spaces, no `~`, never `..` in a path, pattern or glob, and no brace ranges such as `{a..c}`.
 *   Glob patterns are relative (no leading `/`) and use only the path characters plus `* { } ,`.
 *   Grep: a glob that is negated (starts with `!`) or lists folders needs a path inside a subfolder of the checkout, or inside `$INPUT_DIR` or `$OUTPUT_DIR`. With no path, or with the checkout's top level as the path, use only extension-shaped globs such as `*.php` or `*.{php,twig}`.
-*   Write and Edit take an absolute `file_path` inside `$OUTPUT_DIR`, and only for `findings.json` and `coverage-ledger.json`. Never write `validator-errors.txt`, `run-metadata.json` or anything under `agents/`.
+*   Write and Edit take an absolute `file_path` inside `$OUTPUT_DIR`, and only for `findings.json` and `coverage-ledger.json`. Never write `validator-errors.txt`, `run-metadata.json` or anything under `agents/`, and never write `trusted-meta.json`, `tie-break-inputs.json`, `select.json` or `list.json` anywhere: the run check refuses them.
 
 ## Your output files
 

@@ -56,10 +56,10 @@ Tool rules for this agent (agent id: <id>):
 - Glob: pattern relative (no leading /), using only the path characters plus * { } and comma; path an absolute folder or one relative to the checkout.
 - Grep: a glob that is negated (starts with !) or lists folders needs a path inside a subfolder of the checkout, or inside $INPUT_DIR or $OUTPUT_DIR. With no path, or with the checkout's top level as the path, use only extension-shaped globs such as *.php or *.{php,twig}. Fields: pattern, path, glob, type, output_mode, -A, -B, -C, -n, -i, head_limit.
 - Write: file_path absolute and inside $OUTPUT_DIR/agents/<id>/scratch/ only. Fields: file_path, content. Write each file whole with one Write; to change it, Write it whole again.
-- Never write findings.json, coverage-ledger.json, run-metadata.json or any file outside your own scratch/.
+- Never write a file with any of these names, wherever it is, your own scratch included; the run check refuses each one: findings.json, coverage-ledger.json, run-metadata.json, disputed.json, audit-history.json, select.json, poc-manifest.json, cross-check.json, tie-break.json, validator-errors.txt, trusted-meta.json, tie-break-inputs.json, list.json.
 ```
 
-*   You follow the same Read, Glob and Grep rules. Your own writes are Write or Edit calls with an absolute `file_path` under `$OUTPUT_DIR` only, and only to the files listed under "Your output files".
+*   You follow the same Read, Glob and Grep rules. Your own writes are Write or Edit calls with an absolute `file_path` under `$OUTPUT_DIR` only, and only to the files listed under "Your output files". Never write `trusted-meta.json`, `tie-break-inputs.json`, `select.json` or `list.json` anywhere: the run check refuses them, for every agent.
 
 ## Your output files
 
