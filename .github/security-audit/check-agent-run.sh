@@ -58,6 +58,10 @@
 #   - Every model in a result's modelUsage, and on every assistant message
 #     except Claude Code's own <synthetic> ones, is the pinned model or the
 #     allowlisted helper.
+#   - A foreground subagent hands its report back with SubagentHandback, which
+#     check-trace-tools.sh accepts only with exactly a string message and only
+#     when the allowed tools name it; it counts as a call attributed to that
+#     subagent like any other.
 #   - Every subagent call must have at least one tool call attributed to it,
 #     and if subagents were used at all (a subagent call, a task_started event
 #     or a spawned count) the trace must hold their tool calls.
