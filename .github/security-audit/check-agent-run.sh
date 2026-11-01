@@ -82,6 +82,8 @@
 #     check-trace-tools.sh accepts only with exactly a string message and only
 #     when the allowed tools name it; it counts as a call attributed to that
 #     subagent like any other.
+#   - The task_started events and the result's spawned count never exceed
+#     the subagent calls in the trace, interrupted ones included.
 #   - Every subagent call, except an interrupted one, must have at least one
 #     tool call attributed to it, and if subagents were used at all (a
 #     subagent call that was not interrupted, or with none, a task_started
@@ -346,6 +348,15 @@ for (const r of toolResults(msgs)) {
 }
 for (const [callId] of subagents) {
   if (!answered.has(callId)) refuse(callById.get(callId), 'has no result in the trace, so it cannot be shown to have finished in the foreground');
+}
+
+// Claude Code cannot start more subagents than the trace has subagent calls
+// for; more task_started events or a larger spawned count means some
+// subagent's call is missing. Interruptions do not relax this.
+const subagentCalls = calls.filter(({ c }) => SUBAGENT_TOOLS.has(c.name)).length;
+if (started > subagentCalls || spawned > subagentCalls) {
+  bad += 1;
+  say(`the trace reports ${Math.max(started, spawned)} subagent start(s) for ${subagentCalls} subagent call(s)`);
 }
 
 // Brace expansion shared with check-trace-tools.sh: an array of expansions,

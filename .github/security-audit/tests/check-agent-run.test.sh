@@ -156,6 +156,17 @@ trace "$tmp/t.json" "${CLEAN[@]}" "$(agent ta2 "agent-id: h02 hunt" false "Done,
 assert_eq "1" "$(rc source "$tmp/t.json")" "a report only quoting the interruption is not one, so a subagent with no calls still fails"
 launch_trace "[{\"type\":\"text\",\"text\":\"$LAUNCH successfully. agentId: a1b2\"}]"
 assert_eq "1" "$(rc source "$tmp/t.json")" "an async launch still fails alongside the interruption rule"
+# More subagent starts than subagent calls means a call is missing from the
+# trace, and an interruption does not excuse it.
+started_event () { printf '{"type":"system","subtype":"task_started","tool_use_id":"%s","is_backgrounded":false}' "$1"; }
+trace "$tmp/t.json" "$INIT" "$(agent ta2 "agent-id: h02 hunt" false "$INTERRUPTION")" \
+  "$(started_event ta2)" "$(started_event tx1)" "$(started_event tx2)" "$(result "$M")"
+assert_eq "1" "$(rc source "$tmp/t.json")" "one interrupted call with three task_started events fails"
+assert_contains "$(run source "$tmp/t.json")" "3 subagent start(s) for 1 subagent call(s)" "and says why"
+trace "$tmp/t.json" "$INIT" "$(agent ta2 "agent-id: h02 hunt" false "$INTERRUPTION")" "$(started_event ta2)" "$(result "$M")"
+assert_eq "0" "$(rc source "$tmp/t.json")" "one interrupted call with its one task_started event passes"
+trace "$tmp/t.json" "${CLEAN[@]}" '{"type":"result","subtype":"success","modelUsage":{},"subagent_stats":{"spawned":2,"started_in_background":0}}'
+assert_eq "1" "$(rc source "$tmp/t.json")" "a spawned count above the subagent calls fails"
 # A subagent call with no result cannot be shown to have finished.
 trace "$tmp/t.json" "${CLEAN[@]}" "$(agent ta2 "agent-id: h02 hunt" false none)" "$(sub ta2 Read "{\"file_path\":\"$WS/tracked.txt\"}")" "$(result "$M")"
 assert_eq "1" "$(rc source "$tmp/t.json")" "a subagent call with no result fails"
