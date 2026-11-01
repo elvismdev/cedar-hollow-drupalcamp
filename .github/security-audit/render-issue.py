@@ -50,21 +50,32 @@
 # marker is written only when the state was read and its sha256 is given; the
 # screen-failure body has none.
 import argparse
-import errno
 import functools
 import html
+import importlib.util
 import json
 import os
 import re
-import stat
 import sys
 import unicodedata
 
-FINDINGS = "findings.json"
-LEDGER = "coverage-ledger.json"
-METADATA = "run-metadata.json"
-DISPUTED = "disputed.json"
-HISTORY = "audit-history.json"
+HERE = os.path.dirname(os.path.abspath(__file__))
+
+
+def _load_shared():
+    """audit_records.py from this script's directory, by path, so python3 -I
+    (which leaves the script's directory off sys.path) still finds it."""
+    spec = importlib.util.spec_from_file_location("audit_records", os.path.join(HERE, "audit_records.py"))
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+_shared = _load_shared()
+FINDINGS, LEDGER, METADATA = _shared.FINDINGS, _shared.LEDGER, _shared.METADATA
+DISPUTED, HISTORY, TRUSTED_META = _shared.DISPUTED, _shared.HISTORY, _shared.TRUSTED_META
+FINGERPRINT = _shared.FINGERPRINT
+Refused = _shared.Refused
 
 MAX_STATE_BYTES = 5 * 1024 * 1024
 MAX_ARTIFACT_BYTES = 1024 * 1024
@@ -82,7 +93,6 @@ EXCLUDED_PATHS = [
     "every other path outside the scope",
 ]
 
-FINGERPRINT = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:/@+-]*$")
 SHA256 = re.compile(r"^[0-9a-f]{64}$")
 COMMIT = re.compile(r"^[0-9a-f]{7,64}$")
 RUN_ID = re.compile(r"^[1-9][0-9]{0,19}$")
@@ -106,52 +116,8 @@ STRIPS = (
 MAX_CLEAN_PASSES = 20
 
 
-class Refused(Exception):
-    pass
-
-
-# ---------------------------------------------------------------- reading
-
-
-def _unique_pairs(pairs):
-    out = {}
-    for key, value in pairs:
-        if key in out:
-            raise ValueError("duplicate key")
-        out[key] = value
-    return out
-
-
-def _reject_constant(name):
-    raise ValueError("non-finite number")
-
-
-def read_fd_json(fd, limit):
-    info = os.fstat(fd)
-    if not stat.S_ISREG(info.st_mode) or info.st_size > limit:
-        raise Refused("not a regular file under the limit")
-    data = b""
-    while True:
-        chunk = os.read(fd, 65536)
-        if not chunk:
-            break
-        data += chunk
-        if len(data) > limit:
-            raise Refused("oversized")
-    return json.loads(data.decode("utf-8"), object_pairs_hook=_unique_pairs, parse_constant=_reject_constant)
-
-
 def read_json(path, limit=MAX_STATE_BYTES, dir_fd=None):
-    try:
-        fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=dir_fd)
-    except OSError as err:
-        if err.errno in (errno.ELOOP, errno.EMLINK):
-            raise Refused("symlink")
-        raise
-    try:
-        return read_fd_json(fd, limit)
-    finally:
-        os.close(fd)
+    return _shared.read_json(path, limit, dir_fd)
 
 
 def optional_json(path, kind, default):

@@ -88,6 +88,7 @@
 import argparse
 import errno
 import hashlib
+import importlib.util
 import json
 import os
 import re
@@ -98,11 +99,22 @@ import unicodedata
 HERE = os.path.dirname(os.path.abspath(__file__))
 SCHEMA_PATH = os.path.join(HERE, "skill", "report-schema.json")
 
-FINDINGS = "findings.json"
-LEDGER = "coverage-ledger.json"
-METADATA = "run-metadata.json"
-DISPUTED = "disputed.json"
-HISTORY = "audit-history.json"
+
+def _load_shared():
+    """audit_records.py from this script's directory, by path, so python3 -I
+    (which leaves the script's directory off sys.path) still finds it."""
+    spec = importlib.util.spec_from_file_location("audit_records", os.path.join(HERE, "audit_records.py"))
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+_shared = _load_shared()
+FINDINGS, LEDGER, METADATA = _shared.FINDINGS, _shared.LEDGER, _shared.METADATA
+DISPUTED, HISTORY, TRUSTED_META = _shared.DISPUTED, _shared.HISTORY, _shared.TRUSTED_META
+FINGERPRINT = _shared.FINGERPRINT
+Refused = _shared.Refused
+parse_strict, read_bytes, read_json = _shared.parse_strict, _shared.read_bytes, _shared.read_json
 
 MAX_STATE_BYTES = 5 * 1024 * 1024
 MAX_ENTRY_BYTES = 1024 * 1024
@@ -119,7 +131,6 @@ PROMOTION_FAILED = "poc evidence promotion failed"
 DISPUTE_UNRESOLVED = "cross-check dispute unresolved"
 NOT_INDEPENDENT = "poc scripts not independent"
 
-FINGERPRINT = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:/@+-]*$")
 AGENT_ID = re.compile(r"^[a-z0-9][a-z0-9_-]{0,63}$")
 WINDOWS_AGENT_ID = re.compile(r"^(?:con|prn|aux|nul|com[1-9]|lpt[1-9])$")
 WINDOWS_COMPONENT = re.compile(
@@ -148,83 +159,6 @@ DEFAULT_IGNORABLE = (
     (0xFFA0, 0xFFA0), (0xFFF0, 0xFFF8), (0x1BCA0, 0x1BCA3), (0x1D173, 0x1D17A),
     (0xE0000, 0xE0FFF),
 )
-
-
-class Refused(Exception):
-    """A state file or argument that cannot be used safely; nothing is written."""
-
-
-# ---------------------------------------------------------------- reading
-
-
-def _reject_constant(name):
-    raise ValueError("non-finite number")
-
-
-def _unique_pairs(pairs):
-    out = {}
-    for key, value in pairs:
-        if key in out:
-            raise ValueError("duplicate key")
-        out[key] = value
-    return out
-
-
-def parse_strict(data):
-    """One JSON value from UTF-8 bytes: no duplicate keys, NaN or Infinity."""
-    text = data.decode("utf-8")
-    try:
-        return json.loads(text, object_pairs_hook=_unique_pairs, parse_constant=_reject_constant)
-    except RecursionError:
-        raise ValueError("nested too deeply")
-
-
-def read_fd(fd, limit):
-    """Reads a regular file with one link and at most limit bytes from an open
-    descriptor, refusing one that changes while it is read. Returns the bytes."""
-    before = os.fstat(fd)
-    if not stat.S_ISREG(before.st_mode):
-        raise Refused("not a regular file")
-    if before.st_nlink != 1:
-        raise Refused("hardlinked")
-    if before.st_size > limit:
-        raise Refused("oversized")
-    chunks, total = [], 0
-    while True:
-        chunk = os.read(fd, 65536)
-        if not chunk:
-            break
-        total += len(chunk)
-        if total > limit:
-            raise Refused("oversized")
-        chunks.append(chunk)
-    after = os.fstat(fd)
-    if (after.st_dev, after.st_ino, after.st_nlink, after.st_size, stat.S_IFMT(after.st_mode)) != (
-        before.st_dev, before.st_ino, before.st_nlink, before.st_size, stat.S_IFMT(before.st_mode)
-    ) or total != before.st_size:
-        raise Refused("changed while read")
-    return b"".join(chunks)
-
-
-def open_nofollow(path, dir_fd=None):
-    try:
-        return os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=dir_fd)
-    except OSError as err:
-        if err.errno in (errno.ELOOP, errno.EMLINK):
-            raise Refused("symlink")
-        raise
-
-
-def read_bytes(path, limit, dir_fd=None):
-    fd = open_nofollow(path, dir_fd)
-    try:
-        return read_fd(fd, limit)
-    finally:
-        os.close(fd)
-
-
-def read_json(path, limit):
-    return parse_strict(read_bytes(path, limit))
 
 
 def write_json(path, value):
