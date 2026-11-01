@@ -456,3 +456,63 @@ jobs:
           fi
           echo "cause=$cause" >> "$GITHUB_OUTPUT"
           echo "source job: $cause"
+
+  # The throwaway site the proof-of-concept scripts run against: public code,
+  # demo content and two accounts made for this run, never deployed.
+  build-site:
+    needs: prepare
+    if: needs.prepare.outputs.go == 'true' && github.ref == 'refs/heads/main' && contains(fromJSON(needs.prepare.outputs.run_jobs), 'build-site')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    outputs:
+      sha256: ${{ steps.pack.outputs.sha256 }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - uses: shivammathur/setup-php@eb7c497e18156a6bbabfef1d3a82760b9eda3962 # v2
+        with:
+          php-version: '8.3'
+          extensions: pdo_sqlite, gd, curl
+          tools: composer:v2
+          coverage: none
+
+      - name: Copy the configuration with the sqlite driver added
+        run: bash .github/security-audit/sqlite-config.sh "$RUNNER_TEMP/config-sqlite"
+
+      # COMPOSER is unset because Composer reads it as the name of its
+      # project file. The SQLite URL carries a host because Drupal drops the
+      # host part, leaving the path relative to the docroot.
+      - name: Build the site on SQLite
+        env:
+          REBUILD_COMPOSER: composer
+          REBUILD_DRUSH: vendor/bin/drush
+          REBUILD_DB_URL: sqlite://localhost/sites/default/files/.ht.sqlite
+          REBUILD_RECIPE_PATH: ../recipes/cedar_hollow_demo_content
+          REBUILD_SKIP_IMAGE_CHECK: '1'
+        run: env -u COMPOSER REBUILD_CONFIG_DIR="$RUNNER_TEMP/config-sqlite" bash scripts/rebuild.sh
+
+      # accounts.json sits beside composer.json, outside the docroot web/, so
+      # the site never serves it.
+      - name: Create the test accounts
+        run: vendor/bin/drush php:script "$GITHUB_WORKSPACE/.github/security-audit/create-test-accounts.php" "$GITHUB_WORKSPACE/accounts.json"
+
+      # A tarball keeps hidden files (the SQLite database) and file modes; the
+      # explicit list leaves .git out.
+      - name: Pack the site
+        id: pack
+        run: |
+          mkdir -p "$RUNNER_TEMP/site"
+          tar -C "$GITHUB_WORKSPACE" -czf "$RUNNER_TEMP/site/audit-site.tar.gz" \
+            composer.json composer.lock vendor web config recipes accounts.json
+          echo "sha256=$(sha256sum "$RUNNER_TEMP/site/audit-site.tar.gz" | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: audit-site
+          path: ${{ runner.temp }}/site/audit-site.tar.gz
+          retention-days: 1
+          if-no-files-found: error
