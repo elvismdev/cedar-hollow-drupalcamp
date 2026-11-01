@@ -494,11 +494,12 @@ jobs:
 
       # One fixed label for the report: a failed run check first, then
       # records that never passed the validators, then the last agent step's
-      # outcome.
+      # outcome, which is never ok when a trusted step after it failed.
       - name: Name the job's cause
         id: cause
         if: always()
         env:
+          JOB_STATUS: ${{ job.status }}
           CHECK_SOURCE: ${{ steps.check-source.outcome }}
           CHECK_REPAIR: ${{ steps.check-repair.outcome }}
           VALIDATORS: ${{ steps.validators-final.outputs.validators }}
@@ -509,8 +510,10 @@ jobs:
           elif [ "$VALIDATORS" = fail ]; then cause=validators_failed
           elif [ -n "$OUTCOME_REPAIR" ]; then cause="$OUTCOME_REPAIR"
           elif [ -n "$OUTCOME_SOURCE" ]; then cause="$OUTCOME_SOURCE"
-          else cause=job_failed
+          else cause=no_agent_ran
           fi
+          # An ok agent step followed by a failed trusted step is not an ok job.
+          if [ "$JOB_STATUS" != success ] && [ "$cause" = ok ]; then cause=agent_failed; fi
           echo "cause=$cause" >> "$GITHUB_OUTPUT"
           echo "source job: $cause"
 
@@ -823,13 +826,16 @@ jobs:
         id: cause
         if: always()
         env:
+          JOB_STATUS: ${{ job.status }}
           CHECK: ${{ steps.check-poc-write.outcome }}
           OUTCOME: ${{ steps.outcome-poc-write.outputs.cause }}
         run: |
           if [ "$CHECK" = failure ]; then cause=run_check_failed
           elif [ -n "$OUTCOME" ]; then cause="$OUTCOME"
-          else cause=job_failed
+          else cause=no_agent_ran
           fi
+          # An ok agent step followed by a failed trusted step is not an ok job.
+          if [ "$JOB_STATUS" != success ] && [ "$cause" = ok ]; then cause=agent_failed; fi
           echo "cause=$cause" >> "$GITHUB_OUTPUT"
           echo "poc-write job: $cause"
 
@@ -1252,13 +1258,16 @@ jobs:
         id: cause
         if: always()
         env:
+          JOB_STATUS: ${{ job.status }}
           CHECK: ${{ steps.check-poc-decide.outcome }}
           OUTCOME: ${{ steps.outcome-poc-decide.outputs.cause }}
         run: |
           if [ "$CHECK" = failure ]; then cause=run_check_failed
           elif [ -n "$OUTCOME" ]; then cause="$OUTCOME"
-          else cause=job_failed
+          else cause=no_agent_ran
           fi
+          # An ok agent step followed by a failed trusted step is not an ok job.
+          if [ "$JOB_STATUS" != success ] && [ "$cause" = ok ]; then cause=agent_failed; fi
           echo "cause=$cause" >> "$GITHUB_OUTPUT"
           echo "poc-decide job: $cause"
 
@@ -1593,6 +1602,7 @@ jobs:
         id: cause
         if: always()
         env:
+          JOB_STATUS: ${{ job.status }}
           CHECK: ${{ steps.check-cross-check.outcome }}
           CHECK_TIE_BREAK: ${{ steps.check-tie-break.outcome }}
           OUTCOME: ${{ steps.outcome-cross-check.outputs.cause }}
@@ -1602,8 +1612,10 @@ jobs:
           elif [ -n "$OUTCOME" ] && [ "$OUTCOME" != ok ]; then cause="$OUTCOME"
           elif [ -n "$OUTCOME_TIE_BREAK" ]; then cause="$OUTCOME_TIE_BREAK"
           elif [ -n "$OUTCOME" ]; then cause="$OUTCOME"
-          else cause=job_failed
+          else cause=no_agent_ran
           fi
+          # An ok agent step followed by a failed trusted step is not an ok job.
+          if [ "$JOB_STATUS" != success ] && [ "$cause" = ok ]; then cause=agent_failed; fi
           echo "cause=$cause" >> "$GITHUB_OUTPUT"
           echo "cross-check job: $cause"
 

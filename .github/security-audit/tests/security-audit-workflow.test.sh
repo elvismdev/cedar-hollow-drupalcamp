@@ -21,7 +21,7 @@ python3 -I -c 'import yaml' 2>/dev/null || { echo "FAIL: PyYAML is not installed
 # check <workflow file>: prints each failed assertion, exits 1 if any failed.
 check() {
   python3 -I - "$1" "$ROOT" <<'PY'
-import json, re, shlex, sys, yaml
+import json, os, re, shlex, subprocess, sys, tempfile, yaml
 
 path, root = sys.argv[1], sys.argv[2]
 wf = yaml.safe_load(open(path))
@@ -326,6 +326,37 @@ if "judge-canary.sh reopen-records -" not in (reopen.get("run") or "") \
         or "needs.prepare.outputs.canary == 'reopen-records'" not in norm(reopen.get("if")):
     err("poc-run must judge reopen-records with judge-canary.sh on a reopen-records run only")
 
+# ---------------------------------------------------------------- job causes
+# Each agent job's cause step is run as written: with every agent outcome ok
+# and a failed trusted step (job.status failure) it must not say ok, and the
+# label must be one render-issue.py can show and the scripts already use.
+outcome_src = read(SA + "/agent-outcome.sh")
+LABELS = set(re.findall(r"^#   ([a-z_]+) ", outcome_src, re.M)) | {"run_check_failed", "validators_failed"}
+LABEL = re.compile(r"^[a-z0-9_:. -]{1,80}$")
+def run_cause(step, status):
+    env = {"PATH": os.environ["PATH"]}
+    for k in (step.get("env") or {}):
+        env[k] = "ok" if k.startswith("OUTCOME") else "success" if k.startswith("CHECK") else \
+            "pass" if k == "VALIDATORS" else ""
+    env["JOB_STATUS"] = status
+    with tempfile.NamedTemporaryFile("r", suffix=".out") as out:
+        env["GITHUB_OUTPUT"] = out.name
+        subprocess.run(["bash", "-e", "-c", step.get("run") or "exit 1"], env=env, capture_output=True)
+        found = re.findall(r"^cause=(.*)$", open(out.name).read(), re.M)
+    return found[-1] if found else None
+for name in ("source", "poc-write", "poc-decide", "cross-check"):
+    step = next((st for st in (jobs.get(name) or {}).get("steps") or [] if st.get("id") == "cause"), None)
+    if step is None:
+        err("%s has no cause step" % name)
+        continue
+    if norm((step.get("env") or {}).get("JOB_STATUS")) != "${{ job.status }}" or "always()" not in norm(step.get("if")):
+        err("%s cause step must run with always() and read job.status" % name)
+    failing, passing = run_cause(step, "failure"), run_cause(step, "success")
+    if failing in (None, "ok") or failing not in LABELS or not LABEL.match(failing):
+        err("%s cause after a failed trusted step must be a known label other than ok, got %r" % (name, failing))
+    if passing != "ok":
+        err("%s cause with an ok agent and a succeeding job must be ok, got %r" % (name, passing))
+
 # ---------------------------------------------------------------- key canaries
 for name, own, other, key in (("source", "agents", "sandbox", "AUDIT_AGENTS_AGE_KEY"),
                               ("poc-run", "sandbox", "agents", "AUDIT_SANDBOX_AGE_KEY")):
@@ -507,5 +538,7 @@ mutate "the canary trace kept two days" '("name: canary-trace-poc-write\n       
 mutate "the judge reading the wrong run check" '("RUN_CHECK_OUTCOME: ${{ steps.check-poc-write.outcome }}", "RUN_CHECK_OUTCOME: ${{ steps.outcome-poc-write.outcome }}", 1)'
 mutate "sandbox-secrets not judged" '("bash .github/security-audit/judge-canary.sh sandbox-secrets -", "true", 1)'
 mutate "the judge with a missing argument" '("judge-canary.sh reopen-records - \"$f\"", "judge-canary.sh reopen-records", 1)'
+
+mutate "an ok cause after a failed trusted step" '("          if [ \"$JOB_STATUS\" != success ] && [ \"$cause\" = ok ]; then cause=agent_failed; fi\n          echo \"cause=$cause\" >> \"$GITHUB_OUTPUT\"\n          echo \"poc-decide job: $cause\"", "          echo \"cause=$cause\" >> \"$GITHUB_OUTPUT\"\n          echo \"poc-decide job: $cause\"", 1)'
 
 pass "security-audit workflow structure"
