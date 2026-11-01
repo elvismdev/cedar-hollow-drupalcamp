@@ -124,24 +124,7 @@ jobs:
       - name: Check the agents key against both public keys
         env:
           AUDIT_AGENTS_AGE_KEY: ${{ secrets.AUDIT_AGENTS_AGE_KEY }}
-        run: |
-          dir=$(mktemp -d)
-          mkdir "$dir/in" "$dir/open" "$dir/other"
-          token=$(od -An -tx1 -N32 /dev/urandom | tr -d ' \n')
-          printf '%s\n' "$token" > "$dir/in/token"
-          own=$(bash .github/security-audit/seal.sh seal .github/security-audit/keys/agents.pub "$dir/in" "$dir/own.age")
-          if ! bash .github/security-audit/seal.sh open AUDIT_AGENTS_AGE_KEY "$own" "$dir/own.age" "$dir/open" \
-            || [ "$(cat "$dir/open/token")" != "$token" ]; then
-            echo "::error::a token sealed to agents.pub did not open to itself with AUDIT_AGENTS_AGE_KEY"
-            exit 1
-          fi
-          other=$(bash .github/security-audit/seal.sh seal .github/security-audit/keys/sandbox.pub "$dir/in" "$dir/other.age")
-          if bash .github/security-audit/seal.sh open AUDIT_AGENTS_AGE_KEY "$other" "$dir/other.age" "$dir/other"; then
-            echo "::error::AUDIT_AGENTS_AGE_KEY opened a token sealed to sandbox.pub"
-            exit 1
-          fi
-          rm -rf "$dir"
-          echo "AUDIT_AGENTS_AGE_KEY opens what is sealed to agents.pub and not what is sealed to sandbox.pub"
+        run: bash .github/security-audit/check-key-pair.sh AUDIT_AGENTS_AGE_KEY .github/security-audit/keys/agents.pub .github/security-audit/keys/sandbox.pub
 
       # A canary that tests the source agent runs the agent with its canary
       # prompt and no merge or hand-off; a canary that tests a later job skips
@@ -345,20 +328,12 @@ jobs:
           TRACE: ${{ steps.agent-source.outputs.execution_file }}
         run: python3 -I .github/security-audit/merge-records.py --state "$AUDIT_OUTPUT_DIR" count --job source --cap 60 --trace "$TRACE"
 
-      # The validators' output can quote record text, so it goes only to
-      # validator-errors.txt, which the repair agent reads and the hand-off
-      # seals; the log shows exit codes and a count.
+      # run-validators.sh writes the validators' text only to
+      # validator-errors.txt; the log shows exit codes and a count.
       - name: Validators (after the source agent)
         id: validators-source
         if: always() && steps.check-source.outcome == 'success' && steps.plan.outputs.merge == 'true'
-        run: |
-          errors="$AUDIT_OUTPUT_DIR/validator-errors.txt"
-          f=0 l=0
-          node .github/security-audit/skill/validate-findings.cjs "$AUDIT_OUTPUT_DIR/findings.json" > "$errors" 2>&1 || f=$?
-          node .github/security-audit/skill/validate-coverage-ledger.cjs "$AUDIT_OUTPUT_DIR/coverage-ledger.json" >> "$errors" 2>&1 || l=$?
-          echo "validate-findings exit $f, validate-coverage-ledger exit $l, $(grep -c '^ERROR' "$errors" || true) error line(s)"
-          if [ "$f" -eq 0 ] && [ "$l" -eq 0 ]; then result=pass; else result=fail; fi
-          echo "validators=$result" >> "$GITHUB_OUTPUT"
+        run: bash .github/security-audit/run-validators.sh "$AUDIT_OUTPUT_DIR" >> "$GITHUB_OUTPUT"
 
       - name: Compose the repair agent's arguments
         id: args-repair
@@ -442,14 +417,7 @@ jobs:
       - name: Validators (after the repair agent)
         id: validators-repair
         if: always() && steps.check-repair.outcome == 'success'
-        run: |
-          errors="$AUDIT_OUTPUT_DIR/validator-errors.txt"
-          f=0 l=0
-          node .github/security-audit/skill/validate-findings.cjs "$AUDIT_OUTPUT_DIR/findings.json" > "$errors" 2>&1 || f=$?
-          node .github/security-audit/skill/validate-coverage-ledger.cjs "$AUDIT_OUTPUT_DIR/coverage-ledger.json" >> "$errors" 2>&1 || l=$?
-          echo "validate-findings exit $f, validate-coverage-ledger exit $l, $(grep -c '^ERROR' "$errors" || true) error line(s)"
-          if [ "$f" -eq 0 ] && [ "$l" -eq 0 ]; then result=pass; else result=fail; fi
-          echo "validators=$result" >> "$GITHUB_OUTPUT"
+        run: bash .github/security-audit/run-validators.sh "$AUDIT_OUTPUT_DIR" >> "$GITHUB_OUTPUT"
 
       - name: Stop when the records still fail the validators
         id: validators-final
@@ -881,24 +849,7 @@ jobs:
       - name: Check the sandbox key against both public keys
         env:
           AUDIT_SANDBOX_AGE_KEY: ${{ secrets.AUDIT_SANDBOX_AGE_KEY }}
-        run: |
-          dir=$(mktemp -d)
-          mkdir "$dir/in" "$dir/open" "$dir/other"
-          token=$(od -An -tx1 -N32 /dev/urandom | tr -d ' \n')
-          printf '%s\n' "$token" > "$dir/in/token"
-          own=$(bash .github/security-audit/seal.sh seal .github/security-audit/keys/sandbox.pub "$dir/in" "$dir/own.age")
-          if ! bash .github/security-audit/seal.sh open AUDIT_SANDBOX_AGE_KEY "$own" "$dir/own.age" "$dir/open" \
-            || [ "$(cat "$dir/open/token")" != "$token" ]; then
-            echo "::error::a token sealed to sandbox.pub did not open to itself with AUDIT_SANDBOX_AGE_KEY"
-            exit 1
-          fi
-          other=$(bash .github/security-audit/seal.sh seal .github/security-audit/keys/agents.pub "$dir/in" "$dir/other.age")
-          if bash .github/security-audit/seal.sh open AUDIT_SANDBOX_AGE_KEY "$other" "$dir/other.age" "$dir/other"; then
-            echo "::error::AUDIT_SANDBOX_AGE_KEY opened a token sealed to agents.pub"
-            exit 1
-          fi
-          rm -rf "$dir"
-          echo "AUDIT_SANDBOX_AGE_KEY opens what is sealed to sandbox.pub and not what is sealed to agents.pub"
+        run: bash .github/security-audit/check-key-pair.sh AUDIT_SANDBOX_AGE_KEY .github/security-audit/keys/sandbox.pub .github/security-audit/keys/agents.pub
 
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
         with:
@@ -1150,29 +1101,14 @@ jobs:
           name: poc-run-records
           path: ${{ runner.temp }}/handoff/records
 
-      # Only the records in poc-run's name-to-sha256 map are opened, each
-      # checked against its sha256 and required to hold exactly one regular
-      # file with its own name.
+      # open-records.sh opens only the records in poc-run's name-to-sha256
+      # map, each checked against its sha256.
       - name: Check and open the run records
         if: needs.poc-run.outputs.records != '{}'
         env:
           AUDIT_AGENTS_AGE_KEY: ${{ secrets.AUDIT_AGENTS_AGE_KEY }}
           RECORDS: ${{ needs.poc-run.outputs.records }}
-        run: |
-          jq -r 'to_entries[] | "\(.key) \(.value)"' <<<"$RECORDS" | while read -r name sum; do
-            if ! [[ "$name" =~ ^poc-run-[1-9][0-9]*-[ab]$ && "$sum" =~ ^[0-9a-f]{64}$ ]]; then
-              echo "::error::malformed entry in the run record map"
-              exit 1
-            fi
-            dir=$(mktemp -d)
-            bash .github/security-audit/seal.sh open AUDIT_AGENTS_AGE_KEY "$sum" "$RUNNER_TEMP/handoff/records/$name.age" "$dir"
-            if [ "$(find "$dir" -mindepth 1 -printf '%P\n')" != "$name.json" ] || [ -L "$dir/$name.json" ] || [ ! -f "$dir/$name.json" ]; then
-              echo "::error::$name does not hold exactly one regular file $name.json"
-              exit 1
-            fi
-            mv "$dir/$name.json" "$AUDIT_INPUT_DIR/records/"
-            rmdir "$dir"
-          done
+        run: bash .github/security-audit/open-records.sh AUDIT_AGENTS_AGE_KEY "$RECORDS" "$RUNNER_TEMP/handoff/records" "$AUDIT_INPUT_DIR/records"
 
       - name: Compose the poc-decide agent's arguments
         id: args-poc-decide
@@ -1261,14 +1197,7 @@ jobs:
       - name: Validators (after the decisions)
         id: validators
         if: always() && steps.check-poc-decide.outcome == 'success' && steps.plan.outputs.merge == 'true'
-        run: |
-          errors="$AUDIT_OUTPUT_DIR/validator-errors.txt"
-          f=0 l=0
-          node .github/security-audit/skill/validate-findings.cjs "$AUDIT_OUTPUT_DIR/findings.json" > "$errors" 2>&1 || f=$?
-          node .github/security-audit/skill/validate-coverage-ledger.cjs "$AUDIT_OUTPUT_DIR/coverage-ledger.json" >> "$errors" 2>&1 || l=$?
-          echo "validate-findings exit $f, validate-coverage-ledger exit $l, $(grep -c '^ERROR' "$errors" || true) error line(s)"
-          if [ "$f" -eq 0 ] && [ "$l" -eq 0 ]; then result=pass; else result=fail; fi
-          echo "validators=$result" >> "$GITHUB_OUTPUT"
+        run: bash .github/security-audit/run-validators.sh "$AUDIT_OUTPUT_DIR" >> "$GITHUB_OUTPUT"
 
       - name: Seal audit-poc to the agents key
         id: handoff
@@ -1423,21 +1352,7 @@ jobs:
         env:
           AUDIT_AGENTS_AGE_KEY: ${{ secrets.AUDIT_AGENTS_AGE_KEY }}
           RECORDS: ${{ needs.poc-run.outputs.records }}
-        run: |
-          jq -r 'to_entries[] | "\(.key) \(.value)"' <<<"$RECORDS" | while read -r name sum; do
-            if ! [[ "$name" =~ ^poc-run-[1-9][0-9]*-[ab]$ && "$sum" =~ ^[0-9a-f]{64}$ ]]; then
-              echo "::error::malformed entry in the run record map"
-              exit 1
-            fi
-            dir=$(mktemp -d)
-            bash .github/security-audit/seal.sh open AUDIT_AGENTS_AGE_KEY "$sum" "$RUNNER_TEMP/handoff/records/$name.age" "$dir"
-            if [ "$(find "$dir" -mindepth 1 -printf '%P\n')" != "$name.json" ] || [ -L "$dir/$name.json" ] || [ ! -f "$dir/$name.json" ]; then
-              echo "::error::$name does not hold exactly one regular file $name.json"
-              exit 1
-            fi
-            mv "$dir/$name.json" "$AUDIT_INPUT_DIR/records/"
-            rmdir "$dir"
-          done
+        run: bash .github/security-audit/open-records.sh AUDIT_AGENTS_AGE_KEY "$RECORDS" "$RUNNER_TEMP/handoff/records" "$AUDIT_INPUT_DIR/records"
 
       - name: Mark the selected items with the failed proof-of-concept phase
         if: steps.choose.outputs.failed != '' && steps.plan.outputs.merge == 'true'
@@ -1626,14 +1541,7 @@ jobs:
       - name: Validators (after the cross-check)
         id: validators
         if: steps.plan.outputs.merge == 'true'
-        run: |
-          errors="$AUDIT_OUTPUT_DIR/validator-errors.txt"
-          f=0 l=0
-          node .github/security-audit/skill/validate-findings.cjs "$AUDIT_OUTPUT_DIR/findings.json" > "$errors" 2>&1 || f=$?
-          node .github/security-audit/skill/validate-coverage-ledger.cjs "$AUDIT_OUTPUT_DIR/coverage-ledger.json" >> "$errors" 2>&1 || l=$?
-          echo "validate-findings exit $f, validate-coverage-ledger exit $l, $(grep -c '^ERROR' "$errors" || true) error line(s)"
-          if [ "$f" -eq 0 ] && [ "$l" -eq 0 ]; then result=pass; else result=fail; fi
-          echo "validators=$result" >> "$GITHUB_OUTPUT"
+        run: bash .github/security-audit/run-validators.sh "$AUDIT_OUTPUT_DIR" >> "$GITHUB_OUTPUT"
 
       - name: Seal audit-final to the agents key
         id: handoff

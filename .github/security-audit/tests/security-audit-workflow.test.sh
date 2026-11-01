@@ -206,7 +206,7 @@ for name, job in jobs.items():
         check_id = check.get("id")
         for st in window:
             body = st.get("run") or ""
-            gated = "merge-records.py" in body or "validate-findings.cjs" in body
+            gated = "merge-records.py" in body or "run-validators.sh" in body
             if gated and "always()" in norm(st.get("if")) \
                     and "steps.%s.outcome == 'success'" % check_id not in norm(st.get("if")):
                 err("%s step %r after %s runs with always() without requiring the run check %s" % (name, st.get("name"), aid, check_id))
@@ -235,7 +235,7 @@ for name, job in jobs.items():
                 err("%s hand-off step %r must be guarded by steps.plan.outputs.handoff" % (name, st.get("name") or st.get("uses")))
     if name in ("source", "poc-write", "poc-decide", "cross-check"):
         for st in steps:
-            if "merge-records.py" in (st.get("run") or "") or "validate-findings.cjs" in (st.get("run") or ""):
+            if "merge-records.py" in (st.get("run") or "") or "run-validators.sh" in (st.get("run") or ""):
                 c = norm(st.get("if"))
                 if "steps.plan.outputs.merge == 'true'" not in c and "steps.check-repair.outcome" not in c:
                     err("%s step %r must be skipped on a canary run (steps.plan.outputs.merge)" % (name, st.get("name")))
@@ -382,23 +382,22 @@ for st in (jobs.get("poc-run") or {}).get("steps") or []:
 
 # ---------------------------------------------------------------- hand-off hashes
 # Every seal.sh open takes its expected sha256 from a needs.<job>.outputs value
-# (or a step that copies one) through env:, never computed in the step. The
-# key canaries open a token they sealed themselves, and the record opener's
-# sha comes from poc-run's record map.
+# (or a step that copies one) through env:, never computed in the step, and
+# open-records.sh takes poc-run's record map, which holds each record's sha256.
 SHA_SOURCE = re.compile(r"^\$\{\{ (needs\.[a-z-]+\.outputs\.[a-z_0-9]+|steps\.(choose|prior)\.outputs\.sha256) \}\}$")
 for name, job in jobs.items():
     for st in (job or {}).get("steps") or []:
         body = st.get("run") or ""
         for m in re.finditer(r'seal\.sh open [A-Z_]+ "\$(?:\{)?([A-Za-z_][A-Za-z0-9_]*)', body):
             var = m.group(1)
-            if var in ("own", "other") and "/dev/urandom" in body:
-                continue
-            if var == "sum" and norm((st.get("env") or {}).get("RECORDS")) == "${{ needs.poc-run.outputs.records }}" \
-                    and '<<<"$RECORDS" | while read -r name sum' in body and not re.search(r"\bsum=", body):
-                continue
             value = norm((st.get("env") or {}).get(var))
             if not SHA_SOURCE.match(value) or re.search(r"(^|[\s;(])%s=" % re.escape(var), body):
                 err("%s step %r opens a hand-off with a sha256 not taken from needs.<job>.outputs: $%s" % (name, st.get("name"), var))
+        if "open-records.sh" in body and (
+                'open-records.sh AUDIT_AGENTS_AGE_KEY "$RECORDS" ' not in body
+                or norm((st.get("env") or {}).get("RECORDS")) != "${{ needs.poc-run.outputs.records }}"
+                or re.search(r"(^|[\s;(])RECORDS=", body)):
+            err("%s step %r opens run records with a map not taken from needs.poc-run.outputs.records" % (name, st.get("name")))
 for name in ("cross-check", "report"):
     choose = next((st for st in (jobs.get(name) or {}).get("steps") or [] if st.get("id") == "choose"), {})
     for k, v in (choose.get("env") or {}).items():
@@ -448,14 +447,10 @@ if rc == 0 or "record poc-run-1-b: not run" not in out:
 # ---------------------------------------------------------------- key canaries
 for name, own, other, key in (("source", "agents", "sandbox", "AUDIT_AGENTS_AGE_KEY"),
                               ("poc-run", "sandbox", "agents", "AUDIT_SANDBOX_AGE_KEY")):
-    ok = False
-    for st in (jobs.get(name) or {}).get("steps") or []:
-        r = st.get("run") or ""
-        if (key in (st.get("env") or {}) and "/dev/urandom" in r and "keys/%s.pub" % own in r
-                and "keys/%s.pub" % other in r and "seal.sh open %s" % key in r):
-            ok = True
-    if not ok:
-        err("%s must seal a random token to %s.pub and %s.pub and open it with %s" % (name, own, other, key))
+    call = "bash .github/security-audit/check-key-pair.sh %s .github/security-audit/keys/%s.pub .github/security-audit/keys/%s.pub" % (key, own, other)
+    if not any(key in (st.get("env") or {}) and (st.get("run") or "").strip() == call and "if" not in st
+               for st in (jobs.get(name) or {}).get("steps") or []):
+        err("%s must run check-key-pair.sh with %s against %s.pub and %s.pub on every run" % (name, key, own, other))
 
 # ---------------------------------------------------------------- script calls
 check_usage = ("usage: check-agent-run.sh --fingerprint <out-file>",
@@ -474,6 +469,9 @@ SCRIPTS = {
                                  or (len(a) in (6, 7) and a[0] in ("source", "poc-write", "poc-decide", "cross-check"))),
     SA + "/agent-outcome.sh": (["usage: agent-outcome.sh <execution-file> <step-outcome> <started-epoch> <ended-epoch> <timeout-minutes> <expected-file>..."],
                                lambda a: len(a) >= 5),
+    SA + "/check-key-pair.sh": (["usage: check-key-pair.sh <identity-env-name> <own.pub> <other.pub>"], lambda a: len(a) == 3),
+    SA + "/open-records.sh": (["usage: open-records.sh <identity-env-name> <record-map> <sealed-dir> <out-dir>"], lambda a: len(a) == 4),
+    SA + "/run-validators.sh": (["usage: run-validators.sh <dir>"], lambda a: len(a) == 1),
     SA + "/judge-canary.sh": (["usage: judge-canary.sh <canary> <execution-file> [run-record]"],
                               lambda a: len(a) in (2, 3)),
     SA + "/run-in-sandbox.sh": (["usage: run-in-sandbox.sh <fingerprint> <slot> <mode> <site-dir> <script> [fixture]"],
@@ -634,6 +632,8 @@ mutate "poc-run passing its token to setup-php" '("          tools: none\n      
 mutate "an ok cause after a failed trusted step" '("          if [ \"$JOB_STATUS\" != success ] && [ \"$cause\" = ok ]; then cause=agent_failed; fi\n          echo \"cause=$cause\" >> \"$GITHUB_OUTPUT\"\n          echo \"poc-decide job: $cause\"", "          echo \"cause=$cause\" >> \"$GITHUB_OUTPUT\"\n          echo \"poc-decide job: $cause\"", 1)'
 mutate "a refused canary script not counted" '("echo \"item $n slot $slot: script path refused, not run\"; not_run \"$n\" \"$slot\"; continue", "echo \"item $n slot $slot: script path refused, not run\"; continue", 1)'
 
+mutate "a record map from an unchecked step" '("RECORDS: ${{ needs.poc-run.outputs.records }}\n        run: bash .github/security-audit/open-records.sh", "RECORDS: ${{ steps.choose.outputs.records }}\n        run: bash .github/security-audit/open-records.sh", 1)'
+mutate "the key pair checked against the wrong public key" '("check-key-pair.sh AUDIT_SANDBOX_AGE_KEY .github/security-audit/keys/sandbox.pub .github/security-audit/keys/agents.pub", "check-key-pair.sh AUDIT_SANDBOX_AGE_KEY .github/security-audit/keys/agents.pub .github/security-audit/keys/sandbox.pub", 1)'
 mutate "a cross-check step without the plan guard" "(\"      - name: Record the run status\n        if: steps.plan.outputs.merge == 'true'\n\", \"      - name: Record the run status\n\", 1)"
 mutate "poc-decide's hand-off without the handoff guard" "(\"      - name: Seal audit-poc to the agents key\n        id: handoff\n        if: steps.plan.outputs.handoff == 'true'\n\", \"      - name: Seal audit-poc to the agents key\n        id: handoff\n\", 1)"
 
