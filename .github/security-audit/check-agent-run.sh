@@ -33,8 +33,8 @@
 #   - Outside the source job (whose source and repair agents are the skill's
 #     parent), no agent, the top-level one included, writes a file named as
 #     one of the run's state files (STATE below), wherever it is: after the
-#     source job only merge-records.py changes them. In
-#     poc-write the top-level agent writes nothing under agents/, so each
+#     source job only merge-records.py changes them.
+#   - In poc-write the top-level agent writes nothing under agents/, so each
 #     proof-of-concept script can only come from the subagent whose scratch
 #     holds it.
 #   - In poc-write only, a subagent's Read, Glob or Grep may not reach another
