@@ -315,6 +315,18 @@ class EntityTest(RenderTest):
         self.assertIn("X octocat Y", published)
 
 
+class ReferenceTest(RenderTest):
+    def test_cross_repository_references_are_removed_and_plain_numbers_kept(self):
+        text = "A owner/repo#12 B owner/repo!7 C owner/repo@0123abc D GH-42 E gh-43 F see #12"
+        record = lead("fp-1", title=text)
+        self.seed([record], final_meta(settled=["fp-1"]))
+        row = self.line(self.render(), "| `fp-1`")
+        for ref in ("owner/repo", "GH-42", "gh-43", "0123abc"):
+            self.assertNotIn(ref, row)
+        self.assertIn("A [reference removed] B [reference removed] C [reference removed] D [reference removed] "
+                      "E [reference removed] F see #12", row)
+
+
 class BoundTest(RenderTest):
     def test_the_body_never_exceeds_the_limit(self):
         units = [unit("d%04d" % i, status="deferred") for i in range(2000)]

@@ -8,8 +8,8 @@
 # and leads never carry a severity. Every piece of record or agent text has
 # its HTML entities decoded, is NFKC-normalised, has control and format
 # characters removed, and has http(s)://, www. and protocol-relative //host
-# links, Markdown link and image targets and reference definitions, word@word
-# addresses and @ mentions removed, repeated until it stops changing; &, < and
+# links, Markdown link and image targets and reference definitions,
+# cross-repository references, word@word addresses and @ mentions removed, repeated until it stops changing; &, < and
 # > are then escaped in prose. So it can neither ping anyone, link anywhere,
 # nor open an HTML comment.
 #
@@ -86,13 +86,17 @@ RUN_ID = re.compile(r"^[1-9][0-9]{0,19}$")
 LABEL = re.compile(r"^[a-z0-9_:. -]{1,80}$")
 ARTIFACT = re.compile(r"^agents/([a-z0-9][a-z0-9_-]{0,63})/artifacts/([ab])\.json$")
 # Applied in this order on every pass of clean(). Each removes a form GitHub
-# would turn into a link or a notification.
+# would turn into a link or a notification, including cross-repository
+# references (owner/repo#N, owner/repo!N, owner/repo@<sha>, GH-N), which add
+# a timeline entry to another repository's issue. A plain #N stays.
 STRIPS = (
     (re.compile(r"\]\([^)\s]*\)?"), "]"),
     (re.compile(r"\[[^\]\n]*\]:\s*\S+"), "[link removed]"),
     (re.compile(r"(?i)https?://\S*"), "[link removed]"),
     (re.compile(r"(?i)www\.\S*"), "[link removed]"),
     (re.compile(r"//[^\s/]\S*"), "[link removed]"),
+    (re.compile(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+(?:[#!][0-9]+|@[0-9A-Fa-f]{7,40})"), "[reference removed]"),
+    (re.compile(r"(?i)GH-[0-9]+"), "[reference removed]"),
     (re.compile(r"[^\s@]*[A-Za-z0-9_]@[A-Za-z0-9_]\S*"), "[address removed]"),
     (re.compile(r"@(?=[A-Za-z0-9_-])"), ""),
 )
