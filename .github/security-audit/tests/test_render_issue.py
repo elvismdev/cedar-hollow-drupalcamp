@@ -294,5 +294,21 @@ class SizeTest(RenderTest):
         self.assertEqual(len(self.marker(body)["fingerprints"]), 40)
 
 
+class BoundTest(RenderTest):
+    def test_the_body_never_exceeds_the_limit(self):
+        units = [unit("d%04d" % i, status="deferred") for i in range(2000)]
+        for u in units:
+            u["surface"] = "S" * 50
+        prior = {"run_id": "8000", "sha256": SHA, "fingerprints": ["gone-%04d" % i for i in range(2000)]}
+        self.seed([], final_meta(), ledger=units)
+        body = self.render(marker=prior)
+        self.assertLessEqual(len(body), 60000)
+        self.assertIn("issue_size", self.line(body, "**Status:"))
+        match = re.search(r"(\d+) line\(s\) of the changes section left out because the issue would exceed "
+                          r"60,000 characters", body)
+        self.assertIsNotNone(match)
+        self.assertGreater(int(match.group(1)), 0)
+        self.assertTrue(body.rstrip().endswith("-->"))
+
 if __name__ == "__main__":
     unittest.main()

@@ -53,6 +53,8 @@ MAX_BODY = 60000
 EXCERPT = 1500
 
 SCREEN_FAILED = "Output failed or could not run the secret screen"
+BODY_LEFT_OUT = ("# Security audit\n\n**Status: incomplete (issue_size).** The body was left out because even "
+                 "its header would exceed 60,000 characters.")
 OWNER_CHOICE = ("Attack paths, including those of High and Critical findings and of leads, "
                 "are published here by the repository owner's choice.")
 EXCLUDED_PATHS = [
@@ -473,31 +475,49 @@ def section(run, record):
     return lines
 
 
-def changes_section(run):
+def change_entries(run):
+    """The changes section's entries in order: each group's fingerprints, then
+    the deferred units."""
     new, still, not_rechecked, gone = run.changes()
+    groups = [("New", new, True), ("Still open", still, True),
+              ("Not re-checked this run", not_rechecked, False), ("No longer found", gone, False)]
+    deferred = sorted([u for u in run.ledger if u.get("status") == "deferred"], key=lambda u: str(u.get("coverage_id")))
+    return groups, deferred
+
+
+def change_count(run):
+    groups, deferred = change_entries(run)
+    return sum(len(fps) for _, fps, _ in groups) + len(deferred)
+
+
+def changes_section(run, kept=None):
+    """The changes section, keeping only the first kept entries (fingerprints,
+    then deferred units) when kept is given."""
+    groups, deferred = change_entries(run)
+    total = change_count(run)
+    budget = total if kept is None else kept
     titles = {r["fingerprint"]: r.get("title") for r in run.confirmed + run.leads}
     lines = ["## Changes since the last run", ""]
-
-    def group(name, fps, with_titles):
+    for name, fps, with_titles in groups:
+        shown, budget = fps[:budget], budget - len(fps[:budget])
         lines.append("*   %s: %s" % (name, ", ".join(
             "%s%s" % (fp_text(fp), (" " + inline(titles.get(fp))) if with_titles and fp in titles else "")
-            for fp in fps) if fps else "none"))
-
-    group("New", new, True)
-    group("Still open", still, True)
-    group("Not re-checked this run", not_rechecked, False)
-    group("No longer found", gone, False)
+            for fp in shown) if shown else "none"))
     units = run.history.get("units") if isinstance(run.history.get("units"), dict) else {}
-    deferred = [u for u in run.ledger if u.get("status") == "deferred"]
-    if deferred:
+    shown_units = deferred[:budget]
+    if shown_units:
         lines.append("")
         lines.append("Deferred coverage units, with the runs each has waited:")
         lines.append("")
-        for u in sorted(deferred, key=lambda u: str(u.get("coverage_id"))):
+        for u in shown_units:
             waited = (units.get(u.get("coverage_id")) or {}).get("runs_deferred", 0)
             lines.append("*   %s, %s, %s: %s run(s)" % (inline(u.get("surface")), inline(u.get("boundary")),
                                                      inline(u.get("attack_class")),
                                                      waited if isinstance(waited, int) else 0))
+    if kept is not None and kept < total:
+        lines.append("")
+        lines.append("%d line(s) of the changes section left out because the issue would exceed 60,000 characters."
+                     % (total - kept))
     return lines
 
 
@@ -509,12 +529,14 @@ def marker(run):
     return ["", "<!-- security-audit-state %s -->" % json.dumps(payload, separators=(", ", ": "))]
 
 
-def render(run, sections_kept, rows_kept):
-    """The body, keeping the first sections_kept finding sections and the
-    first rows_kept table rows (confirmed rows first, then leads)."""
+def render(run, sections_kept, rows_kept, changes_kept=None):
+    """The body, keeping the first sections_kept finding sections, the first
+    rows_kept table rows (confirmed rows first, then leads) and, when
+    changes_kept is given, the first changes_kept changes entries."""
     cut_sections = len(run.confirmed) - sections_kept
     cut_rows = len(run.confirmed) + len(run.leads) - rows_kept
-    lines = ["# Security audit", ""] + header(run, cut_sections > 0 or cut_rows > 0) + [""]
+    cut = cut_sections > 0 or cut_rows > 0 or changes_kept is not None
+    lines = ["# Security audit", ""] + header(run, cut) + [""]
     if run.form == "records":
         confirmed_rows = run.confirmed[:rows_kept]
         lead_rows = run.leads[:max(rows_kept - len(run.confirmed), 0)]
@@ -525,7 +547,7 @@ def render(run, sections_kept, rows_kept):
             lines += ["%d finding section(s) left out because the issue would exceed 60,000 characters." % cut_sections, ""]
         for record in run.confirmed[:sections_kept]:
             lines += section(run, record)
-    lines += changes_section(run) + marker(run)
+    lines += changes_section(run, changes_kept) + marker(run)
     return "\n".join(lines) + "\n"
 
 
@@ -540,6 +562,20 @@ def build(run):
     while len(body) > MAX_BODY and rows > 0:
         rows -= 1
         body = render(run, 0, rows)
+    if len(body) > MAX_BODY:
+        low, high = 0, change_count(run)
+        while low < high:
+            mid = (low + high + 1) // 2
+            if len(render(run, 0, 0, mid)) <= MAX_BODY:
+                low = mid
+            else:
+                high = mid - 1
+        body = render(run, 0, 0, low)
+    if len(body) > MAX_BODY:
+        body = BODY_LEFT_OUT + "\n"
+        tail = "\n".join(marker(run)) + "\n"
+        if len(body) + len(tail) <= MAX_BODY:
+            body += tail
     return body
 
 
