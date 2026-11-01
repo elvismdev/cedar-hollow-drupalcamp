@@ -351,6 +351,18 @@ class BoundTest(RenderTest):
         self.assertIn("issue_size", self.line(body, "**Status:"))
         self.assertIn("table row(s) left out because the issue would exceed 60,000 bytes", body)
 
+    def test_a_header_too_long_is_replaced_by_the_notice_and_keeps_the_marker(self):
+        meta = final_meta(["c-1"], ["c-1"])
+        meta["scope_paths"] = ["p/" + "x" * 1000 + str(i) for i in range(100)]
+        self.seed([confirmed("c-1")], meta)
+        body = self.render()
+        self.assertLessEqual(len(body.encode("utf-8")), 60000)
+        self.assertTrue(body.startswith("# Security audit\n\n**Status: incomplete (issue_size).** The body was left "
+                                        "out because even its header would exceed 60,000 bytes.\n"))
+        self.assertNotIn("xxxx", body)
+        self.assertNotIn("Finding c-1", body)
+        self.assertEqual(self.marker(body), {"run_id": "9001", "sha256": SHA, "fingerprints": ["c-1"]})
+
     def test_a_check_must_name_the_artifacts_agent(self):
         u = self.artifacts("c-1", "decider-1")
         for check in u["local_checks"]:
