@@ -10,8 +10,9 @@
 # The tool names, each tool's closed input fields, the character allowlist and
 # the read and write roots are checked by the review practice's
 # check-trace-tools.sh, given the allowed tools, the output root (read and
-# write) and $AUDIT_INPUT_DIR (read, when set). The rules below are the audit's
-# own:
+# write), $AUDIT_INPUT_DIR (read, when set) and --grep-any-glob-in-subfolders,
+# so a Grep rooted in a folder below the checkout's top level may use negated
+# globs and brace lists of folders. The rules below are the audit's own:
 #
 #   - Every call of the subagent tool (named Agent in calls and Task in the
 #     session's tool list, so both names are treated alike) must
@@ -111,7 +112,8 @@ failed=0
 
 roots=(--root "$out_root")
 if [ -n "${AUDIT_INPUT_DIR:-}" ]; then roots+=(--root "$AUDIT_INPUT_DIR"); fi
-if ! bash "$CTT" "$trace" --tools "$allowed" "${roots[@]}" --write-root "$out_root"; then
+if ! bash "$CTT" "$trace" --tools "$allowed" "${roots[@]}" --write-root "$out_root" \
+  --grep-any-glob-in-subfolders; then
   failed=1
 fi
 
