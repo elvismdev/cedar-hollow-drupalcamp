@@ -141,7 +141,7 @@ def optional_json(path, kind, default):
 def read_artifact(state_dir, relative):
     """One promoted run record, opened component by component without
     following links; None when it cannot be read that way."""
-    match = ARTIFACT.match(relative) if isinstance(relative, str) else None
+    match = ARTIFACT.fullmatch(relative) if isinstance(relative, str) else None
     if not match:
         return None
     fds = []
@@ -217,7 +217,7 @@ def code_block(text):
 
 
 def label(value, default="unknown"):
-    return value if isinstance(value, str) and LABEL.match(value) else default
+    return value if isinstance(value, str) and LABEL.fullmatch(value) else default
 
 
 def line(value):
@@ -225,7 +225,7 @@ def line(value):
 
 
 def fp_text(fp):
-    return "`%s`" % fp if isinstance(fp, str) and FINGERPRINT.match(fp) else "`(invalid fingerprint)`"
+    return "`%s`" % fp if isinstance(fp, str) and FINGERPRINT.fullmatch(fp) else "`(invalid fingerprint)`"
 
 
 # ---------------------------------------------------------------- model
@@ -237,7 +237,7 @@ class Run:
         self.jobs = optional_json(args.jobs, dict, {})
         marker = optional_json(args.previous_marker, dict, {})
         prior = marker.get("fingerprints") if isinstance(marker.get("fingerprints"), list) else []
-        self.prior = sorted({fp for fp in prior if isinstance(fp, str) and FINGERPRINT.match(fp)})
+        self.prior = sorted({fp for fp in prior if isinstance(fp, str) and FINGERPRINT.fullmatch(fp)})
         self.state_ok = False
         self.findings, self.ledger, self.meta, self.disputed, self.history = [], [], {}, [], {}
         self.trusted = {}
@@ -341,7 +341,7 @@ def header(run, cut_note):
     lines.append("")
     meta = run.meta
     ref = meta.get("source_ref")
-    lines.append("*   Source commit: %s" % ("`%s`" % ref if isinstance(ref, str) and COMMIT.match(ref) else "unknown"))
+    lines.append("*   Source commit: %s" % ("`%s`" % ref if isinstance(ref, str) and COMMIT.fullmatch(ref) else "unknown"))
     lines.append("*   Profile: %s" % label(meta.get("profile")))
     scope = [inline(p).replace("`", "") for p in Run.list_of(meta, "scope_paths")]
     lines.append("*   Scope: %s" % (", ".join("`%s`" % p for p in scope) if scope else "unknown"))
@@ -422,7 +422,7 @@ def script_results(run, fp):
             continue
         for check in unit.get("local_checks") or []:
             if isinstance(check, dict) and check.get("method") == "local":
-                match = ARTIFACT.match(check.get("artifact") or "") if isinstance(check.get("artifact"), str) else None
+                match = ARTIFACT.fullmatch(check.get("artifact") or "") if isinstance(check.get("artifact"), str) else None
                 if match is None or match.group(1) != check.get("agent_id"):
                     continue
                 record = read_artifact(run.args.state, check.get("artifact"))
@@ -533,7 +533,7 @@ def changes_section(run, kept=None):
 
 
 def marker(run):
-    if not (run.state_ok and SHA256.match(run.args.state_sha256 or "") and RUN_ID.match(run.args.run_id or "")):
+    if not (run.state_ok and SHA256.fullmatch(run.args.state_sha256 or "") and RUN_ID.fullmatch(run.args.run_id or "")):
         return []
     payload = {"run_id": run.args.run_id, "sha256": run.args.state_sha256,
                "fingerprints": run.marker_fingerprints()}

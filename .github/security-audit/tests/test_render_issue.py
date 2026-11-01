@@ -114,6 +114,15 @@ class ContentTest(RenderTest):
             self.assertNotIn(text, body)
         self.assertIn("rejected 1, disputed 1", body)
 
+    def test_agent_values_with_a_trailing_newline_are_refused(self):
+        meta = final_meta(["c-1"], ["c-1"])
+        meta["source_ref"] = "a" * 40 + "\n"
+        meta["profile"] = "full\n| injected | row |"
+        self.seed([confirmed("c-1")], meta)
+        body = self.render()
+        self.assertEqual(self.line(body, "*   Source commit:"), "*   Source commit: unknown")
+        self.assertNotIn("injected", body)
+
     def test_leads_have_no_severity(self):
         odd = lead("l-1", title="Lead one")
         odd["severity"] = {"overall_severity": "critical"}

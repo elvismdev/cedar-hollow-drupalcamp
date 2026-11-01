@@ -236,7 +236,7 @@ def safe_relative_path(value):
 
 
 def safe_agent_id(value):
-    return isinstance(value, str) and bool(AGENT_ID.match(value)) and not WINDOWS_AGENT_ID.match(value)
+    return isinstance(value, str) and bool(AGENT_ID.fullmatch(value)) and not WINDOWS_AGENT_ID.match(value)
 
 
 def clip(text):
@@ -642,7 +642,7 @@ def one_per_fingerprint(state, job, entries):
 
 
 def cmd_count(state, args):
-    if not JOB.match(args.job):
+    if not JOB.fullmatch(args.job):
         raise Refused("invalid job name")
     if args.cap < 0:
         raise Refused("the cap must not be negative")
@@ -793,7 +793,7 @@ def run_record_valid(record):
                                 "exit_code", "stdout", "stderr", "timed_out"}
             and isinstance(record["fingerprint"], str) and record["slot"] in ("a", "b")
             and record["mode"] in ("http", "drush")
-            and isinstance(record["script_sha256"], str) and bool(SHA256.match(record["script_sha256"]))
+            and isinstance(record["script_sha256"], str) and bool(SHA256.fullmatch(record["script_sha256"]))
             and isinstance(record["limits"], dict)
             and isinstance(record["exit_code"], int) and not isinstance(record["exit_code"], bool)
             and isinstance(record["stdout"], str) and isinstance(record["stderr"], str)
@@ -837,7 +837,7 @@ def read_run_records(state, directory, modes, scripts):
     found, dup = {}, set()
     try:
         for name in sorted(os.listdir(dir_fd)):
-            if not RECORD_NAME.match(name):
+            if not RECORD_NAME.fullmatch(name):
                 continue
             try:
                 data = read_bytes(name, MAX_ARTIFACT_BYTES, dir_fd=dir_fd)
@@ -1031,7 +1031,7 @@ def cmd_apply_decide(state, args):
 
 
 def cmd_fail_poc(state, args):
-    if not JOB.match(args.job):
+    if not JOB.fullmatch(args.job):
         raise Refused("invalid job name")
     try:
         select = read_json(args.select, MAX_ENTRY_BYTES)
