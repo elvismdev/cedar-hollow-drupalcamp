@@ -121,6 +121,24 @@ for f in names_md:
         if needle not in text:
             fail("%s: lacks the shared rule: %s" % (f, what))
 
+# Every prompt that may start subagents asks for run_in_background: false on
+# each call: Claude Code backgrounds a subagent whose call omits it, and a
+# background subagent's calls never reach the trace the run check reads.
+FOREGROUND = "Subagents run in the foreground only: pass `run_in_background: false` on every subagent call."
+STARTS_SUBAGENTS = ["source.md", "poc-write.md", "poc-decide.md", "cross-check.md", "tie-break.md",
+                    "canary-script-isolation.md", "canary-sandbox-secrets.md",
+                    "canary-subagent-findings-write.md", "canary-subagent-bash.md"]
+for f in STARTS_SUBAGENTS:
+    text = rendered(f)
+    if FOREGROUND not in text:
+        fail("%s: does not ask for run_in_background: false on every subagent call" % f)
+    if "Never pass `run_in_background`" in text:
+        fail("%s: still tells agents to omit run_in_background" % f)
+for f in names_md:
+    if "Every subagent call passes only" in rendered(f) and "`run_in_background: false`" not in \
+            next(l for l in rendered(f).splitlines() if "Every subagent call passes only" in l):
+        fail("%s: its list of subagent call fields leaves out run_in_background: false" % f)
+
 # The agent-id examples bind exactly one valid id, as check-agent-run.sh and
 # merge-records.py read a description.
 for f in names_md:
