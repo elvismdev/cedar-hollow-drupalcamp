@@ -241,6 +241,7 @@ for name, job in jobs.items():
                     err("%s step %r must be skipped on a canary run (steps.plan.outputs.merge)" % (name, st.get("name")))
 
 # ---------------------------------------------------------------- artifacts
+PUBLISH_IF = "needs.prepare.outputs.publish == 'true' && needs.prepare.outputs.canary == 'none'"
 for name, job in jobs.items():
     for st in (job or {}).get("steps") or []:
         if not str(st.get("uses", "")).startswith("actions/upload-artifact@"):
@@ -253,16 +254,24 @@ for name, job in jobs.items():
                 err("audit-state must be kept 90 days")
             if not str(w.get("path", "")).endswith("/audit-state/audit-state.age"):
                 err("audit-state must hold exactly the file audit-state.age")
-            if norm(st.get("if")) != "steps.publish.outputs.marker == 'true'":
-                err("audit-state must be uploaded only when the published body carries its marker")
+            if norm(st.get("if")) != "%s && steps.own-marker.outputs.own == 'true'" % PUBLISH_IF:
+                err("audit-state must be uploaded only on a published run whose body names this run's state")
         elif w.get("retention-days") != 1:
             err("%s artifact %s must be kept one day" % (name, w.get("name")))
 report_steps = {s.get("id"): s for s in (jobs.get("report") or {}).get("steps") or []}
 publish = report_steps.get("publish") or {}
 if "security-audit-state" not in (publish.get("run") or "") or "find-audit-issue.sh" not in (publish.get("run") or ""):
-    err("the report's publish step must use find-audit-issue.sh and set marker from the published body")
-if norm(publish.get("if")) != "needs.prepare.outputs.publish == 'true' && needs.prepare.outputs.canary == 'none'":
-    err("the report publishes only when publish is true and no canary runs")
+    err("the report's publish step must use find-audit-issue.sh and keep the issue's state marker")
+if norm(publish.get("if")) != "%s && (steps.own-marker.outputs.own == 'false' || steps.upload-state.outcome == 'success')" % PUBLISH_IF:
+    err("the report publishes only when publish is true, no canary runs, and this run's state is uploaded or not needed")
+# The issue never names this run before its audit-state exists: the decision
+# from the body, then the upload, then the publish, in that order.
+order = [st.get("id") for st in (jobs.get("report") or {}).get("steps") or []]
+upload_state = next((st for st in (jobs.get("report") or {}).get("steps") or []
+                     if (st.get("with") or {}).get("name") == "audit-state"), {})
+if not ("own-marker" in order and "publish" in order and upload_state.get("id") == "upload-state"
+        and order.index("own-marker") < order.index("upload-state") < order.index("publish")):
+    err("the report must decide whether the body names this run, upload audit-state, and only then publish")
 if not any((s.get("env") or {}).get("GH_TOKEN") == "${{ github.token }}" for s in [publish]):
     err("the report posts with GITHUB_TOKEN")
 
@@ -445,10 +454,11 @@ if rc == 0 or "record poc-run-1-b: not run" not in out:
     err("the sandbox-secrets verdict must fail when a canary script was refused and never ran")
 
 # ---------------------------------------------------------------- the state marker on the issue
-# The report's publish step is run as written against a stub gh: a body with
-# no marker keeps the issue's marker line verbatim, a body whose marker names
-# this run sets marker=true (so its audit-state is kept), and one carrying the
-# previous run's marker sets it false. The screen-failure body is rendered
+# The report's own-marker and publish steps are run as written against a stub
+# gh: a body with no marker keeps the issue's marker line verbatim, a body
+# whose marker names this run sets own=true (so its audit-state is uploaded
+# before the publish), and one carrying the previous run's marker sets it
+# false. The screen-failure body is rendered
 # with the previous marker.
 report = {st.get("id") or st.get("name"): st for st in (jobs.get("report") or {}).get("steps") or []}
 screen_failed = (report.get("Replace the body with the screen-failure notice") or {}).get("run") or ""
@@ -473,20 +483,22 @@ def publish(body_text, issue_text):
         out = os.path.join(d, "output")
         env = {"PATH": bin_ + ":" + os.environ["PATH"], "RUNNER_TEMP": rt, "REPO": "example/repo",
                "GITHUB_RUN_ID": "9001", "GITHUB_OUTPUT": out, "GH_TOKEN": "x"}
+        decide = (report.get("own-marker") or {}).get("run") or "exit 1"
+        subprocess.run(["bash", "-eo", "pipefail", "-c", decide], cwd=ws, env=env, capture_output=True)
         p = subprocess.run(["bash", "-eo", "pipefail", "-c", (report.get("publish") or {}).get("run") or "exit 1"],
                            cwd=ws, env=env, capture_output=True, text=True)
         edited = open(os.path.join(d, "edited")).read() if os.path.exists(os.path.join(d, "edited")) else None
-        marker = re.findall(r"^marker=(.*)$", open(out).read(), re.M) if os.path.exists(out) else []
+        marker = re.findall(r"^own=(.*)$", open(out).read(), re.M) if os.path.exists(out) else []
         return p.returncode, edited, (marker[-1] if marker else None)
 rc, edited, mk = publish("# Security audit\n\n**Output failed.**\n", "old body\n\n" + OLD_MARKER + "\n")
 if rc != 0 or edited is None or edited.rstrip("\n").splitlines()[-1] != OLD_MARKER or mk != "false":
-    err("a published body with no marker must keep the issue's marker line verbatim, with marker=false")
+    err("a published body with no marker must keep the issue's marker line verbatim, with own=false")
 rc, edited, mk = publish("# Security audit\n\n" + NEW_MARKER + "\n", "old body\n\n" + OLD_MARKER + "\n")
 if rc != 0 or edited is None or OLD_MARKER in edited or mk != "true":
-    err("a body whose marker names this run must replace the old marker and set marker=true")
+    err("a body whose marker names this run must replace the old marker and set own=true")
 rc, edited, mk = publish("# Security audit\n\n" + OLD_MARKER + "\n", "old body\n\n" + OLD_MARKER + "\n")
 if rc != 0 or mk != "false":
-    err("a body carrying the previous run's marker must set marker=false")
+    err("a body carrying the previous run's marker must set own=false")
 
 # ---------------------------------------------------------------- key canaries
 for name, own, other, key in (("source", "agents", "sandbox", "AUDIT_AGENTS_AGE_KEY"),
@@ -636,6 +648,24 @@ PY
     exit 1
   fi
 }
+# Moves the audit-state upload step to the end of the report job.
+mutate_moved_upload() {
+  local f="$tmp/mutant.yml"
+  python3 -I - "$WORKFLOW" "$f" <<'MOVE'
+import sys
+s = open(sys.argv[1]).read()
+start = s.index("      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7\n        id: upload-state\n")
+end = s.index("\n\n", start) + 2
+step = s[start:end]
+open(sys.argv[2], "w").write((s[:start] + s[end:]).rstrip("\n") + "\n\n" + step.rstrip("\n") + "\n")
+MOVE
+  if check "$f" > "$tmp/out" 2>&1; then
+    echo "FAIL: the check passed a workflow that uploads audit-state after publishing" >&2
+    exit 1
+  fi
+  grep -q "upload audit-state, and only then publish" "$tmp/out" \
+    || { echo "FAIL: moving the upload after publishing failed for another reason: $(head -c 200 "$tmp/out")" >&2; exit 1; }
+}
 mutate "a schedule trigger" '("on:\n  workflow_dispatch:", "on:\n  schedule:\n    - cron: \"0 6 * * 6\"\n  workflow_dispatch:", 1)'
 mutate "a checkout keeping credentials" '("persist-credentials: false", "persist-credentials: true", 1)'
 mutate "an expression inside run:" '("run: bash .github/security-audit/sqlite-config.sh", "run: echo ${{ github.event_name }} && bash .github/security-audit/sqlite-config.sh", 1)'
@@ -657,7 +687,7 @@ mutate "a job missing the main ref check" "(\"if: needs.prepare.outputs.go == 't
 mutate "an undeclared needs reference" '("SOURCE_SHA256: ${{ needs.source.outputs.sha256 }}\n          RECORDS", "SOURCE_SHA256: ${{ needs.report.outputs.sha256 }}\n          RECORDS", 1)'
 mutate "the sandbox key in an agent job" '("AUDIT_AGENTS_AGE_KEY: ${{ secrets.AUDIT_AGENTS_AGE_KEY }}\n          STATE_SHA256", "AUDIT_AGENTS_AGE_KEY: ${{ secrets.AUDIT_SANDBOX_AGE_KEY }}\n          STATE_SHA256", 1)'
 mutate "an unpinned action" '("actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9", "actions/upload-artifact@v7", 1)'
-mutate "audit-state uploaded unconditionally" "(\"if: steps.publish.outputs.marker == 'true'\", \"if: always()\", 1)"
+mutate "audit-state uploaded unconditionally" "(\"&& steps.own-marker.outputs.own == 'true'\n        with:\n          name: audit-state\", \"\n        with:\n          name: audit-state\", 1)"
 mutate "a prompt rendered without the variable list" '("envsubst \"$PROMPT_VARS\" < .github/security-audit/prompts/tie-break.md", "envsubst < .github/security-audit/prompts/tie-break.md", 1)'
 mutate "no canary prompt in poc-write" '("envsubst \"$PROMPT_VARS\" < \".github/security-audit/prompts/canary-$CANARY.md\" >> \"$RUNNER_TEMP/prompt-poc-write.md\"", "true", 1)'
 mutate "the sandbox key canary removed" '("Check the sandbox key against both public keys\n        env:\n          AUDIT_SANDBOX_AGE_KEY", "Check the sandbox key against both public keys\n        env:\n          UNUSED", 1)'
@@ -684,5 +714,8 @@ mutate "poc-decide's hand-off without the handoff guard" "(\"      - name: Seal 
 
 mutate "a markerless body replacing the issue's marker" '("                printf \x27\\n%s\\n\x27 \"$kept\" >> \"$body\"", "                true", 1)'
 mutate "marker=true for the previous run's marker" '("jq -rR --arg id \"$GITHUB_RUN_ID\" \x27fromjson? | objects | select(.run_id == $id) | .run_id\x27", "jq -rR \x27fromjson? | objects | .run_id\x27", 1)'
+
+mutate "publishing before audit-state is uploaded" "(\"steps.own-marker.outputs.own == 'false' || steps.upload-state.outcome == 'success')\", \"steps.own-marker.outputs.own != 'x')\", 1)"
+mutate_moved_upload
 
 pass "security-audit workflow structure"

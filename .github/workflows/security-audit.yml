@@ -1720,16 +1720,40 @@ jobs:
         if: steps.screen.outcome != 'success'
         run: python3 -I .github/security-audit/render-issue.py --screen-failed --previous-marker "$RUNNER_TEMP/previous-marker.json" --out "$RUNNER_TEMP/body/issue.md"
 
-      # Step 5: published to the issue chosen by find-audit-issue.sh, the rule
-      # the prior-state fetch reads by. A body with no state marker never
-      # replaces one that has a marker: the issue's marker line is kept as it
-      # is, so the next run still finds the last good state. A closed issue is
+      # Steps 5 and 6, in the order that keeps the issue from naming an
+      # artifact that does not exist: decide from the rendered body whether it
+      # carries this run's own state marker; if it does, upload audit-state
+      # first, and publish only once that upload succeeded. A body carrying
+      # the previous run's marker, or none, needs no upload. An artifact no
+      # marker names is never read, so a publish that fails after the upload
+      # leaves the last good state in place.
+      - name: Decide whether the body names this run's state
+        id: own-marker
+        if: needs.prepare.outputs.publish == 'true' && needs.prepare.outputs.canary == 'none'
+        run: |
+          own=$(sed -n 's/^<!-- security-audit-state \(.*\) -->$/\1/p' "$RUNNER_TEMP/body/issue.md" \
+            | jq -rR --arg id "$GITHUB_RUN_ID" 'fromjson? | objects | select(.run_id == $id) | .run_id')
+          if [ -n "$own" ]; then own=true; else own=false; fi
+          echo "own=$own" >> "$GITHUB_OUTPUT"
+          echo "the body names this run's state: $own"
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        id: upload-state
+        if: needs.prepare.outputs.publish == 'true' && needs.prepare.outputs.canary == 'none' && steps.own-marker.outputs.own == 'true'
+        with:
+          name: audit-state
+          path: ${{ runner.temp }}/audit-state/audit-state.age
+          retention-days: 90
+          if-no-files-found: error
+
+      # Published to the issue chosen by find-audit-issue.sh, the rule the
+      # prior-state fetch reads by. A body with no state marker never replaces
+      # one that has a marker: the issue's marker line is kept as it is, so
+      # the next run still finds the last good state. A closed issue is
       # reopened when the state marker lists any fingerprint still open.
-      # marker is true only when the published marker names this run, which
-      # is when this run's audit-state is the one to keep.
       - name: Publish the issue
         id: publish
-        if: needs.prepare.outputs.publish == 'true' && needs.prepare.outputs.canary == 'none'
+        if: needs.prepare.outputs.publish == 'true' && needs.prepare.outputs.canary == 'none' && (steps.own-marker.outputs.own == 'false' || steps.upload-state.outcome == 'success')
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
@@ -1754,10 +1778,7 @@ jobs:
               gh issue reopen "$number" --repo "$REPO"
             fi
           fi
-          own=$(sed -n 's/^<!-- security-audit-state \(.*\) -->$/\1/p' "$body" | jq -rR --arg id "$GITHUB_RUN_ID" 'fromjson? | objects | select(.run_id == $id) | .run_id')
-          if [ -n "$own" ]; then marker=true; else marker=false; fi
-          echo "marker=$marker" >> "$GITHUB_OUTPUT"
-          echo "published to issue $number, state marker: $marker"
+          echo "published to issue $number"
 
       - name: Seal the body when it is not published
         id: seal-body
@@ -1770,14 +1791,4 @@ jobs:
           name: audit-report
           path: ${{ runner.temp }}/audit-report.age
           retention-days: 1
-          if-no-files-found: error
-
-      # Step 6: the state is kept only when the published body carries its
-      # marker, so a state no marker names is never left for the next run.
-      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
-        if: steps.publish.outputs.marker == 'true'
-        with:
-          name: audit-state
-          path: ${{ runner.temp }}/audit-state/audit-state.age
-          retention-days: 90
           if-no-files-found: error
