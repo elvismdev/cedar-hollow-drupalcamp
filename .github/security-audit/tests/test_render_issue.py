@@ -15,6 +15,8 @@ from test_merge_records import SA, confirmed, lead, metadata, rejected, unit
 SCRIPT = os.path.join(SA, "render-issue.py")
 SHA = "b" * 64
 SCREEN_FAILED = "Output failed or could not run the secret screen"
+TRUSTED_KEYS = ("usage", "poc", "cross_check", "merge_discarded", "incomplete_reasons", "dispute_rate",
+                "run_status", "incomplete_reason")
 OK_JOBS = {"publish": True, "canary": "none", "source": {"result": "success", "cause": "ok"},
            "cross_check": {"result": "success", "cause": "ok", "validators": "pass"}}
 
@@ -48,9 +50,14 @@ class RenderTest(unittest.TestCase):
         with open(path, "w", encoding="utf-8") as handle:
             handle.write(value if isinstance(value, str) else json.dumps(value))
 
-    def seed(self, findings, meta, ledger=(), disputed=(), history=None):
+    def seed(self, findings, meta, ledger=(), disputed=(), history=None, agent_meta=None):
+        """Writes a final state. The bookkeeping keys in meta go to
+        trusted-meta.json, as merge-records.py keeps them; run-metadata.json
+        gets meta itself, or agent_meta when a test plants its own copy."""
+        trusted = {key: meta[key] for key in TRUSTED_KEYS if key in meta}
+        self.write(os.path.join(self.state, "trusted-meta.json"), trusted)
         self.write(os.path.join(self.state, "findings.json"), sorted(findings, key=lambda r: r["fingerprint"]))
-        self.write(os.path.join(self.state, "run-metadata.json"), meta)
+        self.write(os.path.join(self.state, "run-metadata.json"), agent_meta if agent_meta is not None else meta)
         self.write(os.path.join(self.state, "coverage-ledger.json"), list(ledger))
         self.write(os.path.join(self.state, "disputed.json"), list(disputed))
         self.write(os.path.join(self.state, "audit-history.json"), history or {"fingerprints": {}, "units": {}})
@@ -161,6 +168,27 @@ class ContentTest(RenderTest):
             self.assertNotIn(fp, tables)
         self.assertIn("confirmed 1, leads 1, rejected 0, disputed 0, not cross-checked 2, unvalidated 0, "
                       "confirmed not re-checked this run 1", body)
+
+
+class TrustedMetaRenderTest(RenderTest):
+    def test_agent_written_bookkeeping_in_run_metadata_is_not_shown(self):
+        meta = final_meta()
+        for key in ("dispute_rate", "cross_check", "usage", "poc"):
+            meta.pop(key)
+        planted = dict(meta, dispute_rate={"disputes": 0, "cross_checked": 9, "rate": 0.0},
+                       usage={"source": {"invocations": 1, "cap": 60}},
+                       poc={"confirmed": ["c-1"]}, cross_check={"settled": ["c-1"],
+                                                               "tie_breaks": [{"side": "neither"}]},
+                       run_status="complete", incomplete_reasons=[])
+        meta["run_status"] = "incomplete"
+        meta["incomplete_reasons"] = ["cross_check_not_run"]
+        self.seed([confirmed("c-1")], meta, agent_meta=planted)
+        body = self.render()
+        self.assertIn("*   Dispute rate: none recorded", body)
+        self.assertIn("*   Subagent invocations against cap: none recorded", body)
+        self.assertIn("*   Tie-breaks: original 0, replacement 0, neither 0", body)
+        self.assertIn("**Status: incomplete (cross_check_not_run).**", body)
+        self.assertNotIn("Finding c-1", body)
 
 
 class HeaderTest(RenderTest):

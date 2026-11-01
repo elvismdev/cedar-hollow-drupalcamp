@@ -1,14 +1,15 @@
 #!/usr/bin/env python3
 # Applies each audit phase's results to the run's records. After the source
 # agent finishes, this is the only component that changes findings.json,
-# coverage-ledger.json, run-metadata.json, disputed.json and audit-history.json,
+# coverage-ledger.json, run-metadata.json, disputed.json, audit-history.json and
+# trusted-meta.json,
 # so every rule that decides what a record becomes (confirmed only with two
 # demonstrated scripts, no promotion or raise by the cross-check, tie-break
 # outcomes) is enforced here in code and not by an agent.
 #
 # Usage: merge-records.py --state <dir> <subcommand> [options]
 #   count --job <job> --cap <n> --trace <execution-file>
-#   select-poc --out <select.json>
+#   select-poc --out <select.json> [--prior <prior findings.json>]...
 #   apply-decide --manifest <poc-manifest.json> --records <dir> --scripts <dir> --entries <out-dir> --trace <execution-file>
 #   fail-poc --select <select.json> --job <job>
 #   select-cross-check --out <list.json>
@@ -25,14 +26,20 @@
 # discarded without repair. Type, recursion, overflow and value errors an
 # entry provokes are caught at the entry boundary, so one malformed entry never
 # fails the subcommand; a malformed state file, which only trusted steps
-# write, still does. Each discard is recorded in run-metadata.json under
+# write, still does. Each discard is recorded in trusted-meta.json under
 # merge_discarded with a fixed label, never entry text.
 #
-# The source agent may write run-metadata.json during its run, so
-# count --job source first drops the keys only this script writes (usage, poc,
-# cross_check, merge_discarded, incomplete_reasons); every later subcommand
-# refuses a usage entry that is not {"invocations", "cap"} of non-negative
-# integers.
+# Bookkeeping lives in trusted-meta.json in --state, which only this script
+# writes (check-agent-run.sh refuses any agent write to that name). The source
+# and repair agents can write run-metadata.json, so this script never reads
+# its bookkeeping keys there. The first subcommand of a run creates
+# trusted-meta.json from run-metadata.json's run_id and the source agent's own
+# run_status and incomplete_reason, read that once; status copies the keys
+# below, run_status and incomplete_reason back into run-metadata.json,
+# removing any it does not hold. Every subcommand refuses a usage entry that
+# is not {"invocations", "cap"} of non-negative integers. The prior run's
+# findings.json comes only from select-poc --prior, given by the trusted step
+# that opened the prior state.
 #
 # Two independent scripts (D28): a confirmed decision is refused, with the
 # blocker "poc scripts not independent", unless slots a and b name different
@@ -67,7 +74,7 @@
 # previous record's blockers and gains the new lead's blockers. A failed poc
 # phase (fail-poc) adds "poc phase failed: <job>" to the lead and its units.
 #
-# run-metadata.json keys this script adds:
+# trusted-meta.json keys (also copied into run-metadata.json by status):
 #   usage.<job>          {"invocations", "cap"}, summed over the job's steps
 #   incomplete_reasons   every reason in order, the source agent's own first;
 #                        incomplete_reason is them joined with "; "
@@ -77,13 +84,17 @@
 #                        disputes, cross_checked, tie_breaks, removed,
 #                        applied, pending}
 #   merge_discarded      [{job, agent_id, reason}] with fixed reason labels
-#   dispute_rate         {disputes, cross_checked, rate}
+#   dispute_rate         {disputes, cross_checked, rate}, set by status only
+#                        when a cross-check selection exists
+#   prior_run_paths      the --prior paths select-poc was given
+# and, in trusted-meta.json only, run_id and source_run_status.
 # Incomplete reasons it sets: cap_exceeded:<job>, cross_check_cap,
 # cross_check_missing (a selected record with no valid cross-check entry, or
 # a cross-check that never applied), cross_check_dispute, cross_check_not_run
 # and source_run_not_finished (status found run_status still in_progress).
 #
-# Run ids are the GitHub run id from run-metadata.json, stored as numbers.
+# Run ids are the GitHub run id, read from run-metadata.json when
+# trusted-meta.json is created and stored there as a number.
 # Fails closed: a state file that cannot be read safely stops the subcommand
 # with exit status 1 before anything is written.
 import argparse
@@ -354,10 +365,12 @@ def record_valid(record):
 # ---------------------------------------------------------------- state
 
 
-# run-metadata.json keys only this script writes. The source agent may write
-# run-metadata.json during its run, so count --job source drops these keys
-# before it counts; every later subcommand refuses them in any other shape.
-TRUSTED_META_KEYS = ("usage", "poc", "cross_check", "merge_discarded", "incomplete_reasons")
+# The bookkeeping keys merge-records.py keeps in trusted-meta.json, which no
+# agent may write. status copies them into run-metadata.json (removing any it
+# does not hold), so their copies there, which the source and repair agents
+# can write, are never read.
+MIRRORED_KEYS = ("usage", "poc", "cross_check", "merge_discarded", "incomplete_reasons", "dispute_rate",
+                 "prior_run_paths")
 
 
 def non_negative_int(value):
@@ -365,49 +378,59 @@ def non_negative_int(value):
 
 
 class State:
-    def __init__(self, directory, reset_trusted=False):
+    def __init__(self, directory):
         self.dir = directory
         self.findings = self._load(FINDINGS, list, None)
         self.ledger = self._load(LEDGER, list, None)
         self.meta = self._load(METADATA, dict, None)
-        if reset_trusted:
-            for key in TRUSTED_META_KEYS:
-                self.meta.pop(key, None)
         self.disputed = self._load(DISPUTED, list, [])
         self.history = self._load(HISTORY, dict, {})
         self.history.setdefault("fingerprints", {})
         self.history.setdefault("units", {})
         if not isinstance(self.history["fingerprints"], dict) or not isinstance(self.history["units"], dict):
             raise Refused(HISTORY + " has the wrong shape")
-        try:
-            self.run_id = int(self.meta.get("run_id"))
-        except (TypeError, ValueError):
-            raise Refused(METADATA + " has no numeric run_id")
-        if self.run_id < 1:
-            raise Refused(METADATA + " has no positive run_id")
-        usage = self.meta.get("usage", {})
+        self.trusted = self._load(TRUSTED_META, dict, {}) or self._first_trusted()
+        trusted = self.trusted
+        if not non_negative_int(trusted.get("run_id")) or trusted["run_id"] < 1:
+            raise Refused(TRUSTED_META + " has no positive run_id")
+        self.run_id = trusted["run_id"]
+        usage = trusted.get("usage", {})
         if not isinstance(usage, dict) or not all(
                 isinstance(v, dict) and set(v) == {"invocations", "cap"}
                 and non_negative_int(v["invocations"]) and non_negative_int(v["cap"]) for v in usage.values()):
-            raise Refused(METADATA + " usage is not a map of non-negative invocations and caps")
-        for key in ("poc", "cross_check"):
-            if key in self.meta and not isinstance(self.meta[key], dict):
-                raise Refused(METADATA + " %s is not an object" % key)
-        if not isinstance(self.meta.get("merge_discarded", []), list):
-            raise Refused(METADATA + " merge_discarded is not a list")
-        reasons = self.meta.get("incomplete_reasons")
-        if reasons is None:
-            reasons = []
-            if self.meta.get("run_status") == "incomplete" and isinstance(self.meta.get("incomplete_reason"), str):
-                reasons.append(self.meta["incomplete_reason"])
-            self.meta["incomplete_reasons"] = reasons
+            raise Refused(TRUSTED_META + " usage is not a map of non-negative invocations and caps")
+        for key in ("poc", "cross_check", "dispute_rate"):
+            if key in trusted and not isinstance(trusted[key], dict):
+                raise Refused(TRUSTED_META + " %s is not an object" % key)
+        for key in ("merge_discarded", "prior_run_paths"):
+            if not isinstance(trusted.get(key, []), list):
+                raise Refused(TRUSTED_META + " %s is not a list" % key)
+        reasons = trusted.get("incomplete_reasons")
         if not isinstance(reasons, list) or not all(isinstance(r, str) for r in reasons):
-            raise Refused(METADATA + " incomplete_reasons is not a list of strings")
+            raise Refused(TRUSTED_META + " incomplete_reasons is not a list of strings")
         fps = [r.get("fingerprint") for r in self.findings if isinstance(r, dict)]
         if len(fps) != len(self.findings) or len(set(fps)) != len(fps):
             raise Refused(FINDINGS + " has a non-object record or a duplicate fingerprint")
         if not all(isinstance(u, dict) and isinstance(u.get("coverage_id"), str) for u in self.ledger):
             raise Refused(LEDGER + " has a unit without a coverage_id")
+
+    def _first_trusted(self):
+        """trusted-meta.json as the first subcommand of a run creates it, from
+        the run id and the source agent's own run_status and incomplete_reason,
+        which are read from run-metadata.json this once and never again."""
+        try:
+            run_id = int(self.meta.get("run_id"))
+        except (TypeError, ValueError):
+            raise Refused(METADATA + " has no numeric run_id")
+        status = self.meta.get("run_status") if isinstance(self.meta.get("run_status"), str) else None
+        reasons = []
+        if status == "incomplete" and isinstance(self.meta.get("incomplete_reason"), str):
+            reasons.append(self.meta["incomplete_reason"])
+        trusted = {"run_id": run_id, "source_run_status": status, "run_status": status,
+                   "incomplete_reasons": reasons, "usage": {}}
+        if reasons:
+            trusted["incomplete_reason"] = "; ".join(reasons)
+        return trusted
 
     def _load(self, name, kind, default):
         path = os.path.join(self.dir, name)
@@ -450,13 +473,13 @@ class State:
         return entry
 
     def incomplete(self, reason):
-        if reason not in self.meta["incomplete_reasons"]:
-            self.meta["incomplete_reasons"].append(reason)
-        self.meta["run_status"] = "incomplete"
-        self.meta["incomplete_reason"] = "; ".join(self.meta["incomplete_reasons"])
+        if reason not in self.trusted["incomplete_reasons"]:
+            self.trusted["incomplete_reasons"].append(reason)
+        self.trusted["run_status"] = "incomplete"
+        self.trusted["incomplete_reason"] = "; ".join(self.trusted["incomplete_reasons"])
 
     def discard(self, job, agent_id, label):
-        self.meta.setdefault("merge_discarded", []).append(
+        self.trusted.setdefault("merge_discarded", []).append(
             {"job": job, "agent_id": agent_id if safe_agent_id(agent_id) else None, "reason": label})
 
     def save(self):
@@ -464,7 +487,7 @@ class State:
         self.ledger.sort(key=lambda u: js_order(u["coverage_id"]))
         write_json(os.path.join(self.dir, FINDINGS), self.findings)
         write_json(os.path.join(self.dir, LEDGER), self.ledger)
-        write_json(os.path.join(self.dir, METADATA), self.meta)
+        write_json(os.path.join(self.dir, TRUSTED_META), self.trusted)
         write_json(os.path.join(self.dir, DISPUTED), self.disputed)
         write_json(os.path.join(self.dir, HISTORY), self.history)
 
@@ -621,7 +644,7 @@ def cmd_count(state, args):
     if args.cap < 0:
         raise Refused("the cap must not be negative")
     used = subagent_count(read_trace(args.trace))
-    usage = state.meta.setdefault("usage", {})
+    usage = state.trusted.setdefault("usage", {})
     entry = usage.get(args.job) or {"invocations": 0, "cap": args.cap}
     entry["invocations"] = entry["invocations"] + used
     entry["cap"] = args.cap
@@ -634,12 +657,10 @@ def cmd_count(state, args):
 # ---------------------------------------------------------------- select-poc
 
 
-def prior_confirmed(state):
-    """Fingerprints confirmed in the prior run's findings.json, the one listed
-    in run-metadata.json prior_run_paths by the trusted step that opened it."""
-    paths = state.meta.get("prior_run_paths") or []
-    if not isinstance(paths, list):
-        raise Refused("prior_run_paths is not a list")
+def prior_confirmed(state, paths):
+    """Fingerprints confirmed in the prior run's findings.json, named only by
+    the trusted step that opened the prior state (select-poc --prior), never
+    by a file an agent can write."""
     confirmed = set()
     for path in paths:
         if not isinstance(path, str) or os.path.basename(path) != FINDINGS:
@@ -657,9 +678,10 @@ def prior_confirmed(state):
 
 
 def cmd_select_poc(state, args):
-    if "poc" in state.meta:
+    if "poc" in state.trusted:
         raise Refused("select-poc already ran for this state")
-    prior = prior_confirmed(state)
+    state.trusted["prior_run_paths"] = list(args.prior)
+    prior = prior_confirmed(state, args.prior)
     carried, leads = [], []
     for record in state.findings:
         fp = record["fingerprint"]
@@ -674,7 +696,7 @@ def cmd_select_poc(state, args):
     ordered = [(fp, "carried_confirmed") for fp in carried] + [(fp, "lead") for fp in leads]
     chosen, rest = ordered[:POC_SLOTS], ordered[POC_SLOTS:]
     write_json(args.out, {"items": [{"fingerprint": fp, "kind": kind} for fp, kind in chosen]})
-    state.meta["poc"] = {
+    state.trusted["poc"] = {
         "selected": [fp for fp, _ in chosen],
         "not_tried": [fp for fp, kind in rest if kind == "lead"],
         "not_rechecked": [fp for fp, kind in rest if kind == "carried_confirmed"],
@@ -912,9 +934,9 @@ def add_blocker(state, fp, blocker):
 
 
 def cmd_apply_decide(state, args):
-    poc = state.meta.get("poc")
+    poc = state.trusted.get("poc")
     if not isinstance(poc, dict) or not isinstance(poc.get("selected"), list):
-        raise Refused("no proof-of-concept selection in run-metadata.json")
+        raise Refused("no proof-of-concept selection in trusted-meta.json")
     selected = set(poc["selected"])
     modes = read_manifest(state, args.manifest)
     records = read_run_records(state, args.records, modes, args.scripts)
@@ -1019,7 +1041,7 @@ def cmd_fail_poc(state, args):
     blocker = "poc phase failed: " + args.job
     for fp in fps:
         add_blocker(state, fp, blocker)
-    poc = state.meta.setdefault("poc", {})
+    poc = state.trusted.setdefault("poc", {})
     poc["failed"] = args.job
     poc["confirmed"] = []
     print("merge-records: marked %d selected item(s) with the failed poc phase" % len(fps))
@@ -1033,7 +1055,7 @@ def cmd_select_cross_check(state, args):
     pool.sort(key=lambda fp: (int(state.history["fingerprints"].get(fp, {}).get("last_cross_checked_run", 0)), js_order(fp)))
     chosen, rest = pool[:CROSS_CHECK_SLOTS], pool[CROSS_CHECK_SLOTS:]
     write_json(args.out, {"items": [{"fingerprint": fp} for fp in chosen]})
-    state.meta["cross_check"] = {
+    state.trusted["cross_check"] = {
         "selected": chosen, "not_cross_checked": rest, "settled": [], "refused": [],
         "disputes": 0, "cross_checked": 0, "tie_breaks": [], "removed": 0,
     }
@@ -1095,9 +1117,9 @@ def cross_entry_valid(entry, selected):
 
 
 def cmd_apply_cross_check(state, args):
-    cc = state.meta.get("cross_check")
+    cc = state.trusted.get("cross_check")
     if not isinstance(cc, dict) or not isinstance(cc.get("selected"), list):
-        raise Refused("no cross-check selection in run-metadata.json")
+        raise Refused("no cross-check selection in trusted-meta.json")
     selected = set(cc["selected"])
     raw = read_entries(state, "cross-check", args.entries, args.trace)
     valid = {}
@@ -1147,7 +1169,7 @@ def remove_disputed(state, dispute, because, tie_break):
     })
     for unit in state.units_for(fp):
         add_unique(unit.setdefault("unresolved", []), DISPUTE_UNRESOLVED)
-    state.meta["cross_check"]["removed"] += 1
+    state.trusted["cross_check"]["removed"] += 1
     state.incomplete("cross_check_dispute")
 
 
@@ -1157,7 +1179,7 @@ def tie_entry_valid(entry, eligible):
 
 
 def cmd_apply_tie_break(state, args):
-    cc = state.meta.get("cross_check")
+    cc = state.trusted.get("cross_check")
     if not isinstance(cc, dict) or not cc.get("applied"):
         raise Refused("apply-cross-check has not run")
     try:
@@ -1201,7 +1223,7 @@ def cmd_apply_tie_break(state, args):
 
 
 def cmd_status(state, args):
-    cc = state.meta.get("cross_check")
+    cc = state.trusted.get("cross_check")
     if isinstance(cc, dict):
         if not cc.get("applied"):
             for fp in cc.get("selected", []):
@@ -1215,21 +1237,27 @@ def cmd_status(state, args):
                                         "cross_check_reason": None}, "tie_break_not_run", None)
         cc["pending"] = []
         checked = cc.get("cross_checked", 0)
-        state.meta["dispute_rate"] = {
+        state.trusted["dispute_rate"] = {
             "disputes": cc.get("disputes", 0), "cross_checked": checked,
             "rate": round(cc.get("disputes", 0) / checked, 4) if checked else None,
         }
     else:
         state.incomplete("cross_check_not_run")
-    if state.meta.get("run_status") not in ("complete", "incomplete"):
+    if state.trusted.get("run_status") not in ("complete", "incomplete"):
         state.incomplete("source_run_not_finished")
-    if state.meta["incomplete_reasons"]:
-        state.meta["run_status"] = "incomplete"
-        state.meta["incomplete_reason"] = "; ".join(state.meta["incomplete_reasons"])
+    if state.trusted["incomplete_reasons"]:
+        state.trusted["run_status"] = "incomplete"
+        state.trusted["incomplete_reason"] = "; ".join(state.trusted["incomplete_reasons"])
     else:
-        state.meta["run_status"] = "complete"
-        state.meta.pop("incomplete_reason", None)
-    print("merge-records: run_status %s" % state.meta["run_status"])
+        state.trusted["run_status"] = "complete"
+        state.trusted.pop("incomplete_reason", None)
+    for key in MIRRORED_KEYS + ("run_status", "incomplete_reason"):
+        if key in state.trusted:
+            state.meta[key] = state.trusted[key]
+        else:
+            state.meta.pop(key, None)
+    write_json(os.path.join(state.dir, METADATA), state.meta)
+    print("merge-records: run_status %s" % state.trusted["run_status"])
 
 
 # ---------------------------------------------------------------- main
@@ -1245,6 +1273,7 @@ def main(argv):
     p.add_argument("--trace", required=True)
     p = sub.add_parser("select-poc")
     p.add_argument("--out", required=True)
+    p.add_argument("--prior", action="append", default=[])
     p = sub.add_parser("apply-decide")
     for name in ("--manifest", "--records", "--scripts", "--entries", "--trace"):
         p.add_argument(name, required=True)
@@ -1269,7 +1298,7 @@ def main(argv):
         "status": cmd_status,
     }
     try:
-        state = State(args.state, reset_trusted=(args.command == "count" and args.job == "source"))
+        state = State(args.state)
         commands[args.command](state, args)
         state.save()
     except Refused as err:

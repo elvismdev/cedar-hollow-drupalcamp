@@ -2,8 +2,12 @@
 # Renders the body of the public security-audit issue from the run's final
 # records. Everything it writes is public, so it publishes only what the
 # merge step settled: a confirmed record only when two scripts demonstrated it
-# this run (run-metadata.json poc.confirmed) and the cross-check settled it
-# (cross_check.settled), and a lead only when the cross-check settled it.
+# this run (trusted-meta.json poc.confirmed) and the cross-check settled it
+# (cross_check.settled), and a lead only when the cross-check settled it. The
+# bookkeeping it shows (usage, poc, cross_check, dispute_rate, tie-break
+# sides, run_status and the incomplete reasons) is read only from
+# trusted-meta.json, which only merge-records.py writes; run-metadata.json,
+# which agents can write, supplies only source_ref, profile and scope_paths.
 # Rejected, disputed, unvalidated and unchecked records appear only as counts,
 # and leads never carry a severity. Every piece of record or agent text has
 # its HTML entities decoded, is NFKC-normalised, has control and format
@@ -236,6 +240,7 @@ class Run:
         self.prior = sorted({fp for fp in prior if isinstance(fp, str) and FINGERPRINT.match(fp)})
         self.state_ok = False
         self.findings, self.ledger, self.meta, self.disputed, self.history = [], [], {}, [], {}
+        self.trusted = {}
         if args.state:
             findings = optional_json(os.path.join(args.state, FINDINGS), list, None)
             meta = optional_json(os.path.join(args.state, METADATA), dict, None)
@@ -243,11 +248,12 @@ class Run:
                 self.state_ok = True
                 self.findings = [r for r in findings if isinstance(r, dict) and isinstance(r.get("fingerprint"), str)]
                 self.meta = meta
+                self.trusted = optional_json(os.path.join(args.state, TRUSTED_META), dict, {})
                 self.ledger = [u for u in optional_json(os.path.join(args.state, LEDGER), list, []) if isinstance(u, dict)]
                 self.disputed = optional_json(os.path.join(args.state, DISPUTED), list, [])
                 self.history = optional_json(os.path.join(args.state, HISTORY), dict, {})
-        poc = self.meta.get("poc") if isinstance(self.meta.get("poc"), dict) else {}
-        cc = self.meta.get("cross_check") if isinstance(self.meta.get("cross_check"), dict) else {}
+        poc = self.trusted.get("poc") if isinstance(self.trusted.get("poc"), dict) else {}
+        cc = self.trusted.get("cross_check") if isinstance(self.trusted.get("cross_check"), dict) else {}
         self.poc_confirmed = set(self.list_of(poc, "confirmed"))
         self.settled = set(self.list_of(cc, "settled"))
         self.not_cross_checked = self.list_of(cc, "not_cross_checked")
@@ -322,10 +328,8 @@ def header(run, cut_note):
     elif jobs.get("publish") is False:
         lines.append("**Not published: the run was dispatched with publish false.** This body is kept as a sealed artifact.")
     if run.form == "records":
-        status = run.meta.get("run_status")
-        reasons = [label(r) for r in Run.list_of(run.meta, "incomplete_reasons")]
-        if not reasons and isinstance(run.meta.get("incomplete_reason"), str) and status == "incomplete":
-            reasons = [label(run.meta["incomplete_reason"])]
+        status = run.trusted.get("run_status")
+        reasons = [label(r) for r in Run.list_of(run.trusted, "incomplete_reasons")]
         if cut_note:
             reasons.append("issue_size")
         if status == "complete" and not reasons:
@@ -342,14 +346,15 @@ def header(run, cut_note):
     scope = [inline(p).replace("`", "") for p in Run.list_of(meta, "scope_paths")]
     lines.append("*   Scope: %s" % (", ".join("`%s`" % p for p in scope) if scope else "unknown"))
     lines.append("*   Excluded: %s" % "; ".join(EXCLUDED_PATHS))
-    usage = meta.get("usage") if isinstance(meta.get("usage"), dict) else {}
+    trusted = run.trusted
+    usage = trusted.get("usage") if isinstance(trusted.get("usage"), dict) else {}
     parts = []
     for job in sorted(usage):
         entry = usage[job]
         if isinstance(entry, dict) and isinstance(entry.get("invocations"), int) and isinstance(entry.get("cap"), int):
             parts.append("%s %d of %d" % (label(job), entry["invocations"], entry["cap"]))
     lines.append("*   Subagent invocations against cap: %s" % ("; ".join(parts) if parts else "none recorded"))
-    rate = meta.get("dispute_rate") if isinstance(meta.get("dispute_rate"), dict) else {}
+    rate = trusted.get("dispute_rate") if isinstance(trusted.get("dispute_rate"), dict) else {}
     if isinstance(rate.get("rate"), (int, float)) and not isinstance(rate.get("rate"), bool):
         lines.append("*   Dispute rate: %d of %d records cross-checked (%.0f%%)" % (
             int(rate.get("disputes", 0)), int(rate.get("cross_checked", 0)), rate["rate"] * 100))

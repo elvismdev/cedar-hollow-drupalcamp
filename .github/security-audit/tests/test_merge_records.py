@@ -138,7 +138,12 @@ class MergeTest(unittest.TestCase):
         with open(path, "w", encoding="utf-8") as handle:
             handle.write(value if isinstance(value, str) else json.dumps(value))
 
-    def seed(self, findings, ledger, meta=None, history=None):
+    def seed(self, findings, ledger, meta=None, history=None, trusted=None):
+        trusted_path = os.path.join(self.state, "trusted-meta.json")
+        if os.path.exists(trusted_path):
+            os.remove(trusted_path)
+        if trusted is not None:
+            self.write(trusted_path, trusted)
         self.write(os.path.join(self.state, "findings.json"), findings)
         self.write(os.path.join(self.state, "coverage-ledger.json"), ledger)
         self.write(os.path.join(self.state, "run-metadata.json"), meta or metadata())
@@ -220,7 +225,8 @@ class MergeTest(unittest.TestCase):
         return path
 
     def select(self):
-        return self.run_merge("select-poc", "--out", os.path.join(self.tmp, "select.json"))
+        prior = [arg for path in getattr(self, "prior_paths", []) for arg in ("--prior", path)]
+        return self.run_merge("select-poc", "--out", os.path.join(self.tmp, "select.json"), *prior)
 
     def decide(self, manifest):
         return self.run_merge("apply-decide", "--manifest", manifest, "--records", self.records,
@@ -238,7 +244,7 @@ class MergeTest(unittest.TestCase):
                               "--entries", self.out, "--trace", self.trace_file())
 
     def discarded(self):
-        return [d["reason"] for d in self.load("run-metadata.json").get("merge_discarded", [])]
+        return [d["reason"] for d in self.load("trusted-meta.json").get("merge_discarded", [])]
 
     def assert_validators_pass(self):
         if NODE is None:
@@ -256,7 +262,8 @@ class MergeTest(unittest.TestCase):
         path = os.path.join(self.tmp, "in", "findings.json")
         os.makedirs(os.path.dirname(path), exist_ok=True)
         self.write(path, findings)
-        return metadata(prior_run_paths=[path])
+        self.prior_paths = [path]
+        return metadata()
 
 
 class SelectionTest(MergeTest):
@@ -279,7 +286,7 @@ class SelectionTest(MergeTest):
         self.assertEqual([(i["fingerprint"], i["kind"]) for i in items], [
             ("c-carried-1", "carried_confirmed"), ("c-carried-2", "carried_confirmed"),
             ("l-never-a", "lead"), ("l-never-b", "lead"), ("l-old", "lead"), ("l-new", "lead")])
-        poc = self.load("run-metadata.json")["poc"]
+        poc = self.load("trusted-meta.json")["poc"]
         self.assertEqual(poc["not_tried"], [])
         self.assertEqual(poc["not_rechecked"], [])
 
@@ -289,7 +296,7 @@ class SelectionTest(MergeTest):
         self.seed([lead(fp) for fp in carried + leads] + [lead("c9")], [],
                   self.prior([confirmed(fp) for fp in carried + ["c9"]]))
         self.select()
-        poc = self.load("run-metadata.json")["poc"]
+        poc = self.load("trusted-meta.json")["poc"]
         self.assertEqual(poc["selected"], ["c0", "c1", "c2", "c3", "c4", "c9"])
         self.assertEqual(poc["not_rechecked"], [])
         self.assertEqual(poc["not_tried"], leads)
@@ -318,7 +325,7 @@ class DecideTest(MergeTest):
         one = self.record("f-one")
         self.assertEqual(one["verdict"], "needs_validation")
         self.assertIn("poc decision discarded", one["blockers"])
-        self.assertEqual(self.load("run-metadata.json")["poc"]["confirmed"], ["f-both"])
+        self.assertEqual(self.load("trusted-meta.json")["poc"]["confirmed"], ["f-both"])
         self.assertIn("entry does not match the poc-decide shape", self.discarded())
         self.assert_validators_pass()
 
@@ -532,13 +539,13 @@ class CountTest(MergeTest):
         self.seed([], [])
         self.count("source", 3, 3)
         self.count("source_repair", 0, 0)
-        meta = self.load("run-metadata.json")
+        meta = self.load("trusted-meta.json")
         self.assertEqual(meta["usage"]["source"], {"invocations": 3, "cap": 3})
         self.assertEqual(meta["usage"]["source_repair"], {"invocations": 0, "cap": 0})
         self.assertEqual(meta["run_status"], "complete")
         self.count("source_repair", 0, 1)
         self.count("poc-write", 2, 3)
-        meta = self.load("run-metadata.json")
+        meta = self.load("trusted-meta.json")
         self.assertEqual(meta["usage"]["source"]["invocations"], 3)
         self.assertEqual(meta["run_status"], "incomplete")
         self.assertEqual(meta["incomplete_reasons"], ["cap_exceeded:source_repair", "cap_exceeded:poc-write"])
@@ -546,7 +553,7 @@ class CountTest(MergeTest):
     def test_the_source_agents_own_reason_is_kept(self):
         self.seed([], [], metadata(run_status="incomplete", incomplete_reason="validation_budget_exhausted"))
         self.count("source", 1, 2)
-        meta = self.load("run-metadata.json")
+        meta = self.load("trusted-meta.json")
         self.assertEqual(meta["incomplete_reasons"], ["validation_budget_exhausted", "cap_exceeded:source"])
 
     def test_an_unreadable_trace_fails(self):
@@ -579,7 +586,7 @@ class HostileEntryTest(MergeTest):
              "input": {"file_path": self.entry_file("decider-1"), "content": forged}}]}})
         self.decide(manifest)
         self.assertEqual(self.record("fp-1")["verdict"], "needs_validation")
-        self.assertEqual(self.load("run-metadata.json")["poc"]["confirmed"], [])
+        self.assertEqual(self.load("trusted-meta.json")["poc"]["confirmed"], [])
         self.assertIn("entry written by another agent", self.discarded())
 
     def test_an_entry_changed_on_disk_after_its_write_is_discarded(self):
@@ -669,7 +676,7 @@ class HostileEntryTest(MergeTest):
         self.assertIn("entry does not match the tie-break shape", self.discarded())
         self.assertIsNone(self.record("fp-1"))
 
-    def test_count_source_resets_agent_written_metadata(self):
+    def test_agent_written_bookkeeping_in_run_metadata_is_ignored(self):
         self.seed([lead("fp-1")], [unit("u1", fps=["fp-1"])],
                   meta=metadata(usage={"source": {"invocations": -1000, "cap": 999}},
                                 poc={"confirmed": ["fp-1"]}, cross_check={"settled": ["fp-1"]},
@@ -677,18 +684,19 @@ class HostileEntryTest(MergeTest):
         for i in range(5):
             self.subagent("h-%d" % i, {})
         self.run_merge("count", "--job", "source", "--cap", "3", "--trace", self.trace_file())
-        meta = self.load("run-metadata.json")
+        meta = self.load("trusted-meta.json")
         self.assertEqual(meta["usage"], {"source": {"invocations": 5, "cap": 3}})
         self.assertEqual(meta["incomplete_reasons"], ["cap_exceeded:source"])
         for key in ("poc", "cross_check", "merge_discarded"):
             self.assertNotIn(key, meta)
         self.select()
-        self.assertEqual(self.load("run-metadata.json")["poc"]["confirmed"], [])
+        self.assertEqual(self.load("trusted-meta.json")["poc"]["confirmed"], [])
 
     def test_later_subcommands_refuse_a_malformed_usage_entry(self):
         for bad in ({"invocations": "x", "cap": 3}, {"invocations": -1, "cap": 3}, {"invocations": 1}):
             with self.subTest(bad=bad):
-                self.seed([], [], meta=metadata(usage={"source": bad}))
+                self.seed([], [], trusted={"run_id": RUN_ID, "usage": {"source": bad},
+                                           "incomplete_reasons": [], "run_status": "complete"})
                 result = self.run_merge("count", "--job", "poc-write", "--cap", "3", "--trace",
                                         self.trace_file(), ok=False)
                 self.assertEqual(result.returncode, 1)
@@ -729,6 +737,61 @@ class HostileEntryTest(MergeTest):
                 self.assertEqual(record["verdict"], verdict)
                 if verdict != "confirmed":
                     self.assertIn("poc scripts not independent", record["blockers"])
+
+
+class TrustedMetaTest(MergeTest):
+    """Bookkeeping an agent writes into run-metadata.json has no effect; only
+    trusted-meta.json, which merge-records.py alone writes, is read."""
+
+    def run_metadata(self):
+        with open(os.path.join(self.state, "run-metadata.json"), encoding="utf-8") as handle:
+            return json.load(handle)
+
+    def rewrite_run_metadata(self, **changes):
+        meta = self.run_metadata()
+        meta.update(changes)
+        for key, value in changes.items():
+            if value is None:
+                meta.pop(key)
+        self.write(os.path.join(self.state, "run-metadata.json"), meta)
+
+    def test_prior_run_paths_come_only_from_the_prior_argument(self):
+        planted = os.path.join(self.tmp, "planted", "findings.json")
+        os.makedirs(os.path.dirname(planted))
+        self.write(planted, [confirmed("a-lead")])
+        self.seed([lead("a-lead")], [unit("u1", fps=["a-lead"])], meta=metadata(prior_run_paths=[planted]))
+        self.select()
+        with open(os.path.join(self.tmp, "select.json"), encoding="utf-8") as handle:
+            self.assertEqual(json.load(handle)["items"], [{"fingerprint": "a-lead", "kind": "lead"}])
+        self.assertEqual(self.load("trusted-meta.json")["prior_run_paths"], [])
+
+    def test_a_repair_step_rewrite_of_reasons_and_usage_has_no_effect(self):
+        self.seed([lead("fp-1")], [unit("u1", fps=["fp-1"])])
+        for i in range(5):
+            self.subagent("h-%d" % i, {})
+        self.run_merge("count", "--job", "source", "--cap", "3", "--trace", self.trace_file())
+        self.rewrite_run_metadata(incomplete_reasons=[], usage={}, run_status="complete", incomplete_reason=None)
+        self.run_merge("count", "--job", "source_repair", "--cap", "0", "--trace", self.trace_file())
+        self.run_merge("status")
+        trusted = self.load("trusted-meta.json")
+        self.assertEqual(trusted["usage"]["source"], {"invocations": 5, "cap": 3})
+        self.assertEqual(trusted["incomplete_reasons"], ["cap_exceeded:source", "cross_check_not_run"])
+        meta = self.run_metadata()
+        self.assertEqual(meta["usage"], trusted["usage"])
+        self.assertEqual(meta["run_status"], "incomplete")
+        self.assertEqual(meta["incomplete_reason"], "cap_exceeded:source; cross_check_not_run")
+        self.assertEqual(meta["source_ref"], "0" * 40)
+
+    def test_an_agent_written_dispute_rate_without_a_cross_check_is_removed(self):
+        self.seed([lead("fp-1")], [unit("u1", fps=["fp-1"])],
+                  meta=metadata(dispute_rate={"disputes": 0, "cross_checked": 9, "rate": 0.0},
+                                cross_check={"settled": ["fp-1"], "tie_breaks": [{"side": "original"}]}))
+        self.run_merge("status")
+        self.assertNotIn("dispute_rate", self.load("trusted-meta.json"))
+        meta = self.run_metadata()
+        self.assertNotIn("dispute_rate", meta)
+        self.assertNotIn("cross_check", meta)
+        self.assertIn("cross_check_not_run", meta["incomplete_reasons"])
 
 
 class HistoryTest(MergeTest):
@@ -779,7 +842,7 @@ class CrossCheckTest(MergeTest):
         self.assertEqual(self.record("r-lines")["trace"][0]["line"], 11)
         self.assertEqual(self.record("r-lines")["description"], "Reworded description.")
         self.assertEqual(self.record("r-root-case")["root_cause"], "  missing   ACCESS check ")
-        cc = self.load("run-metadata.json")["cross_check"]
+        cc = self.load("trusted-meta.json")["cross_check"]
         self.assertEqual(cc["refused"], [{"fingerprint": "r-raise", "rule": "severity_raise"}])
         self.assertEqual(self.record("r-raise")["severity"]["overall_severity"], "medium")
 
@@ -793,7 +856,7 @@ class CrossCheckTest(MergeTest):
             self.replace("checker-%d" % i, rec)
         disputes = self.cross_check()
         self.assertEqual([d["fingerprint"] for d in disputes], ["s-demote"])
-        cc = self.load("run-metadata.json")["cross_check"]
+        cc = self.load("trusted-meta.json")["cross_check"]
         self.assertEqual(sorted((r["fingerprint"], r["rule"]) for r in cc["refused"]),
                          [("s-exec", "execution"), ("s-promote", "promotion"), ("s-raise", "severity_raise")])
         self.assertEqual(self.record("s-promote")["verdict"], "needs_validation")
@@ -804,7 +867,7 @@ class CrossCheckTest(MergeTest):
         record = self.record("s-demote")
         self.assertEqual(record["verdict"], "needs_validation")
         self.assertNotIn("execution", record)
-        self.assertEqual(self.load("run-metadata.json")["cross_check"]["tie_breaks"],
+        self.assertEqual(self.load("trusted-meta.json")["cross_check"]["tie_breaks"],
                          [{"fingerprint": "s-demote", "side": "replacement"}])
         self.run_merge("status")
         self.assert_validators_pass()
@@ -821,7 +884,7 @@ class CrossCheckTest(MergeTest):
         self.assertEqual(record["execution"]["observed_result"], "HTTP 200 with another user's row.")
         self.assertEqual(record["execution"]["payloads"], ["GET /demo/1"])
         self.assertEqual(record["severity"]["overall_severity"], "high")
-        cc = self.load("run-metadata.json")["cross_check"]
+        cc = self.load("trusted-meta.json")["cross_check"]
         self.assertEqual(cc["refused"], [{"fingerprint": "e-1", "rule": "execution"}])
         self.assertEqual(cc["settled"], ["e-1"])
 
@@ -844,11 +907,11 @@ class CrossCheckTest(MergeTest):
         self.assertEqual([(d["fingerprint"], d["removed_because"]) for d in disputed],
                          [("t-3", "neither"), ("t-4", "tie_break_cap")])
         self.assertIn("cross-check dispute unresolved", self.unit_for("t-4")["unresolved"])
-        meta = self.load("run-metadata.json")
+        meta = self.load("trusted-meta.json")
         self.assertEqual([t["side"] for t in meta["cross_check"]["tie_breaks"]], ["original", "replacement", "neither"])
         self.assertIn("cross_check_dispute", meta["incomplete_reasons"])
         self.run_merge("status")
-        meta = self.load("run-metadata.json")
+        meta = self.load("trusted-meta.json")
         self.assertEqual(meta["dispute_rate"], {"disputes": 4, "cross_checked": 4, "rate": 1.0})
         self.assertEqual(meta["run_status"], "incomplete")
         self.assert_validators_pass()
@@ -862,11 +925,11 @@ class CrossCheckTest(MergeTest):
         for i, fp in enumerate(fps):
             self.subagent("checker-%d" % i, {"decision": "verified", "fingerprint": fp})
         self.cross_check()
-        cc = self.load("run-metadata.json")["cross_check"]
+        cc = self.load("trusted-meta.json")["cross_check"]
         self.assertEqual(cc["selected"], fps[2:])
         self.assertEqual(cc["not_cross_checked"], ["o-01", "o-00"])
         self.assertEqual(len(cc["settled"]), 30)
-        meta = self.load("run-metadata.json")
+        meta = self.load("trusted-meta.json")
         self.assertIn("cross_check_cap", meta["incomplete_reasons"])
         self.assertEqual(self.load("audit-history.json")["fingerprints"]["o-05"]["last_cross_checked_run"], RUN_ID)
         self.assertEqual(self.load("audit-history.json")["fingerprints"]["o-00"]["last_cross_checked_run"], 50)
@@ -876,7 +939,7 @@ class CrossCheckTest(MergeTest):
         self.subagent("checker-1", {"decision": "verified", "fingerprint": "u-1", "note": "extra"})
         self.cross_check()
         self.run_merge("status")
-        meta = self.load("run-metadata.json")
+        meta = self.load("trusted-meta.json")
         self.assertEqual(meta["cross_check"]["settled"], [])
         self.assertEqual(meta["cross_check"]["not_cross_checked"], ["u-1", "u-2"])
         self.assertIn("cross_check_missing", meta["incomplete_reasons"])
@@ -887,7 +950,7 @@ class CrossCheckTest(MergeTest):
         self.subagent("checker-1", {"decision": "verified", "fingerprint": "w-1"})
         self.cross_check()
         self.run_merge("status")
-        meta = self.load("run-metadata.json")
+        meta = self.load("trusted-meta.json")
         self.assertEqual(meta["run_status"], "complete")
         self.assertNotIn("incomplete_reason", meta)
         self.assertEqual(meta["dispute_rate"], {"disputes": 0, "cross_checked": 1, "rate": 0.0})
