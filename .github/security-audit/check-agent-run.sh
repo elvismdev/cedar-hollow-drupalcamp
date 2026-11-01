@@ -1,0 +1,317 @@
+#!/usr/bin/env bash
+# Checks what an audit agent step actually did, from its execution trace and
+# from the state of the runner before and after it. It runs after every agent
+# step, and a failure stops the job before anything is handed off.
+#
+# The deny rules refuse most misuse before it happens; this reads the trace and
+# the machine afterwards, so a rule that stopped reaching the agent fails the
+# job instead of passing silently.
+#
+# The tool names, each tool's closed input fields, the character allowlist and
+# the read and write roots are checked by the review practice's
+# check-trace-tools.sh, given the allowed tools, the output root (read and
+# write) and $AUDIT_INPUT_DIR (read, when set). The rules below are the audit's
+# own:
+#
+#   - Every call of the subagent tool (named Agent in calls and Task in the
+#     session's tool list, so both names are treated alike) must
+#     declare exactly one agent id in its description as "agent-id: <id>", the
+#     skill's canonical form ^[a-z0-9][a-z0-9_-]{0,63}$, unique in the trace.
+#     A message whose parent_tool_use_id is that call's id belongs to that
+#     subagent. A call in a message whose parent matches no subagent call
+#     cannot be attributed and fails.
+#   - A subagent runs in the foreground: run_in_background absent or false, no
+#     task_started event marked is_backgrounded, and no background count in
+#     the result's subagent_stats.
+#   - A subagent's Write or Edit lands under
+#     <output-root>/agents/<its-id>/scratch/, and never on a file whose name is
+#     one of the shared or combined files that only the top-level agent or the
+#     trusted scripts write (SHARED below), wherever it is.
+#   - In poc-write only, a subagent's Read, Glob or Grep may not reach another
+#     agent's agents/<id>/: a target inside one fails, and so does a Glob or Grep
+#     rooted at agents/ or above it, which would search them all. A subagent
+#     Glob pattern with a .. segment there fails, because its target cannot be
+#     judged without matching it on disk.
+#   - Every model in a result's modelUsage, and on every assistant message
+#     except Claude Code's own <synthetic> ones, is the pinned model or the
+#     allowlisted helper.
+#   - If subagents were used (a subagent call, a task_started event or a
+#     spawned count) the trace must hold at least one of their tool calls.
+#   - The checkout (git status and HEAD), the hooks and permissions keys of
+#     ~/.claude/settings.json, ~/.claude/CLAUDE.md and the ~/.claude agents,
+#     commands and hooks trees match the fingerprint taken before the step.
+#
+# The fingerprint holds only hashes and HEAD, and a refusal names the tool, the
+# call's position and a fixed label, never a path, an id or a model: the job
+# log is public and those are agent-written or attacker-reachable text.
+#
+# Fails closed: a missing or unreadable trace or fingerprint fails the check.
+#
+# Usage:
+#   check-agent-run.sh --fingerprint <out-file>
+#   check-agent-run.sh <job> <execution-file> <allowed-tools> <output-root> \
+#                      <fingerprint-file> <model> [helper-model]
+#     <job>            source, poc-write, poc-decide or cross-check
+#     <allowed-tools>  comma-separated, as check-trace-tools.sh --tools takes
+#   GITHUB_WORKSPACE (the checkout), HOME, and optionally AUDIT_INPUT_DIR.
+set -euo pipefail
+
+HERE="$(cd "$(dirname "$0")" && pwd)"
+CTT="$HERE/../claude-review/tools/review/check-trace-tools.sh"
+
+usage() {
+  echo "usage: check-agent-run.sh --fingerprint <out-file>" >&2
+  echo "       check-agent-run.sh <job> <execution-file> <allowed-tools> <output-root> <fingerprint-file> <model> [helper-model]" >&2
+  exit 2
+}
+
+# One labelled line per watched thing. A path that does not exist is skipped
+# by the tree hash and recorded as absent for settings.json, so creating one
+# changes the fingerprint too.
+fingerprint() {
+  local ws="${GITHUB_WORKSPACE:?GITHUB_WORKSPACE is not set}"
+  local claude="$HOME/.claude" settings paths=() p
+  echo "head $(git -C "$ws" rev-parse HEAD)"
+  echo "status $(git -C "$ws" status --porcelain=v1 -uall | sha256sum | cut -d' ' -f1)"
+  if [ -e "$claude/settings.json" ]; then
+    settings=$(jq -cS '{hooks, permissions}' "$claude/settings.json" 2>/dev/null | sha256sum | cut -d' ' -f1) \
+      || settings=unreadable
+  else
+    settings=absent
+  fi
+  echo "settings $settings"
+  for p in CLAUDE.md agents commands hooks; do
+    if [ -e "$claude/$p" ]; then paths+=("$claude/$p"); fi
+  done
+  if [ "${#paths[@]}" -gt 0 ]; then
+    echo "claude-files $(find "${paths[@]}" -type f -print0 | sort -z | xargs -0 -r sha256sum | sha256sum | cut -d' ' -f1)"
+  else
+    echo "claude-files none"
+  fi
+}
+
+if [ "${1:-}" = "--fingerprint" ]; then
+  [ "$#" -eq 2 ] || usage
+  fingerprint > "$2"
+  echo "check-agent-run: fingerprint written"
+  exit 0
+fi
+
+[ "$#" -eq 6 ] || [ "$#" -eq 7 ] || usage
+job="$1" trace="$2" allowed="$3" out_root="$4" fp_file="$5" model="$6" helper="${7:-}"
+case "$job" in
+  source|poc-write|poc-decide|cross-check) ;;
+  *) echo "check-agent-run: unknown job" >&2; exit 2 ;;
+esac
+case "$out_root" in /*) ;; *) echo "check-agent-run: the output root must be absolute" >&2; exit 2 ;; esac
+[ -n "$model" ] || usage
+[ -n "${GITHUB_WORKSPACE:-}" ] || { echo "check-agent-run: GITHUB_WORKSPACE is not set" >&2; exit 1; }
+
+failed=0
+
+roots=(--root "$out_root")
+if [ -n "${AUDIT_INPUT_DIR:-}" ]; then roots+=(--root "$AUDIT_INPUT_DIR"); fi
+if ! bash "$CTT" "$trace" --tools "$allowed" "${roots[@]}" --write-root "$out_root"; then
+  failed=1
+fi
+
+if ! node - "$trace" "$job" "$out_root" "$GITHUB_WORKSPACE" "$model" "$helper" <<'JS'
+const fs = require('fs');
+const path = require('path').posix;
+
+const [trace, job, outArg, wsArg, model, helper] = process.argv.slice(2);
+const say = (line) => console.error(`check-agent-run: ${line}`);
+
+let msgs;
+try {
+  msgs = JSON.parse(fs.readFileSync(trace, 'utf8'));
+} catch (err) {
+  say(`the trace is missing or not readable JSON (${err.name}), so the run cannot be checked`);
+  process.exit(1);
+}
+if (!Array.isArray(msgs)) {
+  say('the trace is not a list of messages, so the run cannot be checked');
+  process.exit(1);
+}
+
+const out = path.normalize(outArg);
+const ws = path.normalize(wsArg);
+const agentsDir = path.join(out, 'agents');
+const SUBAGENT_TOOLS = new Set(['Agent', 'Task']);
+const ID = /^[a-z0-9][a-z0-9_-]{0,63}$/;
+// Files only the top-level agent or the trusted scripts write.
+const SHARED = new Set([
+  'findings.json', 'coverage-ledger.json', 'run-metadata.json', 'disputed.json',
+  'audit-history.json', 'select.json', 'poc-manifest.json', 'cross-check.json',
+  'tie-break.json', 'validator-errors.txt',
+]);
+const MODELS = new Set([model, helper].filter(Boolean));
+
+const isObj = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
+const under = (p, root) => p === root || p.startsWith(root.replace(/\/+$/, '') + '/');
+const resolve = (p, base) => path.normalize(p.startsWith('/') ? p : path.join(base, p));
+
+// Every tool_use object, depth first in document order, numbered across the
+// whole trace exactly as check-trace-tools.sh numbers them.
+function* toolUses(node) {
+  if (isObj(node)) {
+    if (node.type === 'tool_use') yield node;
+    for (const v of Object.values(node)) yield* toolUses(v);
+  } else if (Array.isArray(node)) {
+    for (const v of node) yield* toolUses(v);
+  }
+}
+
+const calls = [];
+for (const m of msgs) {
+  const parent = isObj(m) && typeof m.parent_tool_use_id === 'string' ? m.parent_tool_use_id : null;
+  for (const c of toolUses(m)) calls.push({ n: calls.length + 1, c, parent });
+}
+const label = ({ n, c }) => `${SUBAGENT_TOOLS.has(c.name) || ['Read', 'Glob', 'Grep', 'Write', 'Edit'].includes(c.name) ? c.name : 'tool'} call ${n}`;
+
+let bad = 0;
+const refuse = (call, why) => { bad += 1; say(`${label(call)}: ${why}`); };
+
+// Bind each subagent call to its declared id.
+const subagents = new Map();
+const seenIds = new Set();
+for (const call of calls) {
+  const { c } = call;
+  if (!SUBAGENT_TOOLS.has(c.name)) continue;
+  const input = isObj(c.input) ? c.input : {};
+  const desc = typeof input.description === 'string' ? input.description : '';
+  const ids = [...desc.matchAll(/(?:^|\s)agent-id:\s*(\S+)/g)].map((x) => x[1]);
+  let id = null;
+  if (ids.length !== 1 || !ID.test(ids[0])) {
+    refuse(call, 'does not declare exactly one valid agent id');
+  } else if (seenIds.has(ids[0])) {
+    refuse(call, 'declares an agent id another subagent call already declared');
+  } else {
+    id = ids[0];
+    seenIds.add(id);
+  }
+  if ('run_in_background' in input && input.run_in_background !== false) {
+    refuse(call, 'starts a background subagent');
+  }
+  if (typeof c.id !== 'string' || c.id === '') {
+    refuse(call, 'has no call id, so its subagent cannot be attributed');
+  } else {
+    subagents.set(c.id, id);
+  }
+}
+
+// Background starts and subagent use as Claude Code itself reports them.
+let started = 0;
+let spawned = 0;
+for (const m of msgs) {
+  if (!isObj(m)) continue;
+  if (m.type === 'system' && m.subtype === 'task_started') {
+    started += 1;
+    if (m.is_backgrounded === true) { bad += 1; say('a task_started event is backgrounded: a subagent ran in the background'); }
+  }
+  if (m.type === 'result' && isObj(m.subagent_stats)) {
+    const s = m.subagent_stats;
+    spawned += Number(s.spawned) || 0;
+    const bg = (Number(s.started_in_background) || 0) + (isObj(s.requested) ? Number(s.requested.background) || 0 : 0);
+    if (bg > 0) { bad += 1; say('the result counts a background subagent'); }
+  }
+}
+
+// The target a read-side call reaches, or null when it cannot be judged.
+function readTarget(c) {
+  const a = isObj(c.input) ? c.input : {};
+  if (c.name === 'Read') return typeof a.file_path === 'string' ? resolve(a.file_path, ws) : null;
+  const base = typeof a.path === 'string' && a.path !== '' ? resolve(a.path, ws) : ws;
+  if (c.name === 'Grep') return base;
+  if (typeof a.pattern !== 'string') return base;
+  const segs = a.pattern.split('/');
+  if (segs.some((s) => s.split(/[{},]/).includes('..'))) return null;
+  const literal = [];
+  for (const s of segs) {
+    if (/[*?{}[\]]/.test(s)) break;
+    literal.push(s);
+  }
+  return resolve(literal.join('/') || '.', base);
+}
+
+let attributed = 0;
+for (const call of calls) {
+  const { c, parent } = call;
+  if (parent === null) continue;
+  if (!subagents.has(parent)) {
+    refuse(call, 'is in a message whose parent is no subagent call, so it cannot be attributed');
+    continue;
+  }
+  attributed += 1;
+  const id = subagents.get(parent);
+  const a = isObj(c.input) ? c.input : {};
+
+  if (c.name === 'Write' || c.name === 'Edit') {
+    if (typeof a.file_path !== 'string' || !a.file_path.startsWith('/')) continue; // refused by check-trace-tools
+    const p = path.normalize(a.file_path);
+    if (SHARED.has(path.basename(p))) {
+      refuse(call, 'a subagent writes a shared or combined file');
+    } else if (id === null || !under(p, path.join(agentsDir, id, 'scratch')) || p === path.join(agentsDir, id, 'scratch')) {
+      refuse(call, 'a subagent writes outside its own agents/<id>/scratch/');
+    }
+  }
+
+  if (job === 'poc-write' && ['Read', 'Glob', 'Grep'].includes(c.name)) {
+    const t = readTarget(c);
+    if (t === null) {
+      refuse(call, 'a subagent search climbs with .., so its reach cannot be judged');
+    } else if (c.name !== 'Read' && under(agentsDir, t)) {
+      refuse(call, 'a subagent searches agents/ or above it, reaching other agents');
+    } else if (under(t, agentsDir) && t !== agentsDir && (id === null || !under(t, path.join(agentsDir, id)))) {
+      refuse(call, "a subagent reads another agent's agents/<id>/");
+    }
+  }
+}
+
+const used = subagents.size > 0 || started > 0 || spawned > 0;
+if (used && attributed === 0) {
+  bad += 1;
+  say('subagents were used but the trace holds none of their tool calls, so what they did cannot be checked');
+}
+
+// Models.
+let unexpected = 0;
+for (const m of msgs) {
+  if (!isObj(m)) continue;
+  if (m.type === 'result' && isObj(m.modelUsage)) {
+    for (const k of Object.keys(m.modelUsage)) if (!MODELS.has(k)) unexpected += 1;
+  }
+  if (m.type === 'assistant' && isObj(m.message) && typeof m.message.model === 'string'
+      && m.message.model !== '<synthetic>' && !MODELS.has(m.message.model)) unexpected += 1;
+}
+if (unexpected > 0) {
+  bad += 1;
+  say(`${unexpected} model use(s) other than the pinned model or the allowlisted helper`);
+}
+
+if (bad > 0) process.exit(1);
+console.log(`check-agent-run: ${subagents.size} subagent call(s), ${attributed} subagent tool call(s), the ${job} rules pass`);
+JS
+then
+  failed=1
+fi
+
+if [ ! -s "$fp_file" ]; then
+  echo "check-agent-run: no fingerprint from before the step, so changes to the checkout and ~/.claude cannot be checked" >&2
+  failed=1
+else
+  now=$(fingerprint) || { echo "check-agent-run: the fingerprint could not be taken again" >&2; now=""; failed=1; }
+  changed=$(diff <(printf '%s\n' "$now") "$fp_file" | sed -n 's/^[<>] \([a-z-]*\) .*/\1/p' | sort -u | tr '\n' ' ') || true
+  if [ -n "$changed" ]; then
+    echo "check-agent-run: changed while the agent ran: ${changed% }" >&2
+    failed=1
+  elif [ -n "$now" ]; then
+    echo "check-agent-run: checkout and ~/.claude unchanged"
+  fi
+fi
+
+if [ "$failed" -ne 0 ]; then
+  echo "check-agent-run: the run check failed; nothing from this step may be handed off" >&2
+  exit 1
+fi
+echo "check-agent-run: the run check passed"
