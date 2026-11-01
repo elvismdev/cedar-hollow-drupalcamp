@@ -100,7 +100,7 @@ for f in names_md + canaries:
         fail("%s: a listed variable is left unreplaced" % f)
     if DASHES.search(src):
         fail("%s: holds a dash character other than the hyphen" % f)
-    if " " in src:
+    if "\u00a0" in src:
         fail("%s: holds a no-break space" % f)
 
 # The shared run rules, in every prompt.
