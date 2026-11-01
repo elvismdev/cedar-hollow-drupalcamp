@@ -117,6 +117,32 @@ jobs:
           command -v envsubst >/dev/null || pkgs+=(gettext-base)
           sudo apt-get install -y "${pkgs[@]}"
 
+      # The private key cannot be read back once set, so each run proves it
+      # still pairs with the committed public key: a fresh random token sealed
+      # to agents.pub must open to the same token, and one sealed to
+      # sandbox.pub must not open with this key.
+      - name: Check the agents key against both public keys
+        env:
+          AUDIT_AGENTS_AGE_KEY: ${{ secrets.AUDIT_AGENTS_AGE_KEY }}
+        run: |
+          dir=$(mktemp -d)
+          mkdir "$dir/in" "$dir/open" "$dir/other"
+          token=$(od -An -tx1 -N32 /dev/urandom | tr -d ' \n')
+          printf '%s\n' "$token" > "$dir/in/token"
+          own=$(bash .github/security-audit/seal.sh seal .github/security-audit/keys/agents.pub "$dir/in" "$dir/own.age")
+          if ! bash .github/security-audit/seal.sh open AUDIT_AGENTS_AGE_KEY "$own" "$dir/own.age" "$dir/open" \
+            || [ "$(cat "$dir/open/token")" != "$token" ]; then
+            echo "::error::a token sealed to agents.pub did not open to itself with AUDIT_AGENTS_AGE_KEY"
+            exit 1
+          fi
+          other=$(bash .github/security-audit/seal.sh seal .github/security-audit/keys/sandbox.pub "$dir/in" "$dir/other.age")
+          if bash .github/security-audit/seal.sh open AUDIT_AGENTS_AGE_KEY "$other" "$dir/other.age" "$dir/other"; then
+            echo "::error::AUDIT_AGENTS_AGE_KEY opened a token sealed to sandbox.pub"
+            exit 1
+          fi
+          rm -rf "$dir"
+          echo "AUDIT_AGENTS_AGE_KEY opens what is sealed to agents.pub and not what is sealed to sandbox.pub"
+
       # A canary that tests the source agent runs the agent with its canary
       # prompt and no merge or hand-off; a canary that tests a later job skips
       # the source agent and hands off run-metadata.json alone.
@@ -775,6 +801,31 @@ jobs:
       # Ubuntu 24.04 blocks the unprivileged user namespaces bubblewrap needs.
       - name: Allow unprivileged user namespaces
         run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+
+      # The sandbox key's counterpart of the source job's check: a token sealed
+      # to sandbox.pub opens to itself, and one sealed to agents.pub does not
+      # open, so this job can never read a run record.
+      - name: Check the sandbox key against both public keys
+        env:
+          AUDIT_SANDBOX_AGE_KEY: ${{ secrets.AUDIT_SANDBOX_AGE_KEY }}
+        run: |
+          dir=$(mktemp -d)
+          mkdir "$dir/in" "$dir/open" "$dir/other"
+          token=$(od -An -tx1 -N32 /dev/urandom | tr -d ' \n')
+          printf '%s\n' "$token" > "$dir/in/token"
+          own=$(bash .github/security-audit/seal.sh seal .github/security-audit/keys/sandbox.pub "$dir/in" "$dir/own.age")
+          if ! bash .github/security-audit/seal.sh open AUDIT_SANDBOX_AGE_KEY "$own" "$dir/own.age" "$dir/open" \
+            || [ "$(cat "$dir/open/token")" != "$token" ]; then
+            echo "::error::a token sealed to sandbox.pub did not open to itself with AUDIT_SANDBOX_AGE_KEY"
+            exit 1
+          fi
+          other=$(bash .github/security-audit/seal.sh seal .github/security-audit/keys/agents.pub "$dir/in" "$dir/other.age")
+          if bash .github/security-audit/seal.sh open AUDIT_SANDBOX_AGE_KEY "$other" "$dir/other.age" "$dir/other"; then
+            echo "::error::AUDIT_SANDBOX_AGE_KEY opened a token sealed to agents.pub"
+            exit 1
+          fi
+          rm -rf "$dir"
+          echo "AUDIT_SANDBOX_AGE_KEY opens what is sealed to sandbox.pub and not what is sealed to agents.pub"
 
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
         with:
