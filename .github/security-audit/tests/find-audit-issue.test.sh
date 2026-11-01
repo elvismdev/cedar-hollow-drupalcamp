@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Tests for find-audit-issue.sh, the issue rule shared by reading the prior
-# state and publishing, against fake-gh.sh.
+# state and publishing, against fake-gh.sh. Fixture issues are opened by
+# github-actions[bot] unless a case says otherwise.
 set -euo pipefail
 # shellcheck source=../../claude-review/tools/agent/test/assert.sh
 . "$(dirname "$0")/../../claude-review/tools/agent/test/assert.sh"
@@ -29,8 +30,8 @@ find_issue() { RC=0; OUT="$(bash "$FIND" "$REPO" 2>/dev/null)" || RC=$?; }
 # The oldest open issue, across pages and past a pull request; the closed
 # list is not consulted.
 new_fixture open
-printf '[{"number": 1, "pull_request": {}}]\n[{"number": 3}, {"number": 5}]\n' > "$FIX/$OPEN_KEY.json"
-echo '[{"number": 9}]' > "$FIX/$CLOSED_KEY.json"
+printf '[{"user": {"login": "github-actions[bot]"}, "number": 1, "pull_request": {}}]\n[{"user": {"login": "github-actions[bot]"}, "number": 3}, {"user": {"login": "github-actions[bot]"}, "number": 5}]\n' > "$FIX/$OPEN_KEY.json"
+echo '[{"user": {"login": "github-actions[bot]"}, "number": 9}]' > "$FIX/$CLOSED_KEY.json"
 find_issue
 assert_eq "3" "$OUT" "the oldest open issue is picked, across pages and past a pull request"
 assert_contains "$(cat "$FIX/calls.log")" "gh api --paginate repos/$REPO/issues?labels=security-audit&state=open&sort=created&direction=asc&per_page=100" "open issues are listed oldest first"
@@ -38,7 +39,7 @@ case "$(cat "$FIX/calls.log")" in *"state=closed"*) echo "FAIL: closed issues we
 
 # With no open issue, the newest closed one.
 new_fixture closed
-echo '[{"number": 12, "pull_request": {}}, {"number": 9}, {"number": 4}]' > "$FIX/$CLOSED_KEY.json"
+echo '[{"user": {"login": "github-actions[bot]"}, "number": 12, "pull_request": {}}, {"user": {"login": "github-actions[bot]"}, "number": 9}, {"user": {"login": "github-actions[bot]"}, "number": 4}]' > "$FIX/$CLOSED_KEY.json"
 find_issue
 assert_eq "9" "$OUT" "the newest closed issue is picked when none is open"
 assert_contains "$(cat "$FIX/calls.log")" "state=closed&sort=created&direction=desc" "closed issues are listed newest first"
@@ -49,9 +50,25 @@ find_issue
 assert_exit 0 "$RC" "no issue is not an error"
 assert_eq "" "$OUT" "no issue prints nothing"
 new_fixture prs
-echo '[{"number": 2, "pull_request": {}}]' > "$FIX/$OPEN_KEY.json"
+echo '[{"user": {"login": "github-actions[bot]"}, "number": 2, "pull_request": {}}]' > "$FIX/$OPEN_KEY.json"
 find_issue
 assert_eq "" "$OUT" "pull requests are never the audit issue"
+
+# Only an issue opened by github-actions[bot] counts.
+new_fixture bot
+echo '[{"user": {"login": "github-actions[bot]"}, "number": 7}]' > "$FIX/$OPEN_KEY.json"
+find_issue
+assert_eq "7" "$OUT" "an issue opened by the bot is found"
+new_fixture older-human
+echo '[{"user": {"login": "someone"}, "number": 2}, {"user": {"login": "github-actions[bot]"}, "number": 7}]' > "$FIX/$OPEN_KEY.json"
+find_issue
+assert_eq "7" "$OUT" "an older labelled issue by another user is skipped and the bot's issue found"
+new_fixture human-only
+echo '[{"user": {"login": "someone"}, "number": 2}]' > "$FIX/$OPEN_KEY.json"
+echo '[{"user": {"login": "github-actions"}, "number": 3}, {"number": 4}]' > "$FIX/$CLOSED_KEY.json"
+find_issue
+assert_exit 0 "$RC" "only issues by other authors is not an error"
+assert_eq "" "$OUT" "only labelled issues by other authors (or none named) give no issue"
 
 # A list that cannot be read fails rather than reads as "no issue".
 new_fixture error

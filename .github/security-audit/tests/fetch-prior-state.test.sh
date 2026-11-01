@@ -50,7 +50,7 @@ state_artifact() { # run: a sealed-looking state file; prints its sha256
 }
 good_prior() { # a complete, valid prior state; sets SUM
   SUM="$(state_artifact "$RUN")"
-  echo '[{"number": 3}]' > "$FIX/$OPEN_KEY.json"
+  echo '[{"user": {"login": "github-actions[bot]"}, "number": 3}]' > "$FIX/$OPEN_KEY.json"
   issue_with_body 3 "$(marker_body "$RUN" "$SUM")"
   run_json "$RUN" "$WORKFLOW" main schedule
   artifacts_json "$RUN" false
@@ -188,6 +188,23 @@ for body in "an issue body with no marker" \
   case "$(cat "$FIX/calls.log")" in *"actions/runs"*) echo "FAIL: a run was looked up without a valid marker" >&2; exit 1;; esac
 done
 
+# An older labelled issue opened by someone else is ignored: its marker is
+# never read, and the bot's issue is used.
+new_fixture human-issue
+good_prior
+echo '[{"user": {"login": "someone"}, "number": 2}, {"user": {"login": "github-actions[bot]"}, "number": 3}]' > "$FIX/$OPEN_KEY.json"
+issue_with_body 2 "$(marker_body 1 "$(printf '%064d' 0)")"
+fetch "$WORK/out-human-issue"
+assert_eq "true" "$(field found)" "the bot's issue is used past an older one by another user"
+assert_eq "$RUN" "$(field run_id)" "the marker comes from the bot's issue"
+case "$(cat "$FIX/calls.log")" in *"issues/2"*) echo "FAIL: the other user's issue was read" >&2; exit 1;; esac
+new_fixture human-only
+good_prior
+echo '[{"user": {"login": "someone"}, "number": 3}]' > "$FIX/$OPEN_KEY.json"
+fetch "$WORK/out-human-only"
+assert_eq "false" "$(field found)" "a labelled issue by another user alone means no prior run"
+no_download "an issue by another user"
+
 # GitHub errors other than a 404 fail rather than read as "no prior run".
 new_fixture error
 good_prior
@@ -211,8 +228,8 @@ assert_eq "" "$(cat "$FIX/calls.log")" "nothing is called for a non-empty output
 # marker is read from that issue only.
 new_fixture rule-open
 good_prior
-printf '[{"number": 1, "pull_request": {}}]\n[{"number": 3}, {"number": 5}]\n' > "$FIX/$OPEN_KEY.json"
-echo '[{"number": 9}]' > "$FIX/$CLOSED_KEY.json"
+printf '[{"user": {"login": "github-actions[bot]"}, "number": 1, "pull_request": {}}]\n[{"user": {"login": "github-actions[bot]"}, "number": 3}, {"user": {"login": "github-actions[bot]"}, "number": 5}]\n' > "$FIX/$OPEN_KEY.json"
+echo '[{"user": {"login": "github-actions[bot]"}, "number": 9}]' > "$FIX/$CLOSED_KEY.json"
 issue_with_body 5 "$(marker_body 1 "$(printf '%064d' 0)")"
 issue_with_body 9 "$(marker_body 1 "$(printf '%064d' 0)")"
 fetch "$WORK/out-rule-open"
