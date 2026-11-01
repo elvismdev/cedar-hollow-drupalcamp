@@ -157,6 +157,10 @@ for f in findings.json coverage-ledger.json run-metadata.json disputed.json audi
   trace "$tmp/t.json" "$INIT" "$(top Edit "{\"file_path\":\"$OUT/sub/$f\",\"old_string\":\"a\",\"new_string\":\"b\"}")" "$(result "$M")"
   assert_eq "1" "$(rc cross-check "$tmp/t.json")" "in cross-check, a top-level Edit of $f in a subdirectory fails"
 done
+# The clean run for the later jobs: without the top-level writes under
+# agents/ and of the state files, which only the source job's agents make.
+CLEAN_POC=("${CLEAN[@]:0:2}" "${CLEAN[@]:4:4}")
+assert_eq "0" "$(trace "$tmp/t.json" "${CLEAN_POC[@]}" "$(result "$M")"; rc poc-write "$tmp/t.json")" "the later jobs' clean baseline passes in poc-write"
 # In poc-write the top-level agent writes nothing under agents/.
 trace "$tmp/t.json" "${CLEAN_POC[@]}" "$(top Write "{\"file_path\":\"$OUT/agents/h01/scratch/poc.php\",\"content\":\"x\"}")" "$(result "$M")"
 assert_eq "1" "$(rc poc-write "$tmp/t.json")" "in poc-write, a top-level write under agents/ fails"
@@ -189,11 +193,6 @@ trace "$tmp/t.json" "$INIT" "$(top Task '{"description":"agent-id: v1 verify","p
 assert_eq "0" "$(rc cross-check "$tmp/t.json")" "a Task call binds its subagent like an Agent call"
 
 # Isolation: in poc-write a subagent may not reach another agent's directory.
-# The clean run without the top-level agent's write under agents/, which
-# poc-write refuses.
-# Without the top-level writes under agents/ and of the state files, which
-# only the source job's agents may make.
-CLEAN_POC=("${CLEAN[@]:0:2}" "${CLEAN[@]:4:4}")
 iso () { # job tool input expected-rc message
   trace "$tmp/t.json" "${CLEAN_POC[@]}" "$(sub ta1 "$2" "$3")" "$(result "$M")"
   assert_eq "$4" "$(rc "$1" "$tmp/t.json")" "$5"
