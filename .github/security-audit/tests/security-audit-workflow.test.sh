@@ -175,8 +175,10 @@ for name, job in jobs.items():
                 err("%s step %d: show_full_output and display_report must be 'false'" % (name, i))
             if norm(w.get("claude_code_oauth_token")) != "${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}":
                 err("%s step %d: the agent's token must be secrets.CLAUDE_CODE_OAUTH_TOKEN" % (name, i))
-            if set(st.get("env") or {}) != MODEL_VARS:
-                err("%s step %d: the agent step's env must set exactly %s" % (name, i, sorted(MODEL_VARS)))
+            if set(st.get("env") or {}) != MODEL_VARS | {"CLAUDE_CODE_DISABLE_BACKGROUND_TASKS"}:
+                err("%s step %d: the agent step's env must set exactly %s and CLAUDE_CODE_DISABLE_BACKGROUND_TASKS" % (name, i, sorted(MODEL_VARS)))
+            if str((st.get("env") or {}).get("CLAUDE_CODE_DISABLE_BACKGROUND_TASKS")) != "1":
+                err("%s step %d: the agent step must set CLAUDE_CODE_DISABLE_BACKGROUND_TASKS to 1, so subagents run in the foreground" % (name, i))
             if not re.fullmatch(r"\$\{\{ steps\.args-[a-z-]+\.outputs\.claude_args \}\}", norm(w.get("claude_args"))):
                 err("%s step %d: claude_args must come from a compose step" % (name, i))
     if len(agent_ids) != len(AGENT_STEPS.get(name, [])):
@@ -717,5 +719,8 @@ mutate "marker=true for the previous run's marker" '("jq -rR --arg id \"$GITHUB_
 
 mutate "publishing before audit-state is uploaded" "(\"steps.own-marker.outputs.own == 'false' || steps.upload-state.outcome == 'success')\", \"steps.own-marker.outputs.own != 'x')\", 1)"
 mutate_moved_upload
+
+mutate "background subagents allowed in the tie-break" '("          CLAUDE_CODE_SUBAGENT_MODEL: ${{ steps.args-tie-break.outputs.CLAUDE_CODE_SUBAGENT_MODEL }}\n          # Subagents run in the foreground even when a call omits\n          # run_in_background, so their calls reach the trace.\n          CLAUDE_CODE_DISABLE_BACKGROUND_TASKS: \"1\"\n", "          CLAUDE_CODE_SUBAGENT_MODEL: ${{ steps.args-tie-break.outputs.CLAUDE_CODE_SUBAGENT_MODEL }}\n", 1)'
+mutate "background subagents set to 0" '("CLAUDE_CODE_DISABLE_BACKGROUND_TASKS: \"1\"", "CLAUDE_CODE_DISABLE_BACKGROUND_TASKS: \"0\"", 1)'
 
 pass "security-audit workflow structure"
