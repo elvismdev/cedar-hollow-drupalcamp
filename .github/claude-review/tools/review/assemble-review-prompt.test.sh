@@ -36,6 +36,8 @@ assert_contains "$out" "base review standard" "REVIEW.md is included"
 assert_contains "$out" "file.txt" "the changed files are listed"
 assert_contains "$out" "$tmp/in-bugs/review-diff.patch" "the prompt names the diff file"
 assert_contains "$out" "Read tool" "and says to open it with the Read tool"
+assert_contains "$out" "## How to search" "the review prompt carries the search rules the trace check enforces"
+assert_contains "$out" "!**/node_modules/**" "and names the negated glob it refuses"
 case "$out" in *'```diff'*) inl=0;; *) inl=1;; esac
 assert_exit 1 "$inl" "the diff is not inlined"
 assert_contains "$(cat "$tmp/in-bugs/review-diff.patch")" "+y" "the diff file holds the change"
