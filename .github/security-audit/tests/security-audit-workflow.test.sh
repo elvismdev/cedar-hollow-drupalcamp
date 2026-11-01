@@ -311,13 +311,15 @@ for job, step, check_id, agent_id in FAILED:
     upload = next((st for st in steps if (st.get("with") or {}).get("name") == name), None)
     call = ('bash .github/security-audit/seal-trace.sh .github/security-audit/keys/agents.pub "$TRACE" '
             '"$RUNNER_TEMP/failed-trace/%s.age" > /dev/null' % name)
-    if seal is None or not norm(seal.get("if")).startswith("always() && steps.%s.outcome == 'failure'" % check_id) \
+    seal_if = ("always() && steps.%s.outcome == 'failure' && steps.%s.outputs.execution_file != ''"
+               " && steps.plan.outputs.agent == 'true' && needs.prepare.outputs.canary == 'none'") % (check_id, agent_id)
+    if seal is None or norm(seal.get("if")) != seal_if \
             or norm((seal.get("env") or {}).get("TRACE")) != "${{ steps.%s.outputs.execution_file }}" % agent_id \
             or (seal.get("run") or "").strip() != call:
-        err("%s must seal %s's trace to agents.pub with seal-trace.sh only when its run check failed" % (job, step))
+        err("%s must seal %s's trace to agents.pub with seal-trace.sh only when its run check failed, it left a trace, and no canary runs" % (job, step))
         continue
     w = (upload or {}).get("with") or {}
-    if upload is None or not norm(upload.get("if")).startswith("always() && steps.failed-trace-%s.outcome == 'success'" % step) \
+    if upload is None or norm(upload.get("if")) != "always() && steps.failed-trace-%s.outcome == 'success' && steps.plan.outputs.agent == 'true'" % step \
             or w.get("retention-days") != 1 or str(w.get("path")) != "${{ runner.temp }}/failed-trace/%s.age" % name:
         err("%s must upload only the sealed trace of %s as %s for one day, after it was sealed" % (job, step, name))
     elif steps.index(upload) < steps.index(seal):
@@ -775,5 +777,9 @@ mutate "a run check refusing subagent handbacks" '("  AGENT_TOOLS: Read,Glob,Gre
 mutate "a failed trace kept when the run check passed" "(\"if: always() && steps.check-poc-decide.outcome == 'failure'\", \"if: always() && steps.check-poc-decide.outcome == 'success'\", 1)"
 mutate "an unsealed trace uploaded" '("path: ${{ runner.temp }}/failed-trace/failed-trace-cross-check-tie-break.age", "path: ${{ steps.agent-tie-break.outputs.execution_file }}", 1)'
 mutate "a failed trace kept two days" '("name: failed-trace-source-repair\n          path: ${{ runner.temp }}/failed-trace/failed-trace-source-repair.age\n          retention-days: 1", "name: failed-trace-source-repair\n          path: ${{ runner.temp }}/failed-trace/failed-trace-source-repair.age\n          retention-days: 2", 1)'
+
+mutate "a failed trace sealed on a canary run" "(\" && steps.agent-poc-write.outputs.execution_file != '' && steps.plan.outputs.agent == 'true' && needs.prepare.outputs.canary == 'none'\", \" && steps.agent-poc-write.outputs.execution_file != '' && steps.plan.outputs.agent == 'true'\", 1)"
+mutate "the repair seal without its plan guard" "(\"steps.agent-repair.outputs.execution_file != '' && steps.plan.outputs.agent == 'true' && \", \"steps.agent-repair.outputs.execution_file != '' && \", 1)"
+mutate "a failed trace sealed with no trace" "(\"steps.check-source.outcome == 'failure' && steps.agent-source.outputs.execution_file != '' && \", \"steps.check-source.outcome == 'failure' && \", 1)"
 
 pass "security-audit workflow structure"

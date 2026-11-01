@@ -298,10 +298,12 @@ jobs:
           echo "source agent: $cause"
 
       # A failed run check keeps this step's trace, sealed to the agents key
-      # and kept one day, so the owner can see the refused calls.
+      # and kept one day, so the owner can see the refused calls. Skipped on a
+      # canary run, whose canary-trace pair keeps the trace already, and when
+      # the agent step left no execution_file.
       - name: Seal the source agent's trace when its run check failed
         id: failed-trace-source
-        if: always() && steps.check-source.outcome == 'failure' && steps.plan.outputs.agent == 'true'
+        if: always() && steps.check-source.outcome == 'failure' && steps.agent-source.outputs.execution_file != '' && steps.plan.outputs.agent == 'true' && needs.prepare.outputs.canary == 'none'
         env:
           TRACE: ${{ steps.agent-source.outputs.execution_file }}
         run: bash .github/security-audit/seal-trace.sh .github/security-audit/keys/agents.pub "$TRACE" "$RUNNER_TEMP/failed-trace/failed-trace-source-source.age" > /dev/null
@@ -430,16 +432,18 @@ jobs:
           echo "repair agent: $cause"
 
       # A failed run check keeps this step's trace, sealed to the agents key
-      # and kept one day, so the owner can see the refused calls.
+      # and kept one day, so the owner can see the refused calls. Skipped on a
+      # canary run, whose canary-trace pair keeps the trace already, and when
+      # the agent step left no execution_file.
       - name: Seal the repair agent's trace when its run check failed
         id: failed-trace-repair
-        if: always() && steps.check-repair.outcome == 'failure'
+        if: always() && steps.check-repair.outcome == 'failure' && steps.agent-repair.outputs.execution_file != '' && steps.plan.outputs.agent == 'true' && needs.prepare.outputs.canary == 'none'
         env:
           TRACE: ${{ steps.agent-repair.outputs.execution_file }}
         run: bash .github/security-audit/seal-trace.sh .github/security-audit/keys/agents.pub "$TRACE" "$RUNNER_TEMP/failed-trace/failed-trace-source-repair.age" > /dev/null
 
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
-        if: always() && steps.failed-trace-repair.outcome == 'success'
+        if: always() && steps.failed-trace-repair.outcome == 'success' && steps.plan.outputs.agent == 'true'
         with:
           name: failed-trace-source-repair
           path: ${{ runner.temp }}/failed-trace/failed-trace-source-repair.age
@@ -741,10 +745,12 @@ jobs:
           echo "poc-write agent: $cause"
 
       # A failed run check keeps this step's trace, sealed to the agents key
-      # and kept one day, so the owner can see the refused calls.
+      # and kept one day, so the owner can see the refused calls. Skipped on a
+      # canary run, whose canary-trace pair keeps the trace already, and when
+      # the agent step left no execution_file.
       - name: Seal the poc-write agent's trace when its run check failed
         id: failed-trace-poc-write
-        if: always() && steps.check-poc-write.outcome == 'failure' && steps.plan.outputs.agent == 'true'
+        if: always() && steps.check-poc-write.outcome == 'failure' && steps.agent-poc-write.outputs.execution_file != '' && steps.plan.outputs.agent == 'true' && needs.prepare.outputs.canary == 'none'
         env:
           TRACE: ${{ steps.agent-poc-write.outputs.execution_file }}
         run: bash .github/security-audit/seal-trace.sh .github/security-audit/keys/agents.pub "$TRACE" "$RUNNER_TEMP/failed-trace/failed-trace-poc-write-poc-write.age" > /dev/null
@@ -1232,10 +1238,12 @@ jobs:
           echo "poc-decide agent: $cause"
 
       # A failed run check keeps this step's trace, sealed to the agents key
-      # and kept one day, so the owner can see the refused calls.
+      # and kept one day, so the owner can see the refused calls. Skipped on a
+      # canary run, whose canary-trace pair keeps the trace already, and when
+      # the agent step left no execution_file.
       - name: Seal the poc-decide agent's trace when its run check failed
         id: failed-trace-poc-decide
-        if: always() && steps.check-poc-decide.outcome == 'failure' && steps.plan.outputs.agent == 'true'
+        if: always() && steps.check-poc-decide.outcome == 'failure' && steps.agent-poc-decide.outputs.execution_file != '' && steps.plan.outputs.agent == 'true' && needs.prepare.outputs.canary == 'none'
         env:
           TRACE: ${{ steps.agent-poc-decide.outputs.execution_file }}
         run: bash .github/security-audit/seal-trace.sh .github/security-audit/keys/agents.pub "$TRACE" "$RUNNER_TEMP/failed-trace/failed-trace-poc-decide-poc-decide.age" > /dev/null
@@ -1503,10 +1511,12 @@ jobs:
           echo "cross-check agent: $cause"
 
       # A failed run check keeps this step's trace, sealed to the agents key
-      # and kept one day, so the owner can see the refused calls.
+      # and kept one day, so the owner can see the refused calls. Skipped on a
+      # canary run, whose canary-trace pair keeps the trace already, and when
+      # the agent step left no execution_file.
       - name: Seal the cross-check agent's trace when its run check failed
         id: failed-trace-cross-check
-        if: always() && steps.check-cross-check.outcome == 'failure' && steps.plan.outputs.agent == 'true'
+        if: always() && steps.check-cross-check.outcome == 'failure' && steps.agent-cross-check.outputs.execution_file != '' && steps.plan.outputs.agent == 'true' && needs.prepare.outputs.canary == 'none'
         env:
           TRACE: ${{ steps.agent-cross-check.outputs.execution_file }}
         run: bash .github/security-audit/seal-trace.sh .github/security-audit/keys/agents.pub "$TRACE" "$RUNNER_TEMP/failed-trace/failed-trace-cross-check-cross-check.age" > /dev/null
@@ -1607,10 +1617,12 @@ jobs:
           echo "tie-break agent: $cause"
 
       # A failed run check keeps this step's trace, sealed to the agents key
-      # and kept one day, so the owner can see the refused calls.
+      # and kept one day, so the owner can see the refused calls. Skipped on a
+      # canary run, whose canary-trace pair keeps the trace already, and when
+      # the agent step left no execution_file.
       - name: Seal the tie-break agent's trace when its run check failed
         id: failed-trace-tie-break
-        if: always() && steps.check-tie-break.outcome == 'failure' && steps.plan.outputs.agent == 'true'
+        if: always() && steps.check-tie-break.outcome == 'failure' && steps.agent-tie-break.outputs.execution_file != '' && steps.plan.outputs.agent == 'true' && needs.prepare.outputs.canary == 'none'
         env:
           TRACE: ${{ steps.agent-tie-break.outputs.execution_file }}
         run: bash .github/security-audit/seal-trace.sh .github/security-audit/keys/agents.pub "$TRACE" "$RUNNER_TEMP/failed-trace/failed-trace-cross-check-tie-break.age" > /dev/null
