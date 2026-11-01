@@ -19,6 +19,8 @@ OPEN_KEY="repos_example_repo_issues_labels_security-audit_state_open_sort_create
 CLOSED_KEY="repos_example_repo_issues_labels_security-audit_state_closed_sort_created_direction_desc_per_page_100"
 WORKFLOW=.github/workflows/security-audit.yml
 RUN=9001
+HEAD_SHA=0123456789abcdef0123456789abcdef01234567
+COMPARE_KEY="repos_example_repo_compare_main...$HEAD_SHA"
 
 new_fixture() { # name: a fresh fixture directory with no issues at all
   FIX="$WORK/fix-$1"
@@ -34,10 +36,14 @@ issue_with_body() { # number body
 marker_body() { # run_id sha256
   printf 'Audit header\n\n<!-- security-audit-state {"run_id": "%s", "sha256": "%s", "fingerprints": ["fp-1", "fp-2"]} -->\n' "$1" "$2"
 }
-run_json() { # run path branch event
-  jq -n --argjson id "$1" --arg path "$2" --arg branch "$3" --arg event "$4" \
-    '{id: $id, path: $path, head_branch: $branch, event: $event, repository: {full_name: "example/repo"}}' \
+run_json() { # run path branch event: the run, whose head commit main's history holds
+  jq -n --argjson id "$1" --arg path "$2" --arg branch "$3" --arg event "$4" --arg sha "$HEAD_SHA" \
+    '{id: $id, path: $path, head_branch: $branch, head_sha: $sha, event: $event, repository: {full_name: "example/repo"}}' \
     > "$FIX/repos_example_repo_actions_runs_$1.json"
+  compare_status behind
+}
+compare_status() { # status of main...<head_sha>
+  jq -n --arg s "$1" '{status: $s}' > "$FIX/$COMPARE_KEY.json"
 }
 artifacts_json() { # run expired
   jq -n --argjson expired "$2" '{total_count: 1, artifacts: [{id: 77, name: "audit-state", expired: $expired}]}' \
@@ -83,6 +89,45 @@ assert_eq "audit-state.age
 marker.json" "$(ls "$WORK/out-good")" "the output directory holds only the state and the marker"
 assert_eq '["fp-1","fp-2"]' "$(jq -c .fingerprints "$WORK/out-good/marker.json")" "the marker is saved with its fingerprints"
 assert_contains "$(cat "$FIX/calls.log")" "gh run download $RUN -R $REPO -n audit-state -D $WORK/out-good/download." "the download names the run, repository and artifact"
+
+# The run's head commit must be on main's history: the compare API's
+# main...<head_sha> status identical or behind. A head ahead of or diverged
+# from main (a tag named main, for example) is no prior state.
+for status in identical behind; do
+  new_fixture "compare-$status"
+  good_prior
+  compare_status "$status"
+  fetch "$WORK/out-compare-$status"
+  assert_eq "true" "$(field found)" "a run whose head commit main's history holds ($status) is found"
+done
+assert_contains "$(cat "$FIX/calls.log")" "gh api repos/$REPO/compare/main...$HEAD_SHA" "the head commit is compared with main"
+for status in ahead diverged; do
+  new_fixture "compare-$status"
+  good_prior
+  compare_status "$status"
+  fetch "$WORK/out-compare-$status"
+  assert_exit 0 "$RC" "a head commit $status of main exits 0"
+  assert_eq "false" "$(field found)" "a run whose head commit is $status of main is no prior state"
+  no_download "a head commit $status of main"
+done
+new_fixture compare-404
+good_prior
+rm "$FIX/$COMPARE_KEY.json"
+fetch "$WORK/out-compare-404"
+assert_eq "false" "$(field found)" "a head commit GitHub cannot compare is no prior state"
+no_download "a head commit GitHub cannot compare"
+new_fixture compare-500
+good_prior
+: > "$FIX/$COMPARE_KEY.500"
+fetch "$WORK/out-compare-500"
+assert_exit 1 "$RC" "a compare that fails with a server error fails the fetch"
+empty_after "$WORK/out-compare-500" "a compare server error"
+new_fixture no-head-sha
+good_prior
+jq 'del(.head_sha)' "$FIX/repos_example_repo_actions_runs_$RUN.json" > "$FIX/t.json" && mv "$FIX/t.json" "$FIX/repos_example_repo_actions_runs_$RUN.json"
+fetch "$WORK/out-no-head-sha"
+assert_eq "false" "$(field found)" "a run with no head commit is no prior state"
+no_download "a run with no head commit"
 
 # The marker exactly as render-issue.py writes it is read, so a change to
 # the renderer's marker format fails here.

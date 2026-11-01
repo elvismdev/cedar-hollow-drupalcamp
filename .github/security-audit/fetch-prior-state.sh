@@ -8,9 +8,12 @@
 #      <!-- security-audit-state {"run_id": "...", "sha256": "...", "fingerprints": [...]} -->,
 #      with a run id, a lowercase sha256 and a list of fingerprints.
 #   2. The run it names must be a run of .github/workflows/security-audit.yml
-#      in this repository, on main, started by schedule or workflow_dispatch.
-#      Otherwise nothing is downloaded, so an artifact uploaded by any other
-#      run or workflow is never read.
+#      in this repository, on main, started by schedule or workflow_dispatch,
+#      and its head commit must be on main's history: the compare API's
+#      main...<head_sha> status is identical or behind. A branch name alone
+#      is not enough, since a tag can also be named main. Otherwise nothing
+#      is downloaded, so an artifact uploaded by any other run or workflow is
+#      never read.
 #   3. That run's audit-state artifact must exist and not be expired. It is
 #      downloaded with gh run download <run_id> -n audit-state, and must hold
 #      exactly one regular file, audit-state.age, whose sha256 equals the
@@ -111,6 +114,16 @@ origin="$(jq -r --arg repo "$repo" --arg path "$WORKFLOW_PATH" '
   elif (.event | IN("schedule", "workflow_dispatch") | not) then "an event other than schedule or workflow_dispatch"
   else "ok" end' <<<"$run")"
 [ "$origin" = ok ] || not_found "the marker names run $run_id of $origin"
+
+head_sha="$(jq -r '.head_sha // ""' <<<"$run")"
+[[ "$head_sha" =~ ^[0-9a-f]{40}$ ]] || not_found "run $run_id has no head commit"
+compare="$(api "repos/$repo/compare/main...$head_sha")" || {
+  rc=$?; [ "$rc" -eq 4 ] && not_found "run $run_id's head commit cannot be compared with main"; exit 1; }
+status="$(jq -r '.status // ""' <<<"$compare")"
+case "$status" in
+  identical|behind) ;;
+  *) not_found "run $run_id's head commit is not on main's history (${status:-no status})" ;;
+esac
 
 artifacts="$(api "repos/$repo/actions/runs/$run_id/artifacts?name=$ARTIFACT")" || {
   rc=$?; [ "$rc" -eq 4 ] && not_found "run $run_id no longer exists"; exit 1; }
