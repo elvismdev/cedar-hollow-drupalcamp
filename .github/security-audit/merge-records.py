@@ -400,12 +400,25 @@ def record_valid(record):
 # ---------------------------------------------------------------- state
 
 
+# run-metadata.json keys only this script writes. The source agent may write
+# run-metadata.json during its run, so count --job source drops these keys
+# before it counts; every later subcommand refuses them in any other shape.
+TRUSTED_META_KEYS = ("usage", "poc", "cross_check", "merge_discarded", "incomplete_reasons")
+
+
+def non_negative_int(value):
+    return isinstance(value, int) and not isinstance(value, bool) and value >= 0
+
+
 class State:
-    def __init__(self, directory):
+    def __init__(self, directory, reset_trusted=False):
         self.dir = directory
         self.findings = self._load(FINDINGS, list, None)
         self.ledger = self._load(LEDGER, list, None)
         self.meta = self._load(METADATA, dict, None)
+        if reset_trusted:
+            for key in TRUSTED_META_KEYS:
+                self.meta.pop(key, None)
         self.disputed = self._load(DISPUTED, list, [])
         self.history = self._load(HISTORY, dict, {})
         self.history.setdefault("fingerprints", {})
@@ -418,8 +431,16 @@ class State:
             raise Refused(METADATA + " has no numeric run_id")
         if self.run_id < 1:
             raise Refused(METADATA + " has no positive run_id")
-        if not isinstance(self.meta.get("usage", {}), dict):
-            raise Refused(METADATA + " usage is not an object")
+        usage = self.meta.get("usage", {})
+        if not isinstance(usage, dict) or not all(
+                isinstance(v, dict) and set(v) == {"invocations", "cap"}
+                and non_negative_int(v["invocations"]) and non_negative_int(v["cap"]) for v in usage.values()):
+            raise Refused(METADATA + " usage is not a map of non-negative invocations and caps")
+        for key in ("poc", "cross_check"):
+            if key in self.meta and not isinstance(self.meta[key], dict):
+                raise Refused(METADATA + " %s is not an object" % key)
+        if not isinstance(self.meta.get("merge_discarded", []), list):
+            raise Refused(METADATA + " merge_discarded is not a list")
         reasons = self.meta.get("incomplete_reasons")
         if reasons is None:
             reasons = []
@@ -644,10 +665,8 @@ def cmd_count(state, args):
         raise Refused("the cap must not be negative")
     used = subagent_count(read_trace(args.trace))
     usage = state.meta.setdefault("usage", {})
-    entry = usage.get(args.job)
-    if not isinstance(entry, dict):
-        entry = {"invocations": 0, "cap": args.cap}
-    entry["invocations"] = int(entry.get("invocations", 0)) + used
+    entry = usage.get(args.job) or {"invocations": 0, "cap": args.cap}
+    entry["invocations"] = entry["invocations"] + used
     entry["cap"] = args.cap
     usage[args.job] = entry
     if entry["invocations"] > args.cap:
@@ -1275,7 +1294,7 @@ def main(argv):
         "status": cmd_status,
     }
     try:
-        state = State(args.state)
+        state = State(args.state, reset_trusted=(args.command == "count" and args.job == "source"))
         commands[args.command](state, args)
         state.save()
     except Refused as err:

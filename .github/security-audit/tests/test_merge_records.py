@@ -624,6 +624,31 @@ class HostileEntryTest(MergeTest):
         self.assertIn("entry does not match the tie-break shape", self.discarded())
         self.assertIsNone(self.record("fp-1"))
 
+    def test_count_source_resets_agent_written_metadata(self):
+        self.seed([lead("fp-1")], [unit("u1", fps=["fp-1"])],
+                  meta=metadata(usage={"source": {"invocations": -1000, "cap": 999}},
+                                poc={"confirmed": ["fp-1"]}, cross_check={"settled": ["fp-1"]},
+                                merge_discarded="x", incomplete_reasons=[]))
+        for i in range(5):
+            self.subagent("h-%d" % i, {})
+        self.run_merge("count", "--job", "source", "--cap", "3", "--trace", self.trace_file())
+        meta = self.load("run-metadata.json")
+        self.assertEqual(meta["usage"], {"source": {"invocations": 5, "cap": 3}})
+        self.assertEqual(meta["incomplete_reasons"], ["cap_exceeded:source"])
+        for key in ("poc", "cross_check", "merge_discarded"):
+            self.assertNotIn(key, meta)
+        self.select()
+        self.assertEqual(self.load("run-metadata.json")["poc"]["confirmed"], [])
+
+    def test_later_subcommands_refuse_a_malformed_usage_entry(self):
+        for bad in ({"invocations": "x", "cap": 3}, {"invocations": -1, "cap": 3}, {"invocations": 1}):
+            with self.subTest(bad=bad):
+                self.seed([], [], meta=metadata(usage={"source": bad}))
+                result = self.run_merge("count", "--job", "poc-write", "--cap", "3", "--trace",
+                                        self.trace_file(), ok=False)
+                self.assertEqual(result.returncode, 1)
+                self.assertNotIn("Traceback", result.stderr)
+
 
 
 class HistoryTest(MergeTest):
