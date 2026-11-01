@@ -216,8 +216,24 @@ for name, job in jobs.items():
                     and "always()" in norm(st.get("if")) and not canary_only:
                 err("%s hand-off step %r must not run with always()" % (name, st.get("name")))
 
-    # On a canary run the source and poc-write jobs merge nothing.
-    if name in ("source", "poc-write"):
+    # Every agent job decides which parts run in a plan step, and on a canary
+    # run merges nothing; poc-decide and cross-check, which no canary runs,
+    # carry the plan guard on every step after their first agent step.
+    if name in ("poc-decide", "cross-check"):
+        plan = next((st for st in steps if st.get("id") == "plan"), None)
+        if plan is None or "none) agent=true merge=true handoff=true" not in (plan.get("run") or "") \
+                or "exit 1" not in (plan.get("run") or ""):
+            err("%s needs a plan step that runs everything on no canary and fails on any canary" % name)
+        for st in steps[agent_ids[0] if agent_ids else 0:]:
+            if st.get("id") == "cause":
+                continue
+            c = norm(st.get("if"))
+            if "steps.plan.outputs." not in c:
+                err("%s step %r after the agent step lacks the steps.plan guard" % (name, st.get("name") or st.get("uses")))
+            if ("seal.sh seal" in (st.get("run") or "") or str(st.get("uses", "")).startswith("actions/upload-artifact@")) \
+                    and "steps.plan.outputs.handoff == 'true'" not in c:
+                err("%s hand-off step %r must be guarded by steps.plan.outputs.handoff" % (name, st.get("name") or st.get("uses")))
+    if name in ("source", "poc-write", "poc-decide", "cross-check"):
         for st in steps:
             if "merge-records.py" in (st.get("run") or "") or "validate-findings.cjs" in (st.get("run") or ""):
                 c = norm(st.get("if"))
@@ -602,7 +618,7 @@ mutate "audit-state uploaded unconditionally" "(\"if: steps.publish.outputs.mark
 mutate "a prompt rendered without the variable list" '("envsubst \"$PROMPT_VARS\" < .github/security-audit/prompts/tie-break.md", "envsubst < .github/security-audit/prompts/tie-break.md", 1)'
 mutate "no canary prompt in poc-write" '("envsubst \"$PROMPT_VARS\" < \".github/security-audit/prompts/canary-$CANARY.md\" >> \"$RUNNER_TEMP/prompt-poc-write.md\"", "true", 1)'
 mutate "the sandbox key canary removed" '("Check the sandbox key against both public keys\n        env:\n          AUDIT_SANDBOX_AGE_KEY", "Check the sandbox key against both public keys\n        env:\n          UNUSED", 1)'
-mutate "a hand-off sealed with always()" "(\"      - name: Seal audit-final to the agents key\n        id: handoff\n\", \"      - name: Seal audit-final to the agents key\n        id: handoff\n        if: always()\n\", 1)"
+mutate "a hand-off sealed with always()" "(\"      - name: Seal audit-final to the agents key\n        id: handoff\n        if: steps.plan.outputs.handoff == 'true'\n\", \"      - name: Seal audit-final to the agents key\n        id: handoff\n        if: always() && steps.plan.outputs.handoff == 'true'\n\", 1)"
 
 mutate "the source canary judge on every run" "(\"Judge the canary (source agent)\n        if: always() && steps.plan.outputs.agent == 'true' && needs.prepare.outputs.canary != 'none'\", \"Judge the canary (source agent)\n        if: always() && steps.plan.outputs.agent == 'true'\", 1)"
 mutate "the canary trace sealed on every run" "(\"id: canary-trace\n        if: always() && steps.plan.outputs.agent == 'true' && needs.prepare.outputs.canary != 'none'\", \"id: canary-trace\n        if: always() && steps.plan.outputs.agent == 'true'\", 1)"
@@ -617,5 +633,8 @@ mutate "poc-run installing composer" '("          tools: none\n          github-
 mutate "poc-run passing its token to setup-php" '("          tools: none\n          github-token: \x27\x27", "          tools: none", 1)'
 mutate "an ok cause after a failed trusted step" '("          if [ \"$JOB_STATUS\" != success ] && [ \"$cause\" = ok ]; then cause=agent_failed; fi\n          echo \"cause=$cause\" >> \"$GITHUB_OUTPUT\"\n          echo \"poc-decide job: $cause\"", "          echo \"cause=$cause\" >> \"$GITHUB_OUTPUT\"\n          echo \"poc-decide job: $cause\"", 1)'
 mutate "a refused canary script not counted" '("echo \"item $n slot $slot: script path refused, not run\"; not_run \"$n\" \"$slot\"; continue", "echo \"item $n slot $slot: script path refused, not run\"; continue", 1)'
+
+mutate "a cross-check step without the plan guard" "(\"      - name: Record the run status\n        if: steps.plan.outputs.merge == 'true'\n\", \"      - name: Record the run status\n\", 1)"
+mutate "poc-decide's hand-off without the handoff guard" "(\"      - name: Seal audit-poc to the agents key\n        id: handoff\n        if: steps.plan.outputs.handoff == 'true'\n\", \"      - name: Seal audit-poc to the agents key\n        id: handoff\n\", 1)"
 
 pass "security-audit workflow structure"
