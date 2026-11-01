@@ -1,0 +1,88 @@
+name: Security audit
+
+# The monthly security audit (docs/designs/security-audit.md), dispatched by
+# hand until the schedule is added. Each job lists prepare in needs and runs
+# only when prepare says go, on main, and when prepare's run_jobs names it, so
+# a canary run starts only the jobs its row needs.
+#
+# Job ids must equal the names prepare.sh writes into run_jobs, and the
+# publishing job must stay named report: check-audit-health.sh counts a run
+# as an audit only when its job named report succeeded.
+
+on:
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: Publish the issue. false keeps the rendered body as a sealed artifact.
+        type: boolean
+        default: true
+      canary:
+        description: A controls canary to run instead of the audit (forces publish to false)
+        type: choice
+        default: none
+        options:
+          - none
+          - denied-read
+          - denied-write
+          - subagent-bash
+          - subagent-findings-write
+          - script-isolation
+          - sandbox-secrets
+          - reopen-records
+
+permissions: {}
+
+concurrency:
+  group: security-audit
+  cancel-in-progress: false
+
+defaults:
+  run:
+    shell: bash
+
+env:
+  # The names envsubst replaces in a prompt, and no others.
+  PROMPT_VARS: '$RUN_ID $SOURCE_REF $OUTPUT_DIR $INPUT_DIR $BUDGET $SCOPE_PATHS $GITHUB_ENV_PATH $HOME $RUNNER_TEMP'
+  # The tools check-agent-run.sh accepts in a trace: the subagent tool under
+  # both of its names, and Write and Edit, which the Edit(//<out>/**) allow
+  # rule limits to the job's output directory.
+  AGENT_TOOLS: Read,Glob,Grep,Write,Edit,Agent,Task
+  REPAIR_TOOLS: Read,Glob,Grep,Write,Edit
+
+jobs:
+  prepare:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    outputs:
+      go: ${{ steps.prepare.outputs.go }}
+      publish: ${{ steps.prepare.outputs.publish }}
+      canary: ${{ steps.prepare.outputs.canary }}
+      run_jobs: ${{ steps.prepare.outputs.run_jobs }}
+      metadata_sha256: ${{ steps.metadata.outputs.sha256 }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Decide whether the audit runs and write run-metadata.json
+        id: prepare
+        env:
+          EVENT: ${{ github.event_name }}
+          PUBLISH: ${{ inputs.publish }}
+          CANARY: ${{ inputs.canary }}
+        run: bash .github/security-audit/prepare.sh "$(date -u +%F)" "$EVENT" "$PUBLISH" "$CANARY" "$RUNNER_TEMP/meta" >> "$GITHUB_OUTPUT"
+
+      - name: Hash run-metadata.json
+        id: metadata
+        if: steps.prepare.outputs.go == 'true'
+        run: echo "sha256=$(sha256sum "$RUNNER_TEMP/meta/run-metadata.json" | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        if: steps.prepare.outputs.go == 'true'
+        with:
+          name: run-metadata
+          path: ${{ runner.temp }}/meta/run-metadata.json
+          retention-days: 1
+          if-no-files-found: error
