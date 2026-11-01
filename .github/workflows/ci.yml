@@ -294,8 +294,13 @@ jobs:
         with:
           name: storybook
           path: web/themes/custom/cedar_hollow/storybook
+      # Puppeteer arrives only through pa11y-ci, which this job does not run;
+      # the visual tests use the image's Playwright browsers, so its Chrome
+      # download is skipped and the job does not depend on it.
       - run: npm ci
         working-directory: tests
+        env:
+          PUPPETEER_SKIP_DOWNLOAD: "true"
       - run: npx playwright test --project=visual
         working-directory: tests
         env:
