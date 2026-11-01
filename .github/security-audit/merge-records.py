@@ -90,12 +90,16 @@
 #   dispute_rate         {disputes, cross_checked, rate}, set by status only
 #                        when a cross-check selection exists
 #   prior_run_paths      the --prior paths select-poc was given
-#   interrupted          [{job, agent_id}] for each subagent whose call
-#                        returned the safety classifier's interruption (the
-#                        text in classifier-interruption.txt), recorded by
-#                        count; its entry is never merged, and every
-#                        subcommand that reads entries discards it with the
-#                        label "subagent interrupted by the safety classifier"
+#   interrupted          [{job, agent_id, tool_use_id}] for each subagent
+#                        call whose top-level tool_result is a single text
+#                        block equal to the sentence in
+#                        classifier-interruption.txt, for a general-purpose
+#                        call, recorded by count only; later subcommands read
+#                        it back from here. Its entry is never merged (label
+#                        "subagent interrupted by the safety classifier"),
+#                        and apply-decide drops a manifest item naming an
+#                        interrupted poc-write subagent or a script under its
+#                        agents/<id>/, and any decision on that item
 # and, in trusted-meta.json only, run_id and source_run_status.
 # Incomplete reasons it sets: cap_exceeded:<job>, cross_check_cap,
 # cross_check_missing (a selected record with no valid cross-check entry, or
@@ -112,6 +116,7 @@ import hashlib
 import importlib.util
 import json
 import os
+import posixpath
 import re
 import stat
 import sys
@@ -581,23 +586,45 @@ def tool_results(node):
             yield from tool_results(value)
 
 
-def interrupted_agents(messages, bindings):
-    """The agent ids of the subagents whose call returned the classifier's
-    interruption, as a plain string or a single text block that starts with
-    it, read the way check-agent-run.sh reads it."""
+def interrupted_calls(messages, bindings):
+    """(tool_use id, agent id) of each subagent call the safety classifier
+    stopped, read as check-agent-run.sh reads it: the call's tool_result, in
+    a top-level user message, is a single text block whose trimmed text equals
+    the sentence in classifier-interruption.txt, and the call asks for no
+    subagent_type or general-purpose."""
     text = interruption_text()
-    found = set()
-    for result in tool_results(messages):
-        agent_id = bindings.get(result.get("tool_use_id")) if isinstance(result.get("tool_use_id"), str) else None
-        if agent_id is None:
+    kinds = {}
+    for message in messages:
+        for call in tool_uses(message):
+            if call.get("name") in SUBAGENT_TOOLS and isinstance(call.get("id"), str):
+                args = call.get("input") if isinstance(call.get("input"), dict) else {}
+                kinds[call["id"]] = args.get("subagent_type", "general-purpose")
+    found = []
+    for message in messages:
+        if (not isinstance(message, dict) or message.get("type") != "user"
+                or message.get("parent_tool_use_id") is not None or not isinstance(message.get("message"), dict)
+                or not isinstance(message["message"].get("content"), list)):
             continue
-        content = result.get("content")
-        if (isinstance(content, list) and len(content) == 1 and isinstance(content[0], dict)
-                and content[0].get("type") == "text"):
-            content = content[0].get("text")
-        if isinstance(content, str) and content.startswith(text):
-            found.add(agent_id)
+        for result in message["message"]["content"]:
+            if not isinstance(result, dict) or result.get("type") != "tool_result":
+                continue
+            call_id = result.get("tool_use_id")
+            agent_id = bindings.get(call_id) if isinstance(call_id, str) else None
+            if agent_id is None or kinds.get(call_id) != "general-purpose":
+                continue
+            content = result.get("content")
+            if (isinstance(content, list) and len(content) == 1 and isinstance(content[0], dict)
+                    and content[0].get("type") == "text" and isinstance(content[0].get("text"), str)
+                    and content[0]["text"].strip() == text):
+                found.append((call_id, agent_id))
     return found
+
+
+def interrupted_ids(state, job):
+    """The agent ids count recorded as interrupted in job, read back from
+    trusted-meta.json rather than from any trace."""
+    return {r["agent_id"] for r in state.trusted.get("interrupted", [])
+            if isinstance(r, dict) and r.get("job") == job and isinstance(r.get("agent_id"), str)}
 
 
 def subagent_count(messages):
@@ -625,7 +652,7 @@ def read_entries(state, job, entries, trace_path):
     bindings, reused = subagent_bindings(messages)
     for agent_id in sorted(reused):
         state.discard(job, agent_id, "agent id declared by more than one subagent call")
-    interrupted = interrupted_agents(messages, bindings)
+    interrupted = interrupted_ids(state, job)
     paths = {entry_path(entries, agent_id): agent_id for agent_id in set(bindings.values())}
     last, refused = {}, {}
     for message in messages:
@@ -706,9 +733,10 @@ def cmd_count(state, args):
     used = subagent_count(messages)
     bindings, _ = subagent_bindings(messages)
     recorded = state.trusted.setdefault("interrupted", [])
-    for agent_id in sorted(interrupted_agents(messages, bindings)):
-        if {"job": args.job, "agent_id": agent_id} not in recorded:
-            recorded.append({"job": args.job, "agent_id": agent_id})
+    for call_id, agent_id in interrupted_calls(messages, bindings):
+        key = {"job": args.job, "agent_id": agent_id, "tool_use_id": call_id}
+        if key not in recorded:
+            recorded.append(key)
     usage = state.trusted.setdefault("usage", {})
     entry = usage.get(args.job) or {"invocations": 0, "cap": args.cap}
     entry["invocations"] = entry["invocations"] + used
@@ -1004,6 +1032,19 @@ def cmd_apply_decide(state, args):
         raise Refused("no proof-of-concept selection in trusted-meta.json")
     selected = set(poc["selected"])
     modes = read_manifest(state, args.manifest)
+    # Nothing from an interrupted poc-write subagent is used: an item naming
+    # its agent id, or a script under its agents/<id>/, is dropped with its
+    # run records, and no decision on that item applies.
+    writers = interrupted_ids(state, "poc-write")
+    dropped = set()
+    for fp, slots in list(modes.items()):
+        for _mode, script, agent_id in slots.values():
+            parts = posixpath.normpath(script).split("/") if isinstance(script, str) else []
+            if agent_id in writers or (len(parts) > 1 and parts[0] == "agents" and parts[1] in writers):
+                dropped.add(fp)
+        if fp in dropped:
+            del modes[fp]
+            state.discard("poc-decide", None, "manifest item from an interrupted subagent")
     records = read_run_records(state, args.records, modes, args.scripts)
     raw = read_entries(state, "poc-decide", args.entries, args.trace)
     valid = {}
@@ -1013,6 +1054,9 @@ def cmd_apply_decide(state, args):
         else:
             state.discard("poc-decide", agent_id, "entry does not match the poc-decide shape")
     decisions = one_per_fingerprint(state, "poc-decide", valid)
+    for fp in dropped:
+        if fp in decisions:
+            state.discard("poc-decide", decisions.pop(fp)[0], "decision on scripts from an interrupted subagent")
 
     # Each decision's checks, one per run record promoted to its decider.
     plans = {}
