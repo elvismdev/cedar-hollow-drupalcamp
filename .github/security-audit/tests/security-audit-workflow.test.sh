@@ -210,8 +210,10 @@ for name, job in jobs.items():
             if gated and "always()" in norm(st.get("if")) \
                     and "steps.%s.outcome == 'success'" % check_id not in norm(st.get("if")):
                 err("%s step %r after %s runs with always() without requiring the run check %s" % (name, st.get("name"), aid, check_id))
+            canary_only = "needs.prepare.outputs.canary != 'none'" in norm(st.get("if")) \
+                or "steps.canary-trace.outcome" in norm(st.get("if"))
             if ("seal.sh seal" in body or str(st.get("uses", "")).startswith("actions/upload-artifact@")) \
-                    and "always()" in norm(st.get("if")):
+                    and "always()" in norm(st.get("if")) and not canary_only:
                 err("%s hand-off step %r must not run with always()" % (name, st.get("name")))
 
     # On a canary run the source and poc-write jobs merge nothing.
@@ -283,6 +285,47 @@ i_agent = next((i for i, s in enumerate(src) if str(s.get("uses", "")).startswit
 if i_open is None or i_agent is None or i_open > i_agent:
     err("source: prior_run_paths must be written into run-metadata.json before the agent step")
 
+# ---------------------------------------------------------------- canary judging
+# After the targeted agent step: judge-canary.sh on that step's trace, run
+# only on a canary run, and the trace sealed to the agents key and kept one
+# day, on a canary run only.
+for name, cond in (("source", "needs.prepare.outputs.canary != 'none'"),
+                   ("poc-write", "needs.prepare.outputs.canary == 'script-isolation'")):
+    steps = (jobs.get(name) or {}).get("steps") or []
+    ids = [i for i, s in enumerate(steps) if s.get("id") == "agent-" + name]
+    judges = [i for i, s in enumerate(steps) if "judge-canary.sh" in (s.get("run") or "")]
+    if len(ids) != 1 or len(judges) != 1 or judges[0] < ids[0]:
+        err("%s must judge its canary once, after its agent step" % name)
+        continue
+    j = steps[judges[0]]
+    c, e = norm(j.get("if")), j.get("env") or {}
+    if not c.startswith("always() && ") or cond not in c:
+        err("%s canary judge must run with always() and only when %s" % (name, cond))
+    if norm(e.get("TRACE")) != "${{ steps.agent-%s.outputs.execution_file }}" % name \
+            or norm(e.get("RUN_CHECK_OUTCOME")) != "${{ steps.check-%s.outcome }}" % name:
+        err("%s canary judge must read its agent step's trace and run check outcome" % name)
+    if 'judge-canary.sh "$CANARY" "$TRACE"' not in (j.get("run") or ""):
+        err("%s canary judge must be called as judge-canary.sh \"$CANARY\" \"$TRACE\"" % name)
+    seal = [s for s in steps if s.get("id") == "canary-trace"]
+    upload = [s for s in steps if (s.get("with") or {}).get("name") == "canary-trace-" + name]
+    if len(seal) != 1 or "needs.prepare.outputs.canary != 'none'" not in norm(seal[0].get("if")) \
+            or "keys/agents.pub" not in (seal[0].get("run") or ""):
+        err("%s must seal its agent's trace to agents.pub on canary runs only" % name)
+    if len(upload) != 1 or norm(upload[0].get("if")) != "always() && steps.canary-trace.outcome == 'success'" \
+            or upload[0]["with"].get("retention-days") != 1:
+        err("%s must upload the sealed trace for one day, only when it was sealed" % name)
+poc_run = {s.get("name"): s for s in (jobs.get("poc-run") or {}).get("steps") or []}
+run_step = next((s for s in poc_run.values() if s.get("id") == "run"), {})
+if "judge-canary.sh sandbox-secrets -" not in (run_step.get("run") or ""):
+    err("poc-run must judge the sandbox-secrets canary on each plaintext record before sealing it")
+verdict = poc_run.get("Canary verdict (sandbox-secrets)") or {}
+if "needs.prepare.outputs.canary == 'sandbox-secrets'" not in norm(verdict.get("if")):
+    err("poc-run must fail the sandbox-secrets canary in its own step when a record fails")
+reopen = poc_run.get("Canary, the sandbox key opens no sealed record") or {}
+if "judge-canary.sh reopen-records -" not in (reopen.get("run") or "") \
+        or "needs.prepare.outputs.canary == 'reopen-records'" not in norm(reopen.get("if")):
+    err("poc-run must judge reopen-records with judge-canary.sh on a reopen-records run only")
+
 # ---------------------------------------------------------------- key canaries
 for name, own, other, key in (("source", "agents", "sandbox", "AUDIT_AGENTS_AGE_KEY"),
                               ("poc-run", "sandbox", "agents", "AUDIT_SANDBOX_AGE_KEY")):
@@ -312,6 +355,8 @@ SCRIPTS = {
                                  or (len(a) in (6, 7) and a[0] in ("source", "poc-write", "poc-decide", "cross-check"))),
     SA + "/agent-outcome.sh": (["usage: agent-outcome.sh <execution-file> <step-outcome> <started-epoch> <ended-epoch> <timeout-minutes> <expected-file>..."],
                                lambda a: len(a) >= 5),
+    SA + "/judge-canary.sh": (["usage: judge-canary.sh <canary> <execution-file> [run-record]"],
+                              lambda a: len(a) in (2, 3)),
     SA + "/run-in-sandbox.sh": (["usage: run-in-sandbox.sh <fingerprint> <slot> <mode> <site-dir> <script> [fixture]"],
                                 lambda a: len(a) in (5, 6)),
     SA + "/create-test-accounts.php": (["Usage: drush php:script create-test-accounts.php <output-path>"],
@@ -455,5 +500,12 @@ mutate "a prompt rendered without the variable list" '("envsubst \"$PROMPT_VARS\
 mutate "no canary prompt in poc-write" '("envsubst \"$PROMPT_VARS\" < \".github/security-audit/prompts/canary-$CANARY.md\" >> \"$RUNNER_TEMP/prompt-poc-write.md\"", "true", 1)'
 mutate "the sandbox key canary removed" '("Check the sandbox key against both public keys\n        env:\n          AUDIT_SANDBOX_AGE_KEY", "Check the sandbox key against both public keys\n        env:\n          UNUSED", 1)'
 mutate "a hand-off sealed with always()" "(\"      - name: Seal audit-final to the agents key\n        id: handoff\n\", \"      - name: Seal audit-final to the agents key\n        id: handoff\n        if: always()\n\", 1)"
+
+mutate "the source canary judge on every run" "(\"Judge the canary (source agent)\n        if: always() && steps.plan.outputs.agent == 'true' && needs.prepare.outputs.canary != 'none'\", \"Judge the canary (source agent)\n        if: always() && steps.plan.outputs.agent == 'true'\", 1)"
+mutate "the canary trace sealed on every run" "(\"id: canary-trace\n        if: always() && steps.plan.outputs.agent == 'true' && needs.prepare.outputs.canary != 'none'\", \"id: canary-trace\n        if: always() && steps.plan.outputs.agent == 'true'\", 1)"
+mutate "the canary trace kept two days" '("name: canary-trace-poc-write\n          path: ${{ runner.temp }}/canary-trace/canary-trace-poc-write.age\n          retention-days: 1", "name: canary-trace-poc-write\n          path: ${{ runner.temp }}/canary-trace/canary-trace-poc-write.age\n          retention-days: 2", 1)'
+mutate "the judge reading the wrong run check" '("RUN_CHECK_OUTCOME: ${{ steps.check-poc-write.outcome }}", "RUN_CHECK_OUTCOME: ${{ steps.outcome-poc-write.outcome }}", 1)'
+mutate "sandbox-secrets not judged" '("bash .github/security-audit/judge-canary.sh sandbox-secrets -", "true", 1)'
+mutate "the judge with a missing argument" '("judge-canary.sh reopen-records - \"$f\"", "judge-canary.sh reopen-records", 1)'
 
 pass "security-audit workflow structure"
