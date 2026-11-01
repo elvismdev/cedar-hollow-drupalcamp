@@ -45,7 +45,7 @@ env:
   # run_in_background, so its calls reach the trace the run check reads.
   # Measured locally on Claude Code 2.1.309 through the Agent SDK, where an
   # omitted run_in_background otherwise starts a background subagent whose
-  # calls never reach the trace; confirmed in CI by the subagent-bash canary.
+  # calls never reach the trace. The subagent-bash canary checks it in CI.
   CLAUDE_CODE_DISABLE_BACKGROUND_TASKS: "1"
   # The names envsubst replaces in a prompt, and no others.
   PROMPT_VARS: '$RUN_ID $SOURCE_REF $OUTPUT_DIR $INPUT_DIR $BUDGET $SCOPE_PATHS $GITHUB_ENV_PATH $HOME $RUNNER_TEMP'
