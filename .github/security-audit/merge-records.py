@@ -140,7 +140,9 @@ WINDOWS_COMPONENT = re.compile(
 JOB = re.compile(r"^[a-z][a-z0-9_-]{0,63}$")
 SHA256 = re.compile(r"^[0-9a-f]{64}$")
 RECORD_NAME = re.compile(r"^poc-run-[0-9]{1,4}-[ab]\.json$")
-AGENT_DECLARATION = re.compile(r"(?:^|\s)agent-id:\s*(\S+)")
+# Matches check-agent-run.sh's token exactly: ASCII blanks only around it,
+# so a no-break space or a format character binds no id.
+AGENT_DECLARATION = re.compile(r"(?:^|[ \t\r\n])agent-id:[ \t]*([A-Za-z0-9_-]+)(?=$|[ \t\r\n])", re.ASCII)
 SUBAGENT_TOOLS = ("Agent", "Task")
 # The largest finite JavaScript number: an integer beyond it parses as
 # Infinity in the skill's validators, which is not an integer.

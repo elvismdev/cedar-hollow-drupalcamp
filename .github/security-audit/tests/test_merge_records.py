@@ -155,7 +155,7 @@ class MergeTest(unittest.TestCase):
     def unit_for(self, name):
         return next(u for u in self.load("coverage-ledger.json") if u["surface"] == "Demo " + name)
 
-    def subagent(self, agent_id, entry, write_by_subagent=True):
+    def subagent(self, agent_id, entry, write_by_subagent=True, description=None):
         """Adds a subagent call to the trace and writes its entry.json; the
         trace shows the subagent writing it unless told otherwise."""
         self.calls += 1
@@ -166,7 +166,7 @@ class MergeTest(unittest.TestCase):
         self.write(path, text)
         self.messages.append({"type": "assistant", "message": {"content": [
             {"type": "tool_use", "id": call_id, "name": "Agent",
-             "input": {"description": "agent-id: %s check" % agent_id, "prompt": "p"}}]}})
+             "input": {"description": description or "agent-id: %s check" % agent_id, "prompt": "p"}}]}})
         writer = {"type": "tool_use", "id": call_id + "w", "name": "Write",
                   "input": {"file_path": path, "content": text}}
         if write_by_subagent:
@@ -596,6 +596,28 @@ class HostileEntryTest(MergeTest):
         self.decide(manifest)
         self.assertEqual(self.record("fp-1")["verdict"], "needs_validation")
         self.assertEqual(self.discarded().count("agent id declared by more than one subagent call"), 1)
+
+    def test_the_agent_id_token_is_ascii_and_exact(self):
+        for name, description in (("no-break space", "agent-id:\u00a0decider-1 check"),
+                                  ("zero-width space", "agent-id:\u200bdecider-1"),
+                                  ("format character after", "agent-id: decider-1\ufeff"),
+                                  ("no-break space before", "check\u00a0agent-id: decider-1")):
+            with self.subTest(name):
+                self.tearDown()
+                self.setUp()
+                manifest = self.base()
+                self.subagent("decider-1", self.decided("fp-1", "confirmed", confirmed("fp-1")),
+                              description=description)
+                self.decide(manifest)
+                self.assertEqual(self.record("fp-1")["verdict"], "needs_validation")
+                self.assertIn("poc decision discarded", self.record("fp-1")["blockers"])
+        self.tearDown()
+        self.setUp()
+        manifest = self.base()
+        self.subagent("decider-1", self.decided("fp-1", "confirmed", confirmed("fp-1")),
+                      description="check\tagent-id:\tdecider-1\nmore")
+        self.decide(manifest)
+        self.assertEqual(self.record("fp-1")["verdict"], "confirmed")
 
     def test_malformed_decide_entries_are_discarded_not_fatal(self):
         listed = self.decided("fp-1", "needs_validation", lead("fp-1"))
