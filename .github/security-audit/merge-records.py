@@ -9,7 +9,7 @@
 # Usage: merge-records.py --state <dir> <subcommand> [options]
 #   count --job <job> --cap <n> --trace <execution-file>
 #   select-poc --out <select.json>
-#   apply-decide --manifest <poc-manifest.json> --records <dir> --entries <out-dir> --trace <execution-file>
+#   apply-decide --manifest <poc-manifest.json> --records <dir> --scripts <dir> --entries <out-dir> --trace <execution-file>
 #   fail-poc --select <select.json> --job <job>
 #   select-cross-check --out <list.json>
 #   apply-cross-check --entries <out-dir> --trace <execution-file> --out <tie-break-inputs.json>
@@ -24,16 +24,25 @@
 # run-metadata.json under merge_discarded with a fixed label, never entry text.
 #
 # Run records in <records> are files named poc-run-<n>-<slot>.json; each is
-# matched to its item by the fingerprint and slot inside it. A record is used
-# only if it opens without following links, is a regular file with one link and
-# at most 1 MiB, and does not change while it is read; it is then copied, never
-# moved, to agents/<decider-id>/artifacts/<slot>.json under <entries>.
+# matched to its item by the fingerprint and slot inside it, and its mode must
+# be the manifest's mode for that slot. A record is used only if it opens
+# without following links, is a regular file with one link and at most 1 MiB,
+# and does not change while it is read, and only if its script_sha256 equals
+# the sha256 computed here of the script the manifest names for that slot,
+# read from <scripts> (the opened poc-scripts hand-off). The script path must
+# be relative with no .. segment and is opened one component at a time without
+# following links, so it cannot leave <scripts>; any hash in the manifest is
+# ignored. A record that fails any of this is not promoted, and its script
+# counts as not demonstrated, so its item cannot be confirmed. A used record is
+# copied, never moved, to agents/<decider-id>/artifacts/<slot>.json under
+# <entries>.
 #
 # Run ids are the GitHub run id from run-metadata.json, stored as numbers.
 # Fails closed: a state file that cannot be read safely stops the subcommand
 # with exit status 1 before anything is written.
 import argparse
 import errno
+import hashlib
 import json
 import os
 import re
@@ -53,6 +62,7 @@ HISTORY = "audit-history.json"
 MAX_STATE_BYTES = 5 * 1024 * 1024
 MAX_ENTRY_BYTES = 1024 * 1024
 MAX_ARTIFACT_BYTES = 1024 * 1024
+MAX_SCRIPT_BYTES = 1024 * 1024
 MAX_TEXT = 4096
 POC_SLOTS = 6
 CROSS_CHECK_SLOTS = 30
@@ -689,7 +699,7 @@ def read_manifest(state, path):
         for script in scripts:
             if (isinstance(script, dict) and script.get("slot") in ("a", "b")
                     and script.get("mode") in ("http", "drush") and script["slot"] not in slots):
-                slots[script["slot"]] = script["mode"]
+                slots[script["slot"]] = (script["mode"], script.get("script"))
         if set(slots) != {"a", "b"} or len(scripts) != 2:
             state.discard("poc-decide", None, "manifest item malformed or repeated")
             continue
@@ -710,9 +720,35 @@ def run_record_valid(record):
             and isinstance(record["timed_out"], bool))
 
 
-def read_run_records(state, directory, modes):
-    """{(fingerprint, slot): bytes} for every run record that opens safely and
-    matches its manifest item; refused files are recorded by reason."""
+def script_sha256(scripts, relative):
+    """The sha256 of a script under <scripts>, opened one component at a time
+    without following links; refuses an absolute path or a .. segment."""
+    if not isinstance(relative, str) or relative.startswith("/") or ".." in relative.split("/") \
+            or not safe_relative_path(relative):
+        raise Refused("script path not allowed")
+    parts = relative.split("/")
+    fds = []
+    try:
+        fds.append(os.open(scripts, os.O_RDONLY | os.O_DIRECTORY))
+        for name in parts[:-1]:
+            fds.append(os.open(name, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=fds[-1]))
+        data = read_bytes(parts[-1], MAX_SCRIPT_BYTES, dir_fd=fds[-1])
+    except FileNotFoundError:
+        raise Refused("script missing")
+    except OSError as err:
+        if err.errno == errno.ELOOP:
+            raise Refused("symlink")
+        raise Refused("script unreadable")
+    finally:
+        for fd in reversed(fds):
+            os.close(fd)
+    return hashlib.sha256(data).hexdigest()
+
+
+def read_run_records(state, directory, modes, scripts):
+    """{(fingerprint, slot): (bytes, record)} for every run record that opens
+    safely, matches its manifest item and carries the sha256 of the script the
+    manifest names for its slot; refused files are recorded by reason."""
     try:
         dir_fd = os.open(directory, os.O_RDONLY | os.O_DIRECTORY)
     except OSError:
@@ -732,8 +768,17 @@ def read_run_records(state, directory, modes):
             except (OSError, ValueError):
                 state.discard("poc-decide", None, "run record unreadable or not strict JSON")
                 continue
-            if not run_record_valid(record) or modes.get(record["fingerprint"], {}).get(record["slot"]) != record["mode"]:
+            slot = modes.get(record["fingerprint"], {}).get(record["slot"]) if run_record_valid(record) else None
+            if slot is None or slot[0] != record["mode"]:
                 state.discard("poc-decide", None, "run record malformed or not in the manifest")
+                continue
+            try:
+                digest = script_sha256(scripts, slot[1])
+            except Refused as err:
+                state.discard("poc-decide", None, "run record refused: %s" % err)
+                continue
+            if digest != record["script_sha256"]:
+                state.discard("poc-decide", None, "run record refused: script sha256 mismatch")
                 continue
             key = (record["fingerprint"], record["slot"])
             if key in found:
@@ -829,7 +874,7 @@ def cmd_apply_decide(state, args):
         raise Refused("no proof-of-concept selection in run-metadata.json")
     selected = set(poc["selected"])
     modes = read_manifest(state, args.manifest)
-    records = read_run_records(state, args.records, modes)
+    records = read_run_records(state, args.records, modes, args.scripts)
     raw = read_entries(state, "poc-decide", args.entries, args.trace)
     valid = {}
     for agent_id, entry in raw.items():
@@ -1145,7 +1190,7 @@ def main(argv):
     p = sub.add_parser("select-poc")
     p.add_argument("--out", required=True)
     p = sub.add_parser("apply-decide")
-    for name in ("--manifest", "--records", "--entries", "--trace"):
+    for name in ("--manifest", "--records", "--scripts", "--entries", "--trace"):
         p.add_argument(name, required=True)
     p = sub.add_parser("fail-poc")
     p.add_argument("--select", required=True)

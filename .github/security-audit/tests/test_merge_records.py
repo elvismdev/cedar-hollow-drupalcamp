@@ -3,6 +3,7 @@
 # subprocess with python3 -I, and reads the files it rewrote. Where a test
 # says the merged files are valid, it runs the vendored skill's own Node
 # validators on them.
+import hashlib
 import json
 import os
 import shutil
@@ -122,7 +123,8 @@ class MergeTest(unittest.TestCase):
         self.state = os.path.join(self.tmp, "state")
         self.out = os.path.join(self.tmp, "out")
         self.records = os.path.join(self.tmp, "records")
-        for d in (self.state, self.out, self.records):
+        self.scripts = os.path.join(self.tmp, "scripts")
+        for d in (self.state, self.out, self.records, self.scripts):
             os.makedirs(d)
         self.messages = []
         self.calls = 0
@@ -187,8 +189,16 @@ class MergeTest(unittest.TestCase):
             self.assertEqual(result.returncode, 0, result.stderr)
         return result
 
-    def run_record(self, fp, slot, index, mode="http", name=None):
-        record = {"fingerprint": fp, "slot": slot, "mode": mode, "script_sha256": "a" * 64,
+    def script(self, relative, fp, slot):
+        """Writes a script into the scripts hand-off; returns its sha256."""
+        content = "<?php\n// %s %s\n" % (fp, slot)
+        path = os.path.join(self.scripts, relative)
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        self.write(path, content)
+        return hashlib.sha256(content.encode("utf-8")).hexdigest()
+
+    def run_record(self, fp, slot, index, mode="http", name=None, sha="a" * 64):
+        record = {"fingerprint": fp, "slot": slot, "mode": mode, "script_sha256": sha,
                   "limits": {"timeout_seconds": 120}, "exit_code": 0, "stdout": "HTTP 200\n",
                   "stderr": "", "timed_out": False}
         path = os.path.join(self.records, name or "poc-run-%d-%s.json" % (index, slot))
@@ -204,7 +214,8 @@ class MergeTest(unittest.TestCase):
         self.write(path, {"items": items})
         for i, fp in enumerate(fps):
             for slot in "ab":
-                self.run_record(fp, slot, i)
+                sha = self.script("agents/writer-%d%s/scratch/poc.php" % (i, slot), fp, slot)
+                self.run_record(fp, slot, i, sha=sha)
         return path
 
     def select(self):
@@ -212,7 +223,7 @@ class MergeTest(unittest.TestCase):
 
     def decide(self, manifest):
         return self.run_merge("apply-decide", "--manifest", manifest, "--records", self.records,
-                              "--entries", self.out, "--trace", self.trace_file())
+                              "--scripts", self.scripts, "--entries", self.out, "--trace", self.trace_file())
 
     def cross_check(self):
         inputs = os.path.join(self.tmp, "tie-break-inputs.json")
@@ -402,6 +413,55 @@ class DecideTest(MergeTest):
         self.assertEqual(os.path.getsize(promoted), 1024 * 1024 - 1)
         self.assert_validators_pass()
 
+    def script_case(self, change):
+        """Decides g-1 as confirmed after change() edits slot b's manifest entry
+        or its script, and returns the discard reasons; the decision must be
+        refused."""
+        manifest = self.setup_items(["g-1"])
+        with open(manifest, encoding="utf-8") as handle:
+            data = json.load(handle)
+        change(data["items"][0]["scripts"][1])
+        self.write(manifest, data)
+        self.subagent("decider-g", self.decided("g-1", "confirmed", confirmed("g-1")))
+        self.decide(manifest)
+        record = self.record("g-1")
+        self.assertEqual(record["verdict"], "needs_validation")
+        self.assertIn("poc evidence promotion failed", record["blockers"])
+        self.assertFalse(os.path.exists(os.path.join(self.out, "agents", "decider-g", "artifacts", "b.json")))
+        self.assertEqual([c["agent_id"] for c in self.unit_for("g-1")["local_checks"]], ["hunter-g-1"])
+        self.assert_validators_pass()
+        return self.discarded()
+
+    def test_a_script_hash_mismatch_refuses_the_record(self):
+        def edit(script):
+            with open(os.path.join(self.scripts, script["script"]), "a", encoding="utf-8") as handle:
+                handle.write("// changed after the run\n")
+            script["sha256"] = "a" * 64
+        self.assertIn("run record refused: script sha256 mismatch", self.script_case(edit))
+
+    def test_a_missing_script_refuses_the_record(self):
+        self.assertIn("run record refused: script missing",
+                      self.script_case(lambda script: os.remove(os.path.join(self.scripts, script["script"]))))
+
+    def test_a_script_path_outside_the_scripts_dir_is_refused(self):
+        outside = os.path.join(self.tmp, "outside.php")
+        for path in (outside, "../outside.php", "agents/../../outside.php"):
+            with self.subTest(path=path):
+                self.tearDown()
+                self.setUp()
+                def move(script):
+                    target = os.path.join(self.tmp, "outside.php")
+                    os.replace(os.path.join(self.scripts, script["script"]), target)
+                    script["script"] = path if path != outside else target
+                self.assertIn("run record refused: script path not allowed", self.script_case(move))
+
+    def test_a_symlinked_script_is_refused(self):
+        def link(script):
+            real = os.path.join(self.scripts, script["script"])
+            target = os.path.join(self.tmp, "real.php")
+            os.replace(real, target)
+            os.symlink(target, real)
+        self.assertIn("run record refused: symlink", self.script_case(link))
 
     def test_malformed_entries_are_discarded(self):
         fps = ["m-prose", "m-dupkey", "m-shape", "m-unattributed", "m-fp"]
