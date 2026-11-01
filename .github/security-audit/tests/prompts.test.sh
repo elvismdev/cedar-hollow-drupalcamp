@@ -15,13 +15,13 @@ trap 'rm -rf "$tmp"' EXIT
 command -v envsubst >/dev/null 2>&1 || { echo "FAIL: envsubst is not installed, so the prompts cannot be rendered" >&2; exit 1; }
 
 # The workflow's call, exactly: only these names are substituted.
-VARS='$RUN_ID $SOURCE_REF $OUTPUT_DIR $INPUT_DIR $BUDGET $SCOPE_PATHS $GITHUB_ENV_PATH'
+VARS='$RUN_ID $SOURCE_REF $OUTPUT_DIR $INPUT_DIR $BUDGET $SCOPE_PATHS $GITHUB_ENV_PATH $HOME $RUNNER_TEMP'
 render() { # file
   RUN_ID=18123456789 SOURCE_REF=0123456789abcdef0123456789abcdef01234567 \
     OUTPUT_DIR=/mnt/audit/job/out INPUT_DIR=/mnt/audit/job/in BUDGET=60 \
     SCOPE_PATHS='web/modules/custom, web/themes/custom, config/' \
     GITHUB_ENV_PATH=/home/runner/work/_temp/_runner_file_commands/set_env_x \
-    HOME=/should/not/appear PATH="$PATH" \
+    HOME=/home/runner-x RUNNER_TEMP=/home/runner-x/work/_temp PATH="$PATH" \
     envsubst "$VARS" < "$1"
 }
 
@@ -41,9 +41,9 @@ done
 
 # The checker can fail: a fixture with a listed name left in and other
 # dollar signs that must survive.
-printf 'a $RUN_ID b ${OUTPUT_DIR} c $HOME d $_SERVER[x] e ${OTHER} f $RUN_IDX g $\n' > "$tmp/fixture.src"
+printf 'a $RUN_ID b ${OUTPUT_DIR} c $PATH d $_SERVER[x] e ${OTHER} f $RUN_IDX g $ h $HOME\n' > "$tmp/fixture.src"
 render "$tmp/fixture.src" > "$tmp/fixture.out"
-assert_eq 'a 18123456789 b /mnt/audit/job/out c $HOME d $_SERVER[x] e ${OTHER} f $RUN_IDX g $' \
+assert_eq 'a 18123456789 b /mnt/audit/job/out c $PATH d $_SERVER[x] e ${OTHER} f $RUN_IDX g $ h /home/runner-x' \
   "$(cat "$tmp/fixture.out")" "envsubst replaces only the listed names"
 
 python3 -I - "$SA" "$P" "$tmp" "$DESIGN" "${PROMPTS[@]}" <<'PY'
@@ -55,12 +55,13 @@ import sys
 
 sa, prompts_dir, rendered_dir, design = sys.argv[1:5]
 names = sys.argv[5:]
-LISTED = ["RUN_ID", "SOURCE_REF", "OUTPUT_DIR", "INPUT_DIR", "BUDGET", "SCOPE_PATHS", "GITHUB_ENV_PATH"]
+LISTED = ["RUN_ID", "SOURCE_REF", "OUTPUT_DIR", "INPUT_DIR", "BUDGET", "SCOPE_PATHS", "GITHUB_ENV_PATH", "HOME", "RUNNER_TEMP"]
 VALUES = {
     "RUN_ID": "18123456789", "SOURCE_REF": "0123456789abcdef0123456789abcdef01234567",
     "OUTPUT_DIR": "/mnt/audit/job/out", "INPUT_DIR": "/mnt/audit/job/in", "BUDGET": "60",
     "SCOPE_PATHS": "web/modules/custom, web/themes/custom, config/",
     "GITHUB_ENV_PATH": "/home/runner/work/_temp/_runner_file_commands/set_env_x",
+    "HOME": "/home/runner-x", "RUNNER_TEMP": "/home/runner-x/work/_temp",
 }
 LISTED_RE = re.compile(r"\$(?:\{(%s)\}|(%s)(?![A-Za-z0-9_]))" % ("|".join(LISTED), "|".join(LISTED)))
 DASHES = re.compile("[\\u2010-\\u2015\\u2212\\ufe58\\ufe63\\uff0d]")
@@ -100,6 +101,8 @@ for f in names_md + canaries:
         fail("%s: a listed variable is left unreplaced" % f)
     if DASHES.search(src):
         fail("%s: holds a dash character other than the hyphen" % f)
+    if f.startswith("canary-") and "/home/runner" in src:
+        fail("%s: writes a runner path as a literal instead of from $HOME or $RUNNER_TEMP" % f)
     if "\u00a0" in src:
         fail("%s: holds a no-break space" % f)
 
@@ -145,11 +148,12 @@ NAMES = {
 }
 # What each canary plants, from the Stage 4 table.
 NAMES.update({
-    "canary-denied-read.md": ["/proc/self/environ", "/sys/kernel", "/home/runner/work/_temp/_runner_file_commands",
-                              "/home/runner/work/_actions", "/home/runner/runners", "/home/runner/.claude.json",
-                              "/home/runner/.claude/.credentials.json", "`.git/config`", "composer.json"],
+    "canary-denied-read.md": ["/proc/self/environ", "/sys/kernel", "/home/runner-x/work/_temp/_runner_file_commands",
+                              "/home/runner-x/work/_actions", "/home/runner-x/runners", "/home/runner-x/.claude.json",
+                              "/home/runner-x/.claude/.credentials.json", "`.git/config`", "composer.json"],
     "canary-denied-write.md": ["Write `%s`" % VALUES["GITHUB_ENV_PATH"], "_runner_file_commands/",
-                               "/home/runner/.claude/settings.json", "top of the checkout"],
+                               "/home/runner-x/work/_temp/_runner_file_commands/canary-write",
+                               "/home/runner-x/.claude/settings.json", "top of the checkout"],
     "canary-subagent-bash.md": ["Bash tool", "agent-id: canary-bash "],
     "canary-subagent-findings-write.md": ["file_path %s/findings.json" % VALUES["OUTPUT_DIR"], "agent-id: canary-findings "],
     "canary-script-isolation.md": ["agent-id: canary-iso-a ", "agent-id: canary-iso-b ",
