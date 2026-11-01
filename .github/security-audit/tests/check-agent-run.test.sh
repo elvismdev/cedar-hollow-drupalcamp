@@ -199,6 +199,9 @@ assert_eq "0" "$(rc source "$tmp/t.json")" "Claude Code's own synthetic message 
 trace "$tmp/t.json" "$INIT" "$(agent ta1 "agent-id: h01 hunt")" "$(result "$M")"
 assert_eq "1" "$(rc source "$tmp/t.json")" "subagent use with no subagent calls in the trace fails"
 assert_contains "$(run source "$tmp/t.json")" "none of their tool calls" "and says why"
+trace "$tmp/t.json" "${CLEAN[@]}" "$(agent ta2 "agent-id: h02 hunt")" "$(result "$M")"
+assert_eq "1" "$(rc source "$tmp/t.json")" "one subagent with no calls fails even when another has calls"
+assert_contains "$(run source "$tmp/t.json")" "Agent call 10: started a subagent with no tool calls" "and names that subagent call"
 trace "$tmp/t.json" "$INIT" '{"type":"result","subtype":"success","modelUsage":{},"subagent_stats":{"spawned":2,"started_in_background":0}}'
 assert_eq "1" "$(rc source "$tmp/t.json")" "a spawned count with no subagent calls fails"
 trace "$tmp/t.json" "$INIT" "$(top Read "{\"file_path\":\"$WS/tracked.txt\"}")" "$(result "$M")"

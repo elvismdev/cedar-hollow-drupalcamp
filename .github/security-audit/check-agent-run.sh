@@ -41,8 +41,9 @@
 #   - Every model in a result's modelUsage, and on every assistant message
 #     except Claude Code's own <synthetic> ones, is the pinned model or the
 #     allowlisted helper.
-#   - If subagents were used (a subagent call, a task_started event or a
-#     spawned count) the trace must hold at least one of their tool calls.
+#   - Every subagent call must have at least one tool call attributed to it,
+#     and if subagents were used at all (a subagent call, a task_started event
+#     or a spawned count) the trace must hold their tool calls.
 #   - The checkout (git status and HEAD), the hooks and permissions keys of
 #     ~/.claude/settings.json, ~/.claude/CLAUDE.md and the ~/.claude agents,
 #     commands and hooks trees match the fingerprint taken before the step.
@@ -320,6 +321,7 @@ function isolationRefusal(name, targets, id) {
 }
 
 let attributed = 0;
+const perSubagent = new Map();
 for (const call of calls) {
   const { c, parent } = call;
   if (parent === null) continue;
@@ -328,6 +330,7 @@ for (const call of calls) {
     continue;
   }
   attributed += 1;
+  perSubagent.set(parent, (perSubagent.get(parent) || 0) + 1);
   const id = subagents.get(parent);
   const a = isObj(c.input) ? c.input : {};
 
@@ -344,6 +347,13 @@ for (const call of calls) {
   if (job === 'poc-write' && ['Read', 'Glob', 'Grep'].includes(c.name)) {
     const why = isolationRefusal(c.name, readTargets(c), id);
     if (why) refuse(call, why);
+  }
+}
+
+for (const call of calls) {
+  if (SUBAGENT_TOOLS.has(call.c.name) && typeof call.c.id === 'string' && call.c.id !== ''
+      && !perSubagent.has(call.c.id)) {
+    refuse(call, 'started a subagent with no tool calls in the trace, so what it did cannot be checked');
   }
 }
 
