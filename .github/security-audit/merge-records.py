@@ -18,10 +18,26 @@
 #
 # Agent entries are read only from <entries>/agents/<id>/scratch/entry.json for
 # an id declared by a subagent call in the trace ("agent-id: <id>"), and only
-# when the trace shows that subagent itself writing that file. An entry that is
-# missing, unattributed, not one strict JSON object, or not the exact shape its
-# phase expects is discarded without repair, and the discard is recorded in
-# run-metadata.json under merge_discarded with a fixed label, never entry text.
+# when the file on disk equals, byte for byte, that subagent's last Write to it
+# in the trace. An entry that any other agent (the top-level agent included)
+# wrote or edited, that its own subagent edited, that is missing, not one
+# strict JSON object, or not the exact shape and types its phase expects is
+# discarded without repair. Type, recursion, overflow and value errors an
+# entry provokes are caught at the entry boundary, so one malformed entry never
+# fails the subcommand; a malformed state file, which only trusted steps
+# write, still does. Each discard is recorded in run-metadata.json under
+# merge_discarded with a fixed label, never entry text.
+#
+# The source agent may write run-metadata.json during its run, so
+# count --job source first drops the keys only this script writes (usage, poc,
+# cross_check, merge_discarded, incomplete_reasons); every later subcommand
+# refuses a usage entry that is not {"invocations", "cap"} of non-negative
+# integers.
+#
+# Two independent scripts (D28): a confirmed decision is refused, with the
+# blocker "poc scripts not independent", unless slots a and b name different
+# agent ids and different script paths and their scripts' computed sha256
+# values differ.
 #
 # Run records in <records> are files named poc-run-<n>-<slot>.json; each is
 # matched to its item by the fingerprint and slot inside it, and its mode must
