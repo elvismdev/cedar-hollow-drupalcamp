@@ -139,8 +139,9 @@ no_path Grep '{"pattern":"x","glob":"{a,b}/x.php"}' "a brace group in a director
 no_path Grep '{"pattern":"x","glob":"**/{a,b}"}' "a brace group of names with no extension is refused"
 
 # A brace group of literal file names, each with an extension, passes as the
-# last segment, and .git is refused only as a whole path segment, so a name
-# such as .gitignore passes. Both with no options and with the audit's: the
+# last segment. A path segment that, read as a glob, can match .git is
+# refused (.git*, *.git, {a,b}.git, *.{git,sample}), while a literal name such
+# as .gitignore passes. Both with no options and with the audit's: the
 # two Grep globs below are real calls from audit run 41347206214.
 glob_rc () { # glob [option...]: exit status of a Grep with that glob and no path
   printf '[%s]' "$(call Grep "{\"pattern\":\"x\",\"glob\":\"$1\"}")" > "$tmp/g.json"; shift
@@ -155,7 +156,9 @@ for opts in none audit; do
   done
   for g in '.git/config' '**/.git/**' '{.git,x}/config' '.GIT/config' '{.git/x.php,a.php}' 'x/.git/y.md' \
            '**/.Git/hooks/*.sample' 'a.php,.git/x.md' '{REVIEW,AGENTS.md}' 'src/{a,b}' '{a.md,*.md}' '{a.md,../b.md}' \
-           '{a.md,b/c.md}' '{.htaccess,a.md}'; do
+           '{a.md,b/c.md}' '{.htaccess,a.md}' \
+           '.git*/hooks/pre-commit.sample' '**/.git*/**/*.pack' '*.git' '**/*.git' '*.GIT' '{a,b}.git' \
+           '{x.git,y.md}' '*.{git,sample}' '*.git,*.sample' '*.git,*.pack,*.idx' 'src/*.Git'; do
     assert_eq "1" "$(glob_rc "$g" "${O[@]}")" "the Grep glob $g is still refused ($opts options)"
   done
 done
