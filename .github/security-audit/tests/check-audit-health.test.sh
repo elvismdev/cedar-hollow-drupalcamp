@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Tests for check-audit-health.sh against fake-gh.sh: the workflow states
-# active and disabled_inactivity, a 404, no successful run, a successful run
-# 41 days old, a schedule whose recent runs all failed, and errors, each
-# exiting 0.
+# active and disabled_inactivity, a 404, no audit run, an audit 41 days old,
+# quiet runs whose report job was skipped, a run whose report job failed, a
+# schedule whose recent runs all failed, and errors, each exiting 0.
 set -euo pipefail
 # shellcheck source=../../claude-review/tools/agent/test/assert.sh
 . "$(dirname "$0")/../../claude-review/tools/agent/test/assert.sh"
@@ -28,33 +28,90 @@ new_fixture() { # name state
   echo '[]' > "$FIX/run_list.json"
 }
 when() { date -u -d "$1 days ago" +%Y-%m-%dT%H:%M:%SZ; }
-run_days_ago() { # days: one successful run
-  jq -n --arg t "$(when "$1")" '[{createdAt: $t, conclusion: "success"}]' > "$FIX/run_list.json"
+# runs <days>:<run conclusion>:<report job conclusion>...: the run history,
+# newest first, each run with a jobs list where report concluded as given.
+runs() {
+  local id=100 spec days conclusion report list='[]'
+  for spec in "$@"; do
+    IFS=: read -r days conclusion report <<<"$spec"
+    id=$((id + 1))
+    list="$(jq -c --argjson id "$id" --arg t "$(when "$days")" --arg c "$conclusion" \
+      '. + [{databaseId: $id, createdAt: $t, conclusion: $c}]' <<<"$list")"
+    jq -n --arg r "$report" '{jobs: [{name: "prepare", conclusion: "success"},
+      {name: "report", conclusion: $r}]}' > "$FIX/run_view_$id.json"
+  done
+  printf '%s\n' "$list" > "$FIX/run_list.json"
 }
 check() { RC=0; OUT="$(bash "$CHECK" "$@" 2>&1)" || RC=$?; }
 no_warning() { # message
   case "$OUT" in *"::warning"*) echo "FAIL: $1 (warned: $OUT)" >&2; exit 1;; esac
 }
+views() { grep -c "gh run view" "$FIX/calls.log" || true; }
 
-# Active with a recent run: no warning.
+# Active with a recent audit: no warning.
 new_fixture healthy active
-run_days_ago 3
+runs 3:success:success
 check "$REPO"
 assert_exit 0 "$RC" "a healthy audit exits 0"
 no_warning "a healthy audit is not warned about"
-assert_contains "$OUT" "3 days ago" "the last run's age is reported"
+assert_contains "$OUT" "3 days ago" "the last audit's age is reported"
 assert_contains "$(cat "$FIX/calls.log")" "gh api repos/$REPO/actions/workflows/security-audit.yml --jq .state" "the state is read from the workflow"
-assert_contains "$(cat "$FIX/calls.log")" "gh run list -R $REPO --workflow security-audit.yml --branch main --status success --limit 1 --json createdAt,conclusion" "the last successful run on main is read from run history"
+assert_contains "$(cat "$FIX/calls.log")" "gh run list -R $REPO --workflow security-audit.yml --branch main --status success --limit 10 --json databaseId,createdAt,conclusion" "successful runs on main are read from run history"
+assert_contains "$(cat "$FIX/calls.log")" "gh run view 101 -R $REPO --json jobs" "the run's jobs are read"
 
-# A run 39 days old is within the limit.
+# An audit 39 days old is within the limit.
 new_fixture recent active
-run_days_ago 39
+runs 39:success:success
 check "$REPO"
-no_warning "a run 39 days old is within the limit"
+no_warning "an audit 39 days old is within the limit"
+
+# A real audit 10 days ago with quiet runs after it: no warning, and it stops
+# at the first run that qualifies.
+new_fixture quiet-after-audit active
+runs 1:success:skipped 3:success:skipped 10:success:success 40:success:success
+check "$REPO"
+no_warning "a real audit 10 days ago with quiet runs after it"
+assert_contains "$OUT" "10 days ago" "the real audit's age is reported, not a quiet run's"
+assert_eq "3" "$(views)" "it stops reading jobs at the first run that qualifies"
+
+# Recent quiet runs and an old real audit 60 days ago: warned.
+new_fixture quiet-old-audit active
+runs 2:success:skipped 9:success:skipped 16:success:skipped 60:success:success
+check "$REPO"
+assert_exit 0 "$RC" "quiet runs over an old audit exit 0"
+assert_contains "$OUT" "::warning" "quiet runs over an audit 60 days old are warned about"
+assert_contains "$OUT" "60 days ago" "the warning gives the real audit's age"
+
+# A run whose report job failed does not count.
+new_fixture report-failed active
+runs 2:success:failure 50:success:success
+check "$REPO"
+assert_contains "$OUT" "::warning" "a run whose report failed does not count"
+assert_contains "$OUT" "50 days ago" "the age is the last audit whose report succeeded"
+new_fixture only-quiet active
+runs 2:success:skipped 9:success:failure
+check "$REPO"
+assert_contains "$OUT" "has a successful report job" "only quiet runs and a failed report are warned about"
+
+# A schedule whose runs all failed: the success filter drops them.
+new_fixture failing active
+runs 2:failure:failure 30:failure:failure 60:success:success
+check "$REPO"
+assert_contains "$OUT" "60 days ago" "failed runs do not count"
+case "$(cat "$FIX/calls.log")" in *"run view 101"*|*"run view 102"*) echo "FAIL: a failed run's jobs were read" >&2; exit 1;; esac
+
+# At most 10 runs are inspected.
+new_fixture bounded active
+specs=()
+for d in 1 2 3 4 5 6 7 8 9 10 11 12; do specs+=("$d:success:skipped"); done
+runs "${specs[@]}" 13:success:success
+check "$REPO"
+assert_contains "$OUT" "::warning" "no audit within the 10 runs inspected is warned about"
+assert_eq "10" "$(views)" "at most 10 runs are inspected"
 
 # Disabled for inactivity: warned, still exits 0.
 new_fixture disabled disabled_inactivity
-run_days_ago 3
+runs 3:success:success
 check "$REPO"
 assert_exit 0 "$RC" "a disabled workflow exits 0"
 assert_contains "$OUT" "::warning" "a disabled workflow is warned about"
@@ -74,29 +131,13 @@ new_fixture norun active
 check "$REPO"
 assert_exit 0 "$RC" "no successful run exits 0"
 assert_contains "$OUT" "::warning" "no successful run is warned about"
-assert_contains "$OUT" "no successful run on main" "the warning says there is no successful run"
 
-# A schedule whose recent runs all failed: the last success is 60 days old,
-# so it is warned about although runs keep completing.
-new_fixture failing active
-jq -n --arg f1 "$(when 2)" --arg f2 "$(when 30)" --arg ok "$(when 60)" \
-  '[{createdAt: $f1, conclusion: "failure"}, {createdAt: $f2, conclusion: "failure"},
-    {createdAt: $ok, conclusion: "success"}]' > "$FIX/run_list.json"
-check "$REPO"
-assert_exit 0 "$RC" "a failing schedule exits 0"
-assert_contains "$OUT" "::warning" "a schedule whose recent runs all failed is warned about"
-assert_contains "$OUT" "60 days ago" "the warning gives the last success's age"
-new_fixture all-failed active
-jq -n --arg f1 "$(when 2)" '[{createdAt: $f1, conclusion: "failure"}]' > "$FIX/run_list.json"
-check "$REPO"
-assert_contains "$OUT" "no successful run on main" "a schedule that never succeeded is warned about"
-
-# A run 41 days old: warned.
+# An audit 41 days old: warned.
 new_fixture stale active
-run_days_ago 41
+runs 41:success:success
 check "$REPO"
-assert_exit 0 "$RC" "a stale run exits 0"
-assert_contains "$OUT" "::warning" "a run 41 days old is warned about"
+assert_exit 0 "$RC" "a stale audit exits 0"
+assert_contains "$OUT" "::warning" "an audit 41 days old is warned about"
 assert_contains "$OUT" "41 days ago" "the warning gives the age"
 
 # Errors reading GitHub are warned about and still exit 0.
@@ -111,8 +152,15 @@ new_fixture runs-error active
 check "$REPO"
 assert_exit 0 "$RC" "run history that cannot be read exits 0"
 assert_contains "$OUT" "::warning" "run history that cannot be read is warned about"
+new_fixture jobs-error active
+runs 3:success:success
+: > "$FIX/run_view_101.500"
+check "$REPO"
+assert_exit 0 "$RC" "jobs that cannot be read exit 0"
+assert_contains "$OUT" "could not read the jobs of run 101" "jobs that cannot be read are warned about"
 new_fixture bad-time active
-echo '[{"createdAt": "not a time", "conclusion": "success"}]' > "$FIX/run_list.json"
+runs 3:success:success
+jq '.[0].createdAt = "not a time"' "$FIX/run_list.json" > "$FIX/t.json" && mv "$FIX/t.json" "$FIX/run_list.json"
 check "$REPO"
 assert_exit 0 "$RC" "an unreadable run time exits 0"
 assert_contains "$OUT" "::warning" "an unreadable run time is warned about"

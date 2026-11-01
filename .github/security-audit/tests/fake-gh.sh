@@ -13,6 +13,9 @@
 #                                equals --status when it names a conclusion,
 #                                and at most --limit of them; or fails like a
 #                                server error when $FIX/run_list.500 exists.
+#   gh run view <run> ...        prints $FIX/run_view_<run>.json; with no such
+#                                file it fails as gh does on a 404, and with a
+#                                run_view_<run>.500 file as on a server error.
 #   gh run download <run> ... -D <dir>
 #                                copies $FIX/download-<run>/ into <dir>, or
 #                                fails when there is no such directory.
@@ -45,6 +48,14 @@ case "${1:-} ${2:-}" in
     jq -c --arg status "$status" --argjson limit "$limit" '
       if ($status | IN("", "completed")) then . else map(select(.conclusion == $status)) end
       | .[:$limit]' "$FIX/run_list.json"
+    ;;
+  "run view")
+    [ ! -e "$FIX/run_view_$3.500" ] || server_error
+    if [ ! -e "$FIX/run_view_$3.json" ]; then
+      echo "failed to get run: HTTP 404: Not Found" >&2
+      exit 1
+    fi
+    cat "$FIX/run_view_$3.json"
     ;;
   "run download")
     run="$3" dir="" prev=""
