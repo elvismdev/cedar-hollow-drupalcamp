@@ -46,7 +46,16 @@ repo="$1" out_dir="$2"
 mkdir -p "$out_dir"
 [ -z "$(ls -A "$out_dir")" ] || { echo "fetch-prior-state: $out_dir is not empty" >&2; exit 2; }
 
-run_id="" sha256="" marker_path=""
+run_id="" sha256="" marker_path="" download=""
+# On every exit the download directory is removed, so a refused artifact never
+# stays under <out-dir>; on a failure the saved marker goes too, leaving
+# <out-dir> empty.
+cleanup() {
+  local rc=$?
+  [ -z "$download" ] || rm -rf "$download"
+  [ "$rc" -eq 0 ] || [ -z "$marker_path" ] || rm -f "$marker_path"
+}
+trap cleanup EXIT
 result() { # found state
   printf 'found=%s\nrun_id=%s\nsha256=%s\nstate=%s\nmarker=%s\n' "$1" "$run_id" "$sha256" "$2" "$marker_path"
   exit 0
@@ -123,5 +132,4 @@ if [ "$actual" != "$sha256" ]; then
   exit 1
 fi
 mv "$download/$STATE_FILE" "$out_dir/$STATE_FILE"
-rmdir "$download"
 result true "$out_dir/$STATE_FILE"

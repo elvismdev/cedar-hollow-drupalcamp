@@ -60,6 +60,11 @@ fetch() { # out-dir: runs fetch-prior-state, sets OUT and RC
   OUT="$(bash "$FETCH" "$REPO" "$1" 2>"$WORK/stderr")" || RC=$?
 }
 field() { grep "^$1=" <<<"$OUT" | cut -d= -f2-; }
+empty_after() { # out-dir message: nothing at all is left under out-dir
+  local left
+  left="$(find "$1" -mindepth 1 2>/dev/null)"
+  [ -z "$left" ] || { echo "FAIL: $2 left files under the output directory: $left" >&2; exit 1; }
+}
 no_download() { # message
   case "$(cat "$FIX/calls.log")" in *"run download"*) echo "FAIL: $1 downloaded an artifact" >&2; exit 1;; esac
 }
@@ -150,8 +155,8 @@ head -c 512 /dev/urandom > "$FIX/download-$RUN/audit-state.age"
 fetch "$WORK/out-mismatch"
 assert_exit 1 "$RC" "a hash mismatch fails"
 assert_contains "$(cat "$WORK/stderr")" "sha256 mismatch" "the mismatch is reported"
-[ ! -e "$WORK/out-mismatch/audit-state.age" ] || { echo "FAIL: a mismatched state was left in place" >&2; exit 1; }
 assert_eq "" "$OUT" "a hash mismatch prints no outputs"
+empty_after "$WORK/out-mismatch" "a hash mismatch"
 
 # An artifact that holds anything besides audit-state.age fails.
 new_fixture extra
@@ -159,6 +164,7 @@ good_prior
 echo extra > "$FIX/download-$RUN/other.txt"
 fetch "$WORK/out-extra"
 assert_exit 1 "$RC" "an artifact with an extra file fails"
+empty_after "$WORK/out-extra" "an artifact with an extra file"
 
 # An expired artifact: not found, nothing downloaded.
 new_fixture expired
