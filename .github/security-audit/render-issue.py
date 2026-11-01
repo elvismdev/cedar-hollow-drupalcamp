@@ -8,10 +8,13 @@
 # and leads never carry a severity. Every piece of record or agent text has
 # its HTML entities decoded, is NFKC-normalised, has control and format
 # characters removed, and has http(s)://, www. and protocol-relative //host
-# links, Markdown link and image targets and reference definitions,
-# cross-repository references, word@word addresses and @ mentions removed, repeated until it stops changing; &, < and
-# > are then escaped in prose. So it can neither ping anyone, link anywhere,
-# nor open an HTML comment.
+# links, URI scheme tokens (http, https, ftp, mailto, javascript, data,
+# vbscript or file followed by a colon), Markdown link and image targets and
+# reference definitions, cross-repository references, word@word addresses and
+# @ mentions removed, repeated until it stops changing. Prose has its
+# whitespace collapsed before cleaning, and after it every \, [ and ] is
+# escaped with a backslash and every &, < and > as an entity. So it can
+# neither ping anyone, link anywhere, nor open an HTML comment.
 #
 # A confirmed finding's section shows the record's one execution.instructions
 # list (the decider's reproduction steps), its payloads and observed result,
@@ -107,6 +110,7 @@ STRIPS = (
     (re.compile(r"\[[^\]\n]*\]:\s*\S+"), "[link removed]"),
     (re.compile(r"(?i)https?://\S*"), "[link removed]"),
     (re.compile(r"(?i)www\.\S*"), "[link removed]"),
+    (re.compile(r"(?i)(?<![A-Za-z])(?:https?|ftp|mailto|javascript|data|vbscript|file):"), ""),
     (re.compile(r"//[^\s/]\S*"), "[link removed]"),
     (re.compile(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+(?:[#!][0-9]+|@[0-9A-Fa-f]{7,40})"), "[reference removed]"),
     (re.compile(r"(?i)GH-[0-9]+"), "[reference removed]"),
@@ -185,10 +189,16 @@ def clean_str(text):
 
 
 def inline(text):
-    """Cleaned text for prose and table cells. Every & left is escaped first,
-    so no character reference survives for GitHub to decode."""
-    text = clean(text).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
-    return " ".join(text.split())
+    """Cleaned text for prose and table cells. Whitespace is collapsed before
+    cleaning, so no line break can split a pattern the cleaner looks for.
+    Afterwards every backslash, [ and ] is escaped with a backslash, so no
+    Markdown link, image or reference definition can form, and every &, < and
+    > is escaped, so no character reference survives for GitHub to decode."""
+    if not isinstance(text, str):
+        text = "" if text is None else str(text)
+    text = " ".join(clean(" ".join(text.split())).split())
+    text = text.replace("\\", "\\\\").replace("[", "\\[").replace("]", "\\]")
+    return text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
 
 
 def cell(text):

@@ -268,7 +268,7 @@ class HostileTextTest(RenderTest):
         self.assertNotIn("evil", published)
         self.assertNotRegex(published.lower(), r"https?:|www\.|//[^\s/]|\]\(|\]:")
         self.assertNotIn("<!--", published)
-        self.assertIn("A owner B [link removed]", published)
+        self.assertIn("A owner B \\[link removed\\]", published)
         self.assertIn("fullwidth", published)
 
 
@@ -315,6 +315,26 @@ class EntityTest(RenderTest):
         self.assertIn("X octocat Y", published)
 
 
+class MarkdownTest(RenderTest):
+    """Reference definitions split by a line break or an escaped bracket, and
+    bare URI schemes, from the security review's probe."""
+
+    CASES = ["[a\nb]: http:evil.example/x", "[a\\]]: http:evil.example/y", "[c]: JavaScript:alert(1)",
+             "[d]: data:text/html,x", "see mailto:someone and FILE:/etc/passwd and vbscript:x and ftp:host"]
+
+    def test_no_link_or_definition_can_form(self):
+        for case in self.CASES:
+            with self.subTest(case=case):
+                record = lead("fp-1", title="T " + case)
+                record["description"] = case
+                self.seed([record], final_meta(settled=["fp-1"]))
+                body = self.render()
+                published = body.split("<!-- security-audit-state")[0]
+                self.assertNotRegex(published.lower(), r"(?<![a-z])(?:https?|ftp|mailto|javascript|data|vbscript|file):")
+                row = self.line(body, "| `fp-1`")
+                self.assertNotRegex(row, r"(?<!\\)[\[\]]")
+
+
 class ReferenceTest(RenderTest):
     def test_cross_repository_references_are_removed_and_plain_numbers_kept(self):
         text = "A owner/repo#12 B owner/repo!7 C owner/repo@0123abc D GH-42 E gh-43 F see #12"
@@ -323,8 +343,8 @@ class ReferenceTest(RenderTest):
         row = self.line(self.render(), "| `fp-1`")
         for ref in ("owner/repo", "GH-42", "gh-43", "0123abc"):
             self.assertNotIn(ref, row)
-        self.assertIn("A [reference removed] B [reference removed] C [reference removed] D [reference removed] "
-                      "E [reference removed] F see #12", row)
+        self.assertIn("A \\[reference removed\\] B \\[reference removed\\] C \\[reference removed\\] "
+                      "D \\[reference removed\\] E \\[reference removed\\] F see #12", row)
 
 
 class BoundTest(RenderTest):
