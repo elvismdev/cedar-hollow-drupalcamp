@@ -145,6 +145,9 @@ audit_args() { # step
   allow="$allow,Edit(/$out/**)"
   deny="$deny,$(audit_rules "Read Glob Grep Edit" "${roots[@]}")"
   deny="$deny,$(audit_rules "Read Glob Grep" "$GITHUB_WORKSPACE/.git/**")"
+  # Each denied directory as itself too, so a Glob or Grep given the folder
+  # as its path is refused rather than left to whether X/** matches X.
+  deny="$deny,$(audit_rules "Read Glob Grep" /proc /sys "$RUNNER_TEMP" "$work/_actions" "$HOME/runners" "$GITHUB_WORKSPACE/.git")"
   deny="$deny,$(audit_rules "Edit" "$GITHUB_WORKSPACE/**")"
   printf "%s --strict-mcp-config %s%s%s--max-turns %s --allowedTools '%s' --disallowedTools '%s'" \
     "$BASE" "$(model_flag "$model")" "$(dir_flag "$in")" "$(dir_flag "$out")" "$turns" "$allow" "$deny"
