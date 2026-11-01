@@ -857,11 +857,16 @@ jobs:
         with:
           persist-credentials: false
 
+      # The site arrives built, so no tool is installed, and an empty
+      # github-token keeps setup-php from writing GITHUB_TOKEN into
+      # composer's auth.json: this job holds no token beyond its checkout.
       - uses: shivammathur/setup-php@eb7c497e18156a6bbabfef1d3a82760b9eda3962 # v2
         with:
           php-version: '8.3'
           extensions: pdo_sqlite, gd, curl
           coverage: none
+          tools: none
+          github-token: ''
 
       - name: Install bubblewrap and age
         run: sudo apt-get install -y bubblewrap age

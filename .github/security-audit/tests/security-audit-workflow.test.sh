@@ -357,6 +357,13 @@ for name in ("source", "poc-write", "poc-decide", "cross-check"):
     if passing != "ok":
         err("%s cause with an ok agent and a succeeding job must be ok, got %r" % (name, passing))
 
+# ---------------------------------------------------------------- poc-run holds no token
+for st in (jobs.get("poc-run") or {}).get("steps") or []:
+    if str(st.get("uses", "")).startswith("shivammathur/setup-php@"):
+        w = st.get("with") or {}
+        if w.get("tools") != "none" or w.get("github-token") != "":
+            err("poc-run's setup-php must set tools: none and github-token: '' so no token reaches composer's auth.json")
+
 # ---------------------------------------------------------------- key canaries
 for name, own, other, key in (("source", "agents", "sandbox", "AUDIT_AGENTS_AGE_KEY"),
                               ("poc-run", "sandbox", "agents", "AUDIT_SANDBOX_AGE_KEY")):
@@ -539,6 +546,8 @@ mutate "the judge reading the wrong run check" '("RUN_CHECK_OUTCOME: ${{ steps.c
 mutate "sandbox-secrets not judged" '("bash .github/security-audit/judge-canary.sh sandbox-secrets -", "true", 1)'
 mutate "the judge with a missing argument" '("judge-canary.sh reopen-records - \"$f\"", "judge-canary.sh reopen-records", 1)'
 
+mutate "poc-run installing composer" '("          tools: none\n          github-token: \x27\x27", "          github-token: \x27\x27", 1)'
+mutate "poc-run passing its token to setup-php" '("          tools: none\n          github-token: \x27\x27", "          tools: none", 1)'
 mutate "an ok cause after a failed trusted step" '("          if [ \"$JOB_STATUS\" != success ] && [ \"$cause\" = ok ]; then cause=agent_failed; fi\n          echo \"cause=$cause\" >> \"$GITHUB_OUTPUT\"\n          echo \"poc-decide job: $cause\"", "          echo \"cause=$cause\" >> \"$GITHUB_OUTPUT\"\n          echo \"poc-decide job: $cause\"", 1)'
 
 pass "security-audit workflow structure"
