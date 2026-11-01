@@ -15,7 +15,7 @@ from test_merge_records import SA, confirmed, lead, metadata, rejected, unit
 SCRIPT = os.path.join(SA, "render-issue.py")
 SHA = "b" * 64
 SCREEN_FAILED = "Output failed or could not run the secret screen"
-TRUSTED_KEYS = ("usage", "poc", "cross_check", "merge_discarded", "incomplete_reasons", "dispute_rate",
+TRUSTED_KEYS = ("usage", "poc", "cross_check", "merge_discarded", "incomplete_reasons", "dispute_rate", "interrupted",
                 "run_status", "incomplete_reason")
 OK_JOBS = {"publish": True, "canary": "none", "source": {"result": "success", "cause": "ok"},
            "cross_check": {"result": "success", "cause": "ok", "validators": "pass"}}
@@ -163,6 +163,16 @@ class ContentTest(RenderTest):
         self.assertIn("*   Subagent invocations against cap: source 12 of 60; tie-break 1 of 3", body)
         self.assertIn("*   Dispute rate: 1 of 4 records cross-checked (25%)", body)
         self.assertIn("*   Tie-breaks: original 1, replacement 0, neither 0", body)
+
+    def test_interrupted_subagents_are_a_count_only(self):
+        self.seed([], final_meta(interrupted=[{"job": "poc-decide", "agent_id": "decider-secret-7"},
+                                              {"job": "cross-check", "agent_id": "cc-9"}]))
+        body = self.render()
+        self.assertIn("*   Subagents stopped by the safety classifier and left out: 2", body)
+        self.assertNotIn("decider-secret-7", body)
+        self.assertNotIn("cc-9", body)
+        self.seed([], final_meta())
+        self.assertIn("*   Subagents stopped by the safety classifier and left out: 0", self.render())
 
     def test_only_settled_and_poc_confirmed_records_are_published(self):
         records = [confirmed("c-ok"), confirmed("c-no-poc"), confirmed("c-unsettled"), lead("l-ok"), lead("l-unsettled")]
