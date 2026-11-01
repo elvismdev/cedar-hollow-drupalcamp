@@ -8,7 +8,10 @@
 #                                it fails as gh does on a 404 (the error body on
 #                                stdout, "HTTP 404" on stderr), and with a
 #                                <key>.500 file as on a server error.
-#   gh run list ...              prints $FIX/run_list.json, or fails like a
+#   gh run list ...              prints the runs in $FIX/run_list.json (newest
+#                                first), keeping only those whose conclusion
+#                                equals --status when it names a conclusion,
+#                                and at most --limit of them; or fails like a
 #                                server error when $FIX/run_list.500 exists.
 #   gh run download <run> ... -D <dir>
 #                                copies $FIX/download-<run>/ into <dir>, or
@@ -33,7 +36,15 @@ case "${1:-} ${2:-}" in
     ;;
   "run list")
     [ ! -e "$FIX/run_list.500" ] || server_error
-    cat "$FIX/run_list.json"
+    status="" limit=20 prev=""
+    for a in "$@"; do
+      [ "$prev" = --status ] && status="$a"
+      [ "$prev" = --limit ] && limit="$a"
+      prev="$a"
+    done
+    jq -c --arg status "$status" --argjson limit "$limit" '
+      if ($status | IN("", "completed")) then . else map(select(.conclusion == $status)) end
+      | .[:$limit]' "$FIX/run_list.json"
     ;;
   "run download")
     run="$3" dir="" prev=""

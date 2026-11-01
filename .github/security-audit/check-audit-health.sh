@@ -7,10 +7,11 @@
 # update time, which anyone can change by commenting:
 #   gh api repos/<repo>/actions/workflows/security-audit.yml --jq .state
 #   gh run list -R <repo> --workflow security-audit.yml --branch main \
-#     --status completed --limit 1 --json createdAt
+#     --status success --limit 1 --json createdAt,conclusion
 # and prints a ::warning:: annotation when the state is not active, when there
-# is no completed run on main, or when the last one started more than 40 days
-# ago (first Saturdays can be 35 days apart). A workflow that does not exist
+# is no successful run on main, or when the last one started more than 40 days
+# ago (first Saturdays can be 35 days apart). Only runs whose conclusion is
+# success count, so a schedule whose runs keep failing is warned about too. A workflow that does not exist
 # (a 404) is "not yet set up" and only noted. Anything it cannot read is
 # warned about too.
 #
@@ -47,26 +48,26 @@ if [ "$state" != active ]; then
 fi
 
 rc=0
-runs="$(gh run list -R "$repo" --workflow "$WORKFLOW" --branch main --status completed --limit 1 --json createdAt 2>"$err")" || rc=$?
+runs="$(gh run list -R "$repo" --workflow "$WORKFLOW" --branch main --status success --limit 1 --json createdAt,conclusion 2>"$err")" || rc=$?
 if [ "$rc" -ne 0 ]; then
   warn "could not read the run history of $WORKFLOW in $repo"
   exit 0
 fi
-created="$(jq -r 'if type == "array" and length > 0 then (.[0].createdAt // "") else "" end' <<<"$runs" 2>/dev/null)" || created=""
+created="$(jq -r 'if type == "array" and length > 0 and .[0].conclusion == "success" then (.[0].createdAt // "") else "" end' <<<"$runs" 2>/dev/null)" || created=""
 if [ -z "$created" ]; then
-  warn "$WORKFLOW has no completed run on main"
+  warn "$WORKFLOW has no successful run on main"
   exit 0
 fi
 started="$(date -u -d "$created" +%s 2>/dev/null)" || started=""
 if [ -z "$started" ]; then
-  warn "could not read the time of the last completed run of $WORKFLOW"
+  warn "could not read the time of the last successful run of $WORKFLOW"
   exit 0
 fi
 age=$(( $(date -u +%s) - started ))
 age_days=$(( age / 86400 ))
 if [ "$age" -gt $(( MAX_AGE_DAYS * 86400 )) ]; then
-  warn "the last completed run of $WORKFLOW on main started $age_days days ago, more than $MAX_AGE_DAYS"
+  warn "the last successful run of $WORKFLOW on main started $age_days days ago, more than $MAX_AGE_DAYS"
 else
-  echo "check-audit-health: $WORKFLOW is $state; last completed run on main started $age_days days ago"
+  echo "check-audit-health: $WORKFLOW is $state; last successful run on main started $age_days days ago"
 fi
 exit 0

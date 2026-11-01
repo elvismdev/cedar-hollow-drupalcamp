@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Tests for check-audit-health.sh against fake-gh.sh: the workflow states
-# active and disabled_inactivity, a 404, no completed run, a run 41 days old,
-# and errors, each exiting 0.
+# active and disabled_inactivity, a 404, no successful run, a successful run
+# 41 days old, a schedule whose recent runs all failed, and errors, each
+# exiting 0.
 set -euo pipefail
 # shellcheck source=../../claude-review/tools/agent/test/assert.sh
 . "$(dirname "$0")/../../claude-review/tools/agent/test/assert.sh"
@@ -26,8 +27,9 @@ new_fixture() { # name state
   echo "$2" > "$FIX/$STATE_KEY.json"
   echo '[]' > "$FIX/run_list.json"
 }
-run_days_ago() { # days
-  jq -n --arg t "$(date -u -d "$1 days ago" +%Y-%m-%dT%H:%M:%SZ)" '[{createdAt: $t}]' > "$FIX/run_list.json"
+when() { date -u -d "$1 days ago" +%Y-%m-%dT%H:%M:%SZ; }
+run_days_ago() { # days: one successful run
+  jq -n --arg t "$(when "$1")" '[{createdAt: $t, conclusion: "success"}]' > "$FIX/run_list.json"
 }
 check() { RC=0; OUT="$(bash "$CHECK" "$@" 2>&1)" || RC=$?; }
 no_warning() { # message
@@ -42,7 +44,7 @@ assert_exit 0 "$RC" "a healthy audit exits 0"
 no_warning "a healthy audit is not warned about"
 assert_contains "$OUT" "3 days ago" "the last run's age is reported"
 assert_contains "$(cat "$FIX/calls.log")" "gh api repos/$REPO/actions/workflows/security-audit.yml --jq .state" "the state is read from the workflow"
-assert_contains "$(cat "$FIX/calls.log")" "gh run list -R $REPO --workflow security-audit.yml --branch main --status completed --limit 1 --json createdAt" "the last completed run on main is read from run history"
+assert_contains "$(cat "$FIX/calls.log")" "gh run list -R $REPO --workflow security-audit.yml --branch main --status success --limit 1 --json createdAt,conclusion" "the last successful run on main is read from run history"
 
 # A run 39 days old is within the limit.
 new_fixture recent active
@@ -67,12 +69,27 @@ no_warning "a missing workflow is not warned about"
 assert_contains "$OUT" "not yet set up" "a missing workflow is noted as not yet set up"
 case "$(cat "$FIX/calls.log")" in *"run list"*) echo "FAIL: run history was read for a missing workflow" >&2; exit 1;; esac
 
-# Active but no completed run on main: warned.
+# Active but no successful run on main: warned.
 new_fixture norun active
 check "$REPO"
-assert_exit 0 "$RC" "no completed run exits 0"
-assert_contains "$OUT" "::warning" "no completed run is warned about"
-assert_contains "$OUT" "no completed run on main" "the warning says there is no completed run"
+assert_exit 0 "$RC" "no successful run exits 0"
+assert_contains "$OUT" "::warning" "no successful run is warned about"
+assert_contains "$OUT" "no successful run on main" "the warning says there is no successful run"
+
+# A schedule whose recent runs all failed: the last success is 60 days old,
+# so it is warned about although runs keep completing.
+new_fixture failing active
+jq -n --arg f1 "$(when 2)" --arg f2 "$(when 30)" --arg ok "$(when 60)" \
+  '[{createdAt: $f1, conclusion: "failure"}, {createdAt: $f2, conclusion: "failure"},
+    {createdAt: $ok, conclusion: "success"}]' > "$FIX/run_list.json"
+check "$REPO"
+assert_exit 0 "$RC" "a failing schedule exits 0"
+assert_contains "$OUT" "::warning" "a schedule whose recent runs all failed is warned about"
+assert_contains "$OUT" "60 days ago" "the warning gives the last success's age"
+new_fixture all-failed active
+jq -n --arg f1 "$(when 2)" '[{createdAt: $f1, conclusion: "failure"}]' > "$FIX/run_list.json"
+check "$REPO"
+assert_contains "$OUT" "no successful run on main" "a schedule that never succeeded is warned about"
 
 # A run 41 days old: warned.
 new_fixture stale active
@@ -95,7 +112,7 @@ check "$REPO"
 assert_exit 0 "$RC" "run history that cannot be read exits 0"
 assert_contains "$OUT" "::warning" "run history that cannot be read is warned about"
 new_fixture bad-time active
-echo '[{"createdAt": "not a time"}]' > "$FIX/run_list.json"
+echo '[{"createdAt": "not a time", "conclusion": "success"}]' > "$FIX/run_list.json"
 check "$REPO"
 assert_exit 0 "$RC" "an unreadable run time exits 0"
 assert_contains "$OUT" "::warning" "an unreadable run time is warned about"
