@@ -1224,11 +1224,11 @@ jobs:
       # The state is audit-poc when poc-decide succeeded and its records pass
       # the validators; otherwise the last state before it, audit-poc-write
       # or audit-source. failed names the first proof-of-concept phase that
-      # did not succeed, for fail-poc.
+      # did not succeed, for fail-poc; a failed build-site leaves poc-write
+      # skipped, so it is named as poc-write.
       - name: Choose the input state
         id: choose
         env:
-          BUILD_SITE: ${{ needs.build-site.result }}
           POC_WRITE: ${{ needs.poc-write.result }}
           POC_RUN: ${{ needs.poc-run.result }}
           POC_DECIDE: ${{ needs.poc-decide.result }}
@@ -1242,7 +1242,7 @@ jobs:
           if [ "$POC_DECIDE" = success ] && [ "$DECIDE_VALIDATORS" = pass ]; then
             name=audit-poc sha="$DECIDE_SHA256"
           else
-            for job in build-site:"$BUILD_SITE" poc-write:"$POC_WRITE" poc-run:"$POC_RUN" poc-decide:"$POC_DECIDE"; do
+            for job in poc-write:"$POC_WRITE" poc-run:"$POC_RUN" poc-decide:"$POC_DECIDE"; do
               if [ "${job#*:}" != success ]; then failed="${job%%:*}"; break; fi
             done
             failed="${failed:-poc-decide}"
