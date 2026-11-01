@@ -72,8 +72,13 @@
 #     a brace group is kept whole) each part must end in a literal file
 #     extension or a brace group of extensions (*.php, *.{php,module},
 #     src/**/*.ts). Its last segment may instead be a brace group of plain
-#     names before that extension (**/{a,b}.php); a brace group anywhere else
-#     is refused. No part may name .git.
+#     names before that extension (**/{a,b}.php); a brace group anywhere
+#     else, or one holding a wildcard, is refused. Every brace expansion must
+#     pass the same rule, so each ends in a file extension. No part or
+#     expansion may hold .git as a
+#     whole path segment (.git, .git/..., .../.git, .../.git/..., in any
+#     letter case); a name that only starts with .git, such as *.gitignore,
+#     is not one.
 #
 # A Glob or Grep with no path searches the working directory and is allowed. A
 # Read with no file_path, and any of these fields present but empty, is
@@ -311,8 +316,14 @@ def grep_glob_allowed(value):
     # Claude Code splits on whitespace, which glob_ok has already refused, then
     # on commas unless a part holds a brace group.
     parts = [value] if '{' in value and '}' in value else [t for t in value.split(',') if t]
-    return bool(parts) and all(EXTENSION_GLOB.fullmatch(t) and '.git' not in t.lower()
-                               for t in parts)
+    return bool(parts) and all(EXTENSION_GLOB.fullmatch(t) and not git_segment(t) for t in parts)
+
+
+def git_segment(value):
+    """True when .git is a whole path segment of value, in any letter case:
+    .git, .git/..., .../.git or .../.git/.... A name that only starts with
+    .git, such as .gitignore, is not one."""
+    return any(seg.lower() == '.git' for seg in value.split('/'))
 
 def inside(p):
     return p is not None and not under(p, git_dir) and any(under(p, r) for r in roots)

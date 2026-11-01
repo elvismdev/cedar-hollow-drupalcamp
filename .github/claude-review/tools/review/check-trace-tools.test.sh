@@ -138,6 +138,26 @@ no_path Grep '{"pattern":"x","glob":"**/{..,a}.php"}' "a .. in the names brace g
 no_path Grep '{"pattern":"x","glob":"{a,b}/x.php"}' "a brace group in a directory segment is refused"
 no_path Grep '{"pattern":"x","glob":"**/{a,b}"}' "a brace group of names with no extension is refused"
 
+# .git is refused only as a whole path segment, so a name such as .gitignore
+# passes. Both with no options and with the audit's: the Grep glob with
+# gitignore below is a real call from audit run 41347206214.
+glob_rc () { # glob [option...]: exit status of a Grep with that glob and no path
+  printf '[%s]' "$(call Grep "{\"pattern\":\"x\",\"glob\":\"$1\"}")" > "$tmp/g.json"; shift
+  rc "$tmp/g.json" "$@"
+}
+AUDIT_OPTS=(--tools "Read,Glob,Grep,Write,Edit,Agent,Task,SubagentHandback" --root /mnt/audit/source/in --root /mnt/audit/source/out --write-root /mnt/audit/source/out --grep-any-glob-in-subfolders)
+for opts in none audit; do
+  if [ "$opts" = audit ]; then O=("${AUDIT_OPTS[@]}"); else O=(); fi
+  for g in '*.{yml,yaml,sh,htaccess,gitignore,json,php,md}' '*.gitignore' '.gitattributes' '**/*.gitkeep'; do
+    assert_eq "0" "$(glob_rc "$g" "${O[@]}")" "the Grep glob $g passes ($opts options)"
+  done
+  for g in '.git/config' '**/.git/**' '{.git,x}/config' '.GIT/config' '{.git/x.php,a.php}' 'x/.git/y.md' \
+           '**/.Git/hooks/*.sample' 'a.php,.git/x.md' '{REVIEW,AGENTS.md}' 'src/{a,b}' '{a.md,*.md}' '{a.md,../b.md}' \
+           '{a.md,b/c.md}' '{.htaccess,a.md}'; do
+    assert_eq "1" "$(glob_rc "$g" "${O[@]}")" "the Grep glob $g is still refused ($opts options)"
+  done
+done
+
 # The extension-shaped rule protects the workspace's .git/config, so it applies
 # only when the search root can reach the workspace: no path, or a path inside
 # it. The head's .git is a pointer file and the input directory holds a diff, so
