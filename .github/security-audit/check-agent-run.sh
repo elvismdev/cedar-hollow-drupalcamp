@@ -37,7 +37,8 @@
 #     glob with any .. segment, fails, because where it lands cannot be judged
 #     without matching it on disk; so do braces that cannot be expanded with
 #     confidence (a backslash, a nested or unbalanced brace, or more than 1024
-#     expansions).
+#     expansions). The expander is check-trace-tools.sh's own,
+#     expand-braces.cjs, so both checks judge the same expansions.
 #   - Every model in a result's modelUsage, and on every assistant message
 #     except Claude Code's own <synthetic> ones, is the pinned model or the
 #     allowlisted helper.
@@ -141,11 +142,12 @@ if ! bash "$CTT" "$trace" --tools "$allowed" "${roots[@]}" --write-root "$out_ro
   failed=1
 fi
 
-if ! node - "$trace" "$job" "$out_root" "$GITHUB_WORKSPACE" "$model" "$helper" <<'JS'
+if ! node - "$trace" "$job" "$out_root" "$GITHUB_WORKSPACE" "$model" "$helper" \
+  "$HERE/../claude-review/tools/review/expand-braces.cjs" <<'JS'
 const fs = require('fs');
 const path = require('path').posix;
 
-const [trace, job, outArg, wsArg, model, helper] = process.argv.slice(2);
+const [trace, job, outArg, wsArg, model, helper, expander] = process.argv.slice(2);
 const say = (line) => console.error(`check-agent-run: ${line}`);
 
 let msgs;
@@ -243,34 +245,9 @@ for (const m of msgs) {
   }
 }
 
-// Every expansion of a string's brace groups, or null when they cannot be
-// expanded with confidence: a backslash, a nested or unbalanced brace, or more
-// than MAX_EXPANSIONS results.
-const MAX_EXPANSIONS = 1024;
-function expandBraces(s) {
-  if (s.includes('\\')) return null;
-  let results = [''];
-  let i = 0;
-  while (i < s.length) {
-    const ch = s[i];
-    if (ch === '}') return null;
-    if (ch === '{') {
-      const end = s.indexOf('}', i + 1);
-      if (end === -1) return null;
-      const body = s.slice(i + 1, end);
-      if (body.includes('{')) return null;
-      const next = [];
-      for (const r of results) for (const alt of body.split(',')) next.push(r + alt);
-      if (next.length > MAX_EXPANSIONS) return null;
-      results = next;
-      i = end + 1;
-    } else {
-      results = results.map((r) => r + ch);
-      i += 1;
-    }
-  }
-  return results;
-}
+// Brace expansion shared with check-trace-tools.sh: an array of expansions,
+// or null when the braces cannot be expanded with confidence.
+const { expandBraces } = require(expander);
 
 // Every target a read-side call reaches, one per brace expansion, or null
 // when any of them cannot be judged.
