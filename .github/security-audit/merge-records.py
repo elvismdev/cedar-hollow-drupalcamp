@@ -82,7 +82,10 @@
 #                        decided, failed}
 #   cross_check          {selected, not_cross_checked, settled, refused,
 #                        disputes, cross_checked, tie_breaks, removed,
-#                        applied, pending}
+#                        applied, pending, inputs_sha256}; apply-tie-break
+#                        refuses inputs whose sha256 is not inputs_sha256,
+#                        or whose disputes are not objects whose original
+#                        and replacement carry the dispute's fingerprint
 #   merge_discarded      [{job, agent_id, reason}] with fixed reason labels
 #   dispute_rate         {disputes, cross_checked, rate}, set by status only
 #                        when a cross-check selection exists
@@ -1157,6 +1160,7 @@ def cmd_apply_cross_check(state, args):
     cc["pending"] = [d["fingerprint"] for d in disputes]
     cc["applied"] = True
     write_json(args.out, {"disputes": disputes})
+    cc["inputs_sha256"] = hashlib.sha256(read_bytes(args.out, MAX_STATE_BYTES)).hexdigest()
     print("merge-records: %d record(s) cross-checked, %d dispute(s)" % (cc["cross_checked"], len(disputes)))
 
 
@@ -1183,9 +1187,21 @@ def cmd_apply_tie_break(state, args):
     if not isinstance(cc, dict) or not cc.get("applied"):
         raise Refused("apply-cross-check has not run")
     try:
-        disputes = read_json(args.inputs, MAX_STATE_BYTES)["disputes"]
-    except (OSError, ValueError, Refused, KeyError, TypeError):
+        data = read_bytes(args.inputs, MAX_STATE_BYTES)
+    except (OSError, Refused):
         raise Refused("the tie-break inputs cannot be read")
+    if hashlib.sha256(data).hexdigest() != cc.get("inputs_sha256"):
+        raise Refused("the tie-break inputs are not the ones apply-cross-check wrote")
+    try:
+        disputes = parse_strict(data)["disputes"]
+    except (ValueError, KeyError, TypeError):
+        raise Refused("the tie-break inputs cannot be read")
+    if not isinstance(disputes, list) or not all(
+            isinstance(d, dict) and isinstance(d.get("fingerprint"), str)
+            and isinstance(d.get("original"), dict) and isinstance(d.get("replacement"), dict)
+            and d["replacement"].get("fingerprint") == d["fingerprint"]
+            and d["original"].get("fingerprint") == d["fingerprint"] for d in disputes):
+        raise Refused("the tie-break inputs are malformed")
     disputes = sorted([d for d in disputes if d.get("fingerprint") in cc.get("pending", [])],
                       key=lambda d: js_order(d["fingerprint"]))
     eligible = {d["fingerprint"] for d in disputes[:TIE_BREAK_SLOTS]}

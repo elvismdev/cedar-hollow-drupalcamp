@@ -916,6 +916,47 @@ class CrossCheckTest(MergeTest):
         self.assertEqual(meta["run_status"], "incomplete")
         self.assert_validators_pass()
 
+    def tie_break_with_inputs(self, edit, rehash):
+        """Runs a dispute to the tie-break after edit() changes the inputs file;
+        with rehash, trusted-meta.json is made to carry the edited file's hash,
+        so the shape checks are reached."""
+        self.seed_records([confirmed("i-1")])
+        self.replace("checker-1", confirmed("i-1", root_cause="Another cause"))
+        self.assertEqual(len(self.cross_check()), 1)
+        inputs = os.path.join(self.tmp, "tie-break-inputs.json")
+        with open(inputs, encoding="utf-8") as handle:
+            data = json.load(handle)
+        edit(data)
+        self.write(inputs, data)
+        if rehash:
+            trusted = self.load("trusted-meta.json")
+            with open(inputs, "rb") as handle:
+                trusted["cross_check"]["inputs_sha256"] = hashlib.sha256(handle.read()).hexdigest()
+            self.write(os.path.join(self.state, "trusted-meta.json"), trusted)
+        self.subagent("tie-1", {"fingerprint": "i-1", "answer": "replacement", "reason": "Agree."})
+        result = self.run_merge("apply-tie-break", "--inputs", inputs, "--entries", self.out,
+                                "--trace", self.trace_file(), ok=False)
+        self.assertEqual(result.returncode, 1)
+        self.assertNotIn("Traceback", result.stderr)
+        self.assertEqual(self.record("i-1")["root_cause"], "Missing access check")
+        return result.stderr
+
+    def test_tie_break_inputs_changed_after_the_cross_check_are_refused(self):
+        def fabricate(data):
+            data["disputes"][0]["replacement"]["execution"]["observed_result"] = "FABRICATED."
+        self.assertIn("not the ones apply-cross-check wrote", self.tie_break_with_inputs(fabricate, False))
+
+    def test_malformed_tie_break_inputs_are_refused(self):
+        def other_fingerprint(data):
+            data["disputes"][0]["replacement"]["fingerprint"] = "i-2"
+        def not_a_dict(data):
+            data["disputes"] = ["i-1"]
+        for name, edit in (("replacement fingerprint", other_fingerprint), ("non-dict dispute", not_a_dict)):
+            with self.subTest(name):
+                self.tearDown()
+                self.setUp()
+                self.assertIn("the tie-break inputs are malformed", self.tie_break_with_inputs(edit, True))
+
     def test_cap_of_thirty_overflow(self):
         fps = ["o-%02d" % i for i in range(32)]
         history = {"fingerprints": {"o-00": {"last_poc_run": 0, "last_cross_checked_run": 50, "poc_tries": 0},
