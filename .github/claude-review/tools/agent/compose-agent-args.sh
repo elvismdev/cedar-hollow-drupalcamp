@@ -83,11 +83,13 @@ args() { # model turns tools
 AUDIT_ROOT="/mnt/audit"
 
 # The session's tools other than Read, Glob, Grep, Write, Edit and the
-# subagent tool: Stage 0's recorded tool list, plus the names the Technical
-# Plan denies that this version did not list (Bash, MultiEdit, Monitor,
-# TaskCreate, TodoWrite, AskUserQuestion, EnterPlanMode, ExitPlanMode), kept so
-# a version that brings one back still has it denied.
-AUDIT_DENY="Bash,MultiEdit,NotebookEdit,WebFetch,WebSearch,Skill,ListAgents,ScheduleWakeup,Monitor,SendMessage,CronCreate,CronDelete,CronList,TaskCreate,TaskStop,TodoWrite,AskUserQuestion,EnterPlanMode,ExitPlanMode,EnterWorktree,ExitWorktree,ToolSearch,DesignSync,PushNotification,RemoteTrigger,ReportFindings,Workflow"
+# subagent tool: the review's NO_HUMAN and NO_WRITE lists without the tools
+# the audit agents use, plus the rest of Stage 0's recorded tool list and the
+# names the Technical Plan denies that this version did not list (TodoWrite,
+# AskUserQuestion, EnterPlanMode, ExitPlanMode), kept so a version that brings
+# one back still has it denied.
+AUDIT_ONLY="CronDelete,CronList,TaskStop,TodoWrite,AskUserQuestion,EnterPlanMode,ExitPlanMode,EnterWorktree,ExitWorktree,ToolSearch,DesignSync,PushNotification,RemoteTrigger,ReportFindings,Workflow"
+AUDIT_DENY="$(printf '%s\n' "${NO_HUMAN//,/$'\n'}" "${NO_WRITE//,/$'\n'}" | grep -vxE 'Agent|Task|Write|Edit' | paste -sd, -),$AUDIT_ONLY"
 
 # step  job  model  max-turns  subagents
 AUDIT_STEPS="source source claude-opus-5-5 400 yes

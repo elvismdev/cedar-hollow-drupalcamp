@@ -93,7 +93,14 @@ set -f
 PARSE="$ROOT/tools/agent/test/helpers/parse-claude-args.py"
 PARSE_ENV="$ROOT/tools/agent/test/helpers/parse-env-file.py"
 RUNNER_ENV=(HOME=/home/runner RUNNER_TEMP=/home/runner/work/_temp GITHUB_WORKSPACE=/home/runner/work/ddemo/ddemo)
-AUDIT_DENY="Bash,MultiEdit,NotebookEdit,WebFetch,WebSearch,Skill,ListAgents,ScheduleWakeup,Monitor,SendMessage,CronCreate,CronDelete,CronList,TaskCreate,TaskStop,TodoWrite,AskUserQuestion,EnterPlanMode,ExitPlanMode,EnterWorktree,ExitWorktree,ToolSearch,DesignSync,PushNotification,RemoteTrigger,ReportFindings,Workflow"
+# The audit deny list: the review's NO_HUMAN and NO_WRITE names, read from the
+# script, without the tools the audit agents use, then the audit-only names
+# from Stage 0's tool list and the Technical Plan.
+AUDIT_ONLY="CronDelete,CronList,TaskStop,TodoWrite,AskUserQuestion,EnterPlanMode,ExitPlanMode,EnterWorktree,ExitWorktree,ToolSearch,DesignSync,PushNotification,RemoteTrigger,ReportFindings,Workflow"
+NO_HUMAN=$(sed -n 's/^NO_HUMAN="\(.*\)"$/\1/p' "$R")
+NO_WRITE=$(sed -n 's/^NO_WRITE="\(.*\)"$/\1/p' "$R")
+[ -n "$NO_HUMAN" ] && [ -n "$NO_WRITE" ] || { echo "FAIL: NO_HUMAN or NO_WRITE could not be read from the script" >&2; exit 1; }
+AUDIT_DENY="$(printf '%s\n' "${NO_HUMAN//,/$'\n'}" "${NO_WRITE//,/$'\n'}" | grep -vxE 'Agent|Task|Write|Edit' | paste -sd, -),$AUDIT_ONLY"
 PATH_RULES="Read(//proc/**),Glob(//proc/**),Grep(//proc/**),Edit(//proc/**),Read(//sys/**),Glob(//sys/**),Grep(//sys/**),Edit(//sys/**),Read(//home/runner/work/_temp/**),Glob(//home/runner/work/_temp/**),Grep(//home/runner/work/_temp/**),Edit(//home/runner/work/_temp/**),Read(//home/runner/work/_actions/**),Glob(//home/runner/work/_actions/**),Grep(//home/runner/work/_actions/**),Edit(//home/runner/work/_actions/**),Read(//home/runner/runners/**),Glob(//home/runner/runners/**),Grep(//home/runner/runners/**),Edit(//home/runner/runners/**),Read(//home/runner/.*),Glob(//home/runner/.*),Grep(//home/runner/.*),Edit(//home/runner/.*),Read(//home/runner/.*/**),Glob(//home/runner/.*/**),Grep(//home/runner/.*/**),Edit(//home/runner/.*/**),Read(//home/runner/work/ddemo/ddemo/.git/**),Glob(//home/runner/work/ddemo/ddemo/.git/**),Grep(//home/runner/work/ddemo/ddemo/.git/**),Edit(//home/runner/work/ddemo/ddemo/**)"
 
 # The exact line for one step, quoting included.
@@ -138,6 +145,10 @@ print(f.get("model"), f.get("max-turns"), f.get("setting-sources"), "strict-mcp-
   want_allow="Read,Glob,Grep"
   [ "$subs" = yes ] && want_allow="$want_allow,Agent,Task"
   assert_eq "$want_allow,Edit(//mnt/audit/$job/out/**)" "$allow" "$name allows exactly its tools and its output directory"
+  for t in ${NO_HUMAN//,/ } ${NO_WRITE//,/ }; do
+    case "$t" in Agent|Task|Write|Edit) continue ;; esac
+    printf '%s\n' "${deny//,/$'\n'}" | grep -qxF -- "$t" || { echo "FAIL: $name does not deny the review's $t" >&2; exit 1; }
+  done
   for t in ${AUDIT_DENY//,/ }; do
     printf '%s\n' "${deny//,/$'\n'}" | grep -qxF -- "$t" || { echo "FAIL: $name does not deny $t" >&2; exit 1; }
   done
