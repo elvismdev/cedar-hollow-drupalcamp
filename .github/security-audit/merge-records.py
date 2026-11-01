@@ -565,7 +565,8 @@ def tool_uses(node):
 
 def subagent_bindings(messages):
     """Maps each subagent call id to the one agent id its description
-    declares, dropping calls whose declaration is missing, invalid or reused."""
+    declares, dropping calls whose declaration is missing, invalid or reused.
+    Returns the map and the set of ids that more than one call declared."""
     calls, seen, reused = {}, set(), set()
     for message in messages:
         for call in tool_uses(message):
@@ -581,7 +582,7 @@ def subagent_bindings(messages):
                 reused.add(ids[0])
             seen.add(ids[0])
             calls[call_id] = ids[0]
-    return {k: v for k, v in calls.items() if v not in reused}
+    return {k: v for k, v in calls.items() if v not in reused}, reused
 
 
 def subagent_count(messages):
@@ -606,7 +607,9 @@ def read_entries(state, job, entries, trace_path):
     wrote or edited, that its own subagent edited, or that differs from that
     last Write is discarded and recorded."""
     messages = read_trace(trace_path)
-    bindings = subagent_bindings(messages)
+    bindings, reused = subagent_bindings(messages)
+    for agent_id in sorted(reused):
+        state.discard(job, agent_id, "agent id declared by more than one subagent call")
     paths = {entry_path(entries, agent_id): agent_id for agent_id in set(bindings.values())}
     last, refused = {}, {}
     for message in messages:

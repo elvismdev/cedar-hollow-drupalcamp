@@ -588,6 +588,15 @@ class HostileEntryTest(MergeTest):
         self.assertEqual(self.record("fp-1")["verdict"], "needs_validation")
         self.assertIn("entry edited after it was written", self.discarded())
 
+    def test_an_agent_id_two_subagents_claim_is_discarded_and_recorded(self):
+        manifest = self.base()
+        entry = self.decided("fp-1", "confirmed", confirmed("fp-1"))
+        self.subagent("decider-1", entry)
+        self.subagent("decider-1", entry)
+        self.decide(manifest)
+        self.assertEqual(self.record("fp-1")["verdict"], "needs_validation")
+        self.assertEqual(self.discarded().count("agent id declared by more than one subagent call"), 1)
+
     def test_malformed_decide_entries_are_discarded_not_fatal(self):
         listed = self.decided("fp-1", "needs_validation", lead("fp-1"))
         listed["fingerprint"] = ["fp-1"]
