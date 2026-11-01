@@ -125,8 +125,8 @@
 #   - Agent and Task: description, prompt, subagent_type, run_in_background.
 #     A model field is refused with the rest, so a subagent cannot be given
 #     another model through its call.
-#   - SubagentHandback: exactly message, a string, and nothing else. It names
-#     no file, so no path rule applies.
+#   - SubagentHandback: exactly message, a non-empty string, and nothing else.
+#     It names no file, so no path rule applies.
 #
 # A Write or Edit file_path passes the same character allowlist, must be
 # absolute, must hold no .. segment even when it would normalise back inside,
@@ -414,7 +414,7 @@ def refusal(call):
     if name in ('Agent', 'Task'):
         return None
     if name == 'SubagentHandback':
-        if 'message' not in args:
+        if args.get('message') is None or args.get('message') == '':
             return ('empty field', 'message')
         if not isinstance(args['message'], str):
             return ('field not a string', 'message')

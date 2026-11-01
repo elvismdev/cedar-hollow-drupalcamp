@@ -275,6 +275,10 @@ assert_eq "1" "$(rc "$tmp/h.json" "${H[@]}")" "a SubagentHandback with another f
 assert_contains "$(run "$tmp/h.json" "${H[@]}")" "SubagentHandback call 1: unknown field" "and says why"
 hand '{}'
 assert_contains "$(run "$tmp/h.json" "${H[@]}")" "SubagentHandback call 1: empty field (field message)" "a SubagentHandback with no message is refused"
+hand '{"message":""}'
+assert_contains "$(run "$tmp/h.json" "${H[@]}")" "SubagentHandback call 1: empty field (field message)" "a SubagentHandback with an empty message is refused"
+hand '{"message":null}'
+assert_contains "$(run "$tmp/h.json" "${H[@]}")" "SubagentHandback call 1: empty field (field message)" "a SubagentHandback with a null message is refused"
 hand '{"message":["x"]}'
 assert_contains "$(run "$tmp/h.json" "${H[@]}")" "SubagentHandback call 1: field not a string (field message)" "a SubagentHandback whose message is not a string is refused"
 hand '"done"'
