@@ -5,9 +5,23 @@
 # this run (run-metadata.json poc.confirmed) and the cross-check settled it
 # (cross_check.settled), and a lead only when the cross-check settled it.
 # Rejected, disputed, unvalidated and unchecked records appear only as counts,
-# leads never carry a severity, and every piece of record or agent text has
-# http(s) links and @ mentions removed and < and > escaped, so it can neither
-# ping anyone nor open an HTML comment.
+# and leads never carry a severity. Every piece of record or agent text is
+# NFKC-normalised, has control and format characters removed, and has
+# http(s)://, www. and protocol-relative //host links, Markdown link and
+# image targets and reference definitions, word@word addresses and @ mentions
+# removed, repeated until it stops changing; < and > are then escaped. So it
+# can neither ping anyone, link anywhere, nor open an HTML comment.
+#
+# A confirmed finding's section shows the record's one execution.instructions
+# list (the decider's reproduction steps), its payloads and observed result,
+# and for each script a and b the mode, exit code, timeout and an excerpt of
+# stdout from the run record promoted for that slot; a run record is used only
+# when the ledger check pointing at it names the same agent id as the
+# artifact's agents/<id>/ directory. The scripts themselves are not shown.
+#
+# The body never exceeds 60,000 characters: finding sections are cut first,
+# then table rows, then changes-section entries (fingerprints, then deferred
+# units), each cut stated with its count and issue_size added to the status.
 #
 # Usage:
 #   render-issue.py --state <dir> --state-sha256 <hex> --run-id <id> \
