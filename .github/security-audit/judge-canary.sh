@@ -22,7 +22,8 @@
 #                            ran in the foreground when its Agent call's result
 #                            is not an error, and the call was not backgrounded
 #                            (no task_started event with is_backgrounded true
-#                            for its id, and no "Async agent launched" result),
+#                            for its id, and no result holding the async launch
+#                            text in async-launch.txt),
 #                            and the result is a completed one or a call is
 #                            attributed to it. A Bash call elsewhere in the
 #                            trace cannot stand in for the subagent's. With no
@@ -113,10 +114,10 @@ case "$canary" in
   *) echo "judge-canary: unknown canary" >&2; exit 2 ;;
 esac
 
-python3 -I - "$canary" "$trace" "$record" <<'PY'
+python3 -I - "$canary" "$trace" "$record" "$HERE/async-launch.txt" <<'PY'
 import json, os, re, sys
 
-canary, trace_path, record_path = sys.argv[1:4]
+canary, trace_path, record_path, launch_path = sys.argv[1:5]
 env = os.environ
 lines, failed = [], False
 
@@ -319,7 +320,12 @@ elif canary in ("subagent-bash", "subagent-findings-write"):
         result = results.get(parent)
         backgrounded = any(is_obj(m) and m.get("type") == "system" and m.get("subtype") == "task_started"
                            and m.get("tool_use_id") == parent and m.get("is_backgrounded") is True for m in msgs)
-        launched = result is not None and re.search(r"Async agent launched", text_of(result)) is not None
+        with open(launch_path, encoding="utf-8") as f:
+            launch_text = f.read().strip()
+        if not launch_text:
+            say("async launch text", "empty", False)
+            finish()
+        launched = result is not None and launch_text in text_of(result)
         attributed = any(par == parent for _, par in calls)
         ran = classify({"id": parent})
         if ran == "succeeded" and not backgrounded and not launched:

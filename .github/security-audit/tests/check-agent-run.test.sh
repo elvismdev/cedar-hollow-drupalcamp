@@ -111,6 +111,18 @@ for flag in true '"false"' '"yes"'; do
   trace "$tmp/t.json" "${CLEAN[@]}" "$(agent ta2 "agent-id: h02 hunt" "$flag")" "$(sub ta2 Read "{\"file_path\":\"$WS/tracked.txt\"}")" "$(result "$M")"
   assert_eq "0" "$(rc source "$tmp/t.json")" "run_in_background $flag with a foreground subagent and its calls passes"
 done
+# A subagent call whose result is an async launch ran in the background, even
+# after some of its calls reached the trace; a foreground report passes.
+agent_result () { # call-id text
+  printf '{"type":"user","parent_tool_use_id":null,"message":{"content":[{"type":"tool_result","tool_use_id":"%s","content":[{"type":"text","text":"%s"}]}]}}' "$1" "$2"
+}
+trace "$tmp/t.json" "${CLEAN[@]}" "$(agent ta2 "agent-id: h02 hunt" false)" "$(sub ta2 Read "{\"file_path\":\"$WS/tracked.txt\"}")" \
+  "$(agent_result ta2 "$(cat "$(dirname "$C")/async-launch.txt") successfully. agentId: a1b2")" "$(result "$M")"
+assert_eq "1" "$(rc source "$tmp/t.json")" "a subagent call whose result is an async launch fails, though calls are attributed"
+assert_contains "$(run source "$tmp/t.json")" "returned an async launch" "and says why"
+trace "$tmp/t.json" "${CLEAN[@]}" "$(agent ta2 "agent-id: h02 hunt" false)" "$(sub ta2 Read "{\"file_path\":\"$WS/tracked.txt\"}")" \
+  "$(agent_result ta2 "Read tracked.txt; nothing found.")" "$(result "$M")"
+assert_eq "0" "$(rc source "$tmp/t.json")" "a subagent call whose result is the subagent's report passes"
 # Background subagents, as Claude Code records them happening.
 trace "$tmp/t.json" "${CLEAN[@]}" "$(agent ta2 "agent-id: h02 hunt" true)" '{"type":"system","subtype":"task_started","tool_use_id":"ta2","is_backgrounded":true}' "$(sub ta2 Read "{\"file_path\":\"$WS/tracked.txt\"}")" "$(result "$M")"
 assert_eq "1" "$(rc source "$tmp/t.json")" "a call whose task_started event is backgrounded fails, whatever it asked for"

@@ -26,6 +26,9 @@
 #     accepted, since CLAUDE_CODE_DISABLE_BACKGROUND_TASKS keeps every
 #     subagent in the foreground): no task_started event marked
 #     is_backgrounded, no background count in the result's subagent_stats,
+#     no subagent call whose result is an async launch rather than the
+#     subagent's report (the text in async-launch.txt, which judge-canary.sh
+#     reads too; it catches a subagent that backgrounds after some calls),
 #     and its calls in the trace (below).
 #   - A subagent's Write or Edit lands under
 #     <output-root>/agents/<its-id>/scratch/, and never on a file whose name is
@@ -171,11 +174,11 @@ if ! bash "$CTT" "$trace" --tools "$allowed" "${roots[@]}" --write-root "$out_ro
 fi
 
 if ! node - "$trace" "$job" "$out_root" "$GITHUB_WORKSPACE" "$model" "$helper" \
-  "$HERE/../claude-review/tools/review/expand-braces.cjs" <<'JS'
+  "$HERE/../claude-review/tools/review/expand-braces.cjs" "$HERE/async-launch.txt" <<'JS'
 const fs = require('fs');
 const path = require('path').posix;
 
-const [trace, job, outArg, wsArg, model, helper, expander] = process.argv.slice(2);
+const [trace, job, outArg, wsArg, model, helper, expander, launchFile] = process.argv.slice(2);
 const say = (line) => console.error(`check-agent-run: ${line}`);
 
 let msgs;
@@ -273,6 +276,27 @@ for (const m of msgs) {
     spawned += Number(s.spawned) || 0;
     const bg = (Number(s.started_in_background) || 0) + (isObj(s.requested) ? Number(s.requested.background) || 0 : 0);
     if (bg > 0) { bad += 1; say('the result counts a background subagent'); }
+  }
+}
+
+// A subagent call that returns at once with an async launch, rather than the
+// subagent's report, started it in the background, whatever it did before.
+const LAUNCH = fs.readFileSync(launchFile, 'utf8').trim();
+if (!LAUNCH) { say('the async launch text is empty, so a background launch cannot be detected'); process.exit(1); }
+const textOf = (r) => (typeof r.content === 'string' ? r.content
+  : Array.isArray(r.content) ? r.content.filter(isObj).map((b) => (typeof b.text === 'string' ? b.text : '')).join('\n') : '');
+function* toolResults(node) {
+  if (isObj(node)) {
+    if (node.type === 'tool_result') yield node;
+    for (const v of Object.values(node)) yield* toolResults(v);
+  } else if (Array.isArray(node)) {
+    for (const v of node) yield* toolResults(v);
+  }
+}
+for (const r of toolResults(msgs)) {
+  if (typeof r.tool_use_id === 'string' && subagents.has(r.tool_use_id) && textOf(r).includes(LAUNCH)) {
+    bad += 1;
+    say('a subagent call returned an async launch: the subagent ran in the background');
   }
 }
 
