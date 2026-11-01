@@ -94,6 +94,16 @@
 #                        are: its glob only has to pass the character allowlist.
 #   --write-root <dir>   an absolute directory Write and Edit may write under
 #                        (repeatable). With none, every Write and Edit is refused.
+#   --grep-any-glob-in-subfolders
+#                        a Grep whose path is a valid path inside the allowed
+#                        roots, other than the workspace's top level, takes any
+#                        glob: the character allowlist gains !, so negated
+#                        globs and brace lists of folders pass, and the
+#                        extension-shaped rule is skipped. A glob with a ..
+#                        segment is still refused. With no path, or with the
+#                        workspace's top level as the path, the search reaches
+#                        .git/config and the extension-shaped rule applies.
+#                        A path under .git is refused by the path rule first.
 #
 # Their input fields, from the same schemas:
 #
@@ -109,12 +119,12 @@
 # and the subagent tool's text fields are not paths and are not checked.
 #
 # Usage: check-trace-tools.sh <trace.json> [--tools <names>] [--root <dir>]...
-#                             [--write-root <dir>]...
+#                             [--write-root <dir>]... [--grep-any-glob-in-subfolders]
 #        GITHUB_WORKSPACE, REVIEW_HEAD_DIR, REVIEW_INPUT_DIR  the allowed roots
 set -uo pipefail
 
 usage () {
-  echo "usage: check-trace-tools.sh <trace.json> [--tools <names>] [--root <dir>]... [--write-root <dir>]..." >&2
+  echo "usage: check-trace-tools.sh <trace.json> [--tools <names>] [--root <dir>]... [--write-root <dir>]... [--grep-any-glob-in-subfolders]" >&2
   exit 2
 }
 
@@ -126,6 +136,7 @@ SUPPORTED=(Read Glob Grep Write Edit Agent Task)
 allowed_names=(Read Glob Grep)
 extra_roots=()
 write_roots=()
+any_glob_in_subfolders=0
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --tools)
@@ -137,6 +148,9 @@ while [ "$#" -gt 0 ]; do
       case "$2" in /*) ;; *) echo "check-trace-tools: $1 must be an absolute directory" >&2; exit 2 ;; esac
       if [ "$1" = "--root" ]; then extra_roots+=("$2"); else write_roots+=("$2"); fi
       shift 2 ;;
+    --grep-any-glob-in-subfolders)
+      any_glob_in_subfolders=1
+      shift ;;
     *) usage ;;
   esac
 done
@@ -203,13 +217,14 @@ fi
   exit 1
 }
 
-outside_roots=$(python3 -I - "$TRACE" "$ROOT_ARGS" "$WRITE_ROOT_ARGS" <<'PY'
+outside_roots=$(python3 -I - "$TRACE" "$ROOT_ARGS" "$WRITE_ROOT_ARGS" "$any_glob_in_subfolders" <<'PY'
 import json, os, posixpath, re, sys
 
 ws = posixpath.normpath(os.environ['GITHUB_WORKSPACE'])
 git_dir = posixpath.join(ws, '.git')
 extra_roots = [posixpath.normpath(r) for r in json.loads(sys.argv[2])]
 write_roots = [posixpath.normpath(r) for r in json.loads(sys.argv[3])]
+any_glob_in_subfolders = sys.argv[4] == '1'
 roots = [ws] + [posixpath.normpath(os.environ[v])
                 for v in ('REVIEW_HEAD_DIR', 'REVIEW_INPUT_DIR') if os.environ.get(v)] + extra_roots
 
@@ -235,6 +250,7 @@ def under(p, root):
 # trailing newline cannot slip past $. ASCII only, no whitespace, no ~.
 PATH_CHARS = re.compile(r'[A-Za-z0-9._/@+-]+')
 GLOB_CHARS = re.compile(r'[A-Za-z0-9._/@+*{},-]+')
+SUBFOLDER_GLOB_CHARS = re.compile(r'[A-Za-z0-9._/@+*{},!-]+')
 
 def path_ok(value):
     return isinstance(value, str) and PATH_CHARS.fullmatch(value) is not None
@@ -328,6 +344,15 @@ def write_refusal(value):
         return ('path outside the write roots', field)
     return None
 
+def subfolder_search(path):
+    """True when --grep-any-glob-in-subfolders is on and a Grep path is a
+    valid path inside the roots other than the workspace's top level."""
+    if not any_glob_in_subfolders or not isinstance(path, str):
+        return False
+    if path_refusal('path', path, ws):
+        return False
+    return resolve(path, ws) != ws
+
 def refusal(call):
     """(label, field or None) for the first rule that refuses the call, else None.
     A field name is returned only when it is in the tool's own field set."""
@@ -350,12 +375,18 @@ def refusal(call):
             return ('empty field', 'glob')
         if not isinstance(g, str):
             return ('field not a string', 'glob')
-        if not glob_ok(g):
-            return ('character outside the allowlist', 'glob')
-        if '..' in re.split(r'[/{},]', g):
-            return ('Grep glob is not extension-shaped', 'glob')
-        if not away_from_workspace(args.get('path')) and not grep_glob_allowed(g):
-            return ('Grep glob is not extension-shaped', 'glob')
+        if subfolder_search(args.get('path')):
+            if SUBFOLDER_GLOB_CHARS.fullmatch(g) is None:
+                return ('character outside the allowlist', 'glob')
+            if '..' in re.split(r'[/{},!]', g):
+                return ('Grep glob is not extension-shaped', 'glob')
+        else:
+            if not glob_ok(g):
+                return ('character outside the allowlist', 'glob')
+            if '..' in re.split(r'[/{},]', g):
+                return ('Grep glob is not extension-shaped', 'glob')
+            if not away_from_workspace(args.get('path')) and not grep_glob_allowed(g):
+                return ('Grep glob is not extension-shaped', 'glob')
     path = args.get('path')
     if path is None:
         base = ws

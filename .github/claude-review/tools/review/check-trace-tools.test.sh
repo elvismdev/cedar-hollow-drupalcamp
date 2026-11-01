@@ -278,6 +278,32 @@ case "$(run "$tmp/o.json" "${A[@]}")" in *"$wcanary"*) echo "FAIL: a Write value
 printf '[%s]' "$(call Grep '{"pattern":"x","path":"/w/repo/web","glob":"**"}')" > "$tmp/o.json"
 assert_eq "1" "$(rc "$tmp/o.json" --root /w/repo/web)" "an added root inside the workspace keeps the glob rule"
 
+# --grep-any-glob-in-subfolders: a Grep whose path is a folder inside the roots,
+# other than the workspace's top level, takes any glob. Without the option, or
+# with no path or the top level as the path, the extension-shaped rule holds.
+G=(--tools "Read,Glob,Grep" --root /mnt/a/out --grep-any-glob-in-subfolders)
+grep_glob () { # path-json-or-empty glob expected-rc message [options...]
+  local input
+  if [ -n "$1" ]; then input="{\"pattern\":\"x\",\"path\":$1,\"glob\":\"$2\"}"; else input="{\"pattern\":\"x\",\"glob\":\"$2\"}"; fi
+  printf '[%s]' "$(call Grep "$input")" > "$tmp/g.json"
+  shift 2; local want="$1" msg="$2"; shift 2
+  assert_eq "$want" "$(rc "$tmp/g.json" "$@")" "$msg"
+}
+grep_glob '"web/modules/custom"' '!**/node_modules/**' 0 "a negated glob with a subfolder path passes" "${G[@]}"
+grep_glob '"/w/repo/web"' '{web/modules/custom/**,tests/**,scripts/**}' 0 "a brace folder list with a subfolder path passes" "${G[@]}"
+grep_glob '"/mnt/a/out/agents"' '!*.json' 0 "a negated glob in an added root passes" "${G[@]}"
+grep_glob '' '!**/node_modules/**' 1 "the same negated glob with no path fails" "${G[@]}"
+grep_glob '".git"' '!**/node_modules/**' 1 "the same glob with path .git fails" "${G[@]}"
+grep_glob '".git/hooks"' '!**/node_modules/**' 1 "the same glob with path .git/hooks fails" "${G[@]}"
+grep_glob '"/w/repo"' '{web/modules/custom/**,tests/**}' 1 "a brace folder list with the checkout root as path fails" "${G[@]}"
+grep_glob '"."' '{web/modules/custom/**,tests/**}' 1 "a brace folder list with . as path fails" "${G[@]}"
+grep_glob '"/w/repo/web/"' '**' 0 "a trailing slash on a subfolder path passes" "${G[@]}"
+grep_glob '"web"' '../.git/**' 1 "a .. glob from a subfolder still fails" "${G[@]}"
+grep_glob '"web"' '!../x' 1 "a negated .. glob from a subfolder still fails" "${G[@]}"
+grep_glob '"web"' '* *' 1 "a space in the glob still fails" "${G[@]}"
+grep_glob '"web/modules/custom"' '!**/node_modules/**' 1 "without the option the negated glob fails as before"
+grep_glob '"web/modules/custom"' '{web/**,tests/**}' 1 "without the option a brace folder list in the workspace fails as before"
+
 # It fails closed on what it cannot read.
 assert_eq "1" "$(rc "$tmp/absent.json")" "a missing trace fails"
 : > "$tmp/empty.json"
