@@ -194,6 +194,10 @@ for f in names_md:
     if f != "repair.md" and len(blocks) != 1:
         fail("%s: expected one subagent tool-rules block" % f)
     for block in blocks:
+        # check-agent-run.sh refuses a subagent's search of agents/ or above
+        # it in every job where several subagents run.
+        if f in LATER and "never Glob or Grep with %s, %s/agents" % (VALUES["OUTPUT_DIR"], VALUES["OUTPUT_DIR"]) not in block:
+            fail("%s: the subagent tool rules do not forbid searching the output root or agents/" % f)
         for n in sorted(RESERVED_FOR_SUBAGENTS):
             if n not in block:
                 fail("%s: the subagent tool rules do not forbid %s, which check-agent-run.sh refuses" % (f, n))
