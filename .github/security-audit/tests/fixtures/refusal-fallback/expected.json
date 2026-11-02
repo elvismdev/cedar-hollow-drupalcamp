@@ -30,7 +30,8 @@
   "no-fallback-main": [],
   "no-fallback-subagent": [],
   "no-fallback-off-pattern": [],
-  "no-fallback-in-poc-write": []
+  "no-fallback-in-poc-write": [],
+  "compaction-in-cross-check": []
  },
  "helpers": {
   "names-helper": "claude-opus-4-8"
@@ -59,12 +60,16 @@
   "no-fallback-main": [],
   "no-fallback-subagent": [],
   "no-fallback-off-pattern": [],
-  "no-fallback-in-poc-write": []
+  "no-fallback-in-poc-write": [],
+  "compaction-in-cross-check": [
+   "claude-opus-4-8"
+  ]
  },
  "jobs": {
   "no-fallback-main": "cross-check",
   "no-fallback-subagent": "tie-break",
-  "no-fallback-off-pattern": "cross-check"
+  "no-fallback-off-pattern": "cross-check",
+  "compaction-in-cross-check": "cross-check"
  },
  "refusals": {
   "accepted": [],
@@ -94,6 +99,7 @@
   ],
   "off-allowlist": [],
   "other-subtype": [],
-  "two-events": []
+  "two-events": [],
+  "compaction-in-cross-check": []
  }
 }

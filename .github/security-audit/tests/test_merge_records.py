@@ -911,6 +911,32 @@ class CompactionTest(MergeTest):
         self.assertNotEqual(self.record("m-1")["trace"][0]["line"], 77)
         self.assertIn("cross_check_same_model", self.load("trusted-meta.json")["incomplete_reasons"])
 
+    def test_a_judging_jobs_compaction_model_is_recorded_and_judged_by_d24(self):
+        # The cross-check, pinned to fable-5-1, had its context summarised on
+        # opus-4-8, the model the source ran on: D24 refuses the overlap.
+        record = confirmed("m-1")
+        self.seed([record], [unit("m-1", fps=["m-1"], unresolved=[])])
+        self.messages = [{"type": "assistant", "message": {"model": self.C, "content": []}}]
+        self.run_merge("count", "--job", "source", "--cap", "60", "--trace", self.trace_file(), "--model", self.C)
+        self.messages.append({"type": "assistant", "message": {"model": "claude-fable-5-1", "content": []}})
+        self.messages.append(self.boundary())
+        path = self.trace_file()
+        with open(path, encoding="utf-8") as handle:
+            data = json.load(handle)
+        data[-1]["modelUsage"] = {"claude-fable-5-1": {}, self.C: {}}
+        self.write(path, data)
+        self.run_merge("count", "--job", "cross-check", "--cap", "30", "--trace", path, "--model", "claude-fable-5-1")
+        self.assertIn({"job": "cross-check", "pinned_model": "claude-fable-5-1", "compaction_model": self.C},
+                      self.load("trusted-meta.json")["compaction"])
+        moved = confirmed("m-1")
+        moved["trace"][0]["line"] = 77
+        self.subagent("checker-1", {"decision": "replace", "fingerprint": "m-1", "reason": "Line moved.", "record": moved})
+        inputs = os.path.join(self.tmp, "tie-break-inputs.json")
+        self.run_merge("select-cross-check", "--out", os.path.join(self.tmp, "list.json"))
+        self.run_merge("apply-cross-check", "--entries", self.out, "--trace", self.trace_file(), "--out", inputs)
+        self.assertNotEqual(self.record("m-1")["trace"][0]["line"], 77)
+        self.assertIn("cross_check_same_model", self.load("trusted-meta.json")["incomplete_reasons"])
+
 
 class RefusalWithoutFallbackTest(MergeTest):
     """The cross-check and tie-break run with the refusal fallback off: count

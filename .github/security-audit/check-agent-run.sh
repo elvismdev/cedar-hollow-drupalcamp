@@ -105,8 +105,8 @@
 #     by its call's position and agent id, exempt from the no-tool-calls rules
 #     below, and its entry never merged). Only a category matching
 #     ^[a-z_]{1,32}$ is printed, never the explanation. In those two jobs any
-#     model_refusal_fallback event fails the run, and no fallback or
-#     compaction model is accepted.
+#     model_refusal_fallback event fails the run and no fallback model is
+#     accepted; a compaction model is accepted as in the other jobs.
 #   - A foreground subagent hands its report back with SubagentHandback, which
 #     check-trace-tools.sh accepts only with exactly a string message and only
 #     when the allowed tools name it; it counts as a call attributed to that
@@ -611,7 +611,9 @@ const events = msgs.filter((m) => isObj(m) && m.type === 'system' && m.subtype =
 const allowlist = events.length > 0 && !JUDGE ? readAllowlist(fallbackFile, 'refusal fallback', 'refusal fallback') : [];
 const fallbacks = new Set();
 // The judging jobs run with the fallback off, so any fallback event there
-// means it was not, and no fallback or compaction model is accepted.
+// means it was not, and no fallback model is accepted. A compaction model is
+// accepted there as in every job; merge-records.py adds it to the job's
+// model set, so the independence rule (D24) judges it.
 if (JUDGE && events.length > 0) {
   bad += 1;
   say(`a model_refusal_fallback event in the ${job} step, which runs with the refusal fallback off`);
@@ -641,9 +643,9 @@ const assistantModels = new Set(msgs.filter((m) => isObj(m) && m.type === 'assis
   && typeof m.message.model === 'string').map((m) => m.message.model));
 const usageModels = new Set(msgs.filter((m) => isObj(m) && m.type === 'result' && isObj(m.modelUsage))
   .flatMap((m) => Object.keys(m.modelUsage)));
-const compactionAllowlist = !JUDGE && autoCompaction && [...usageModels].some((k) => !accepted(k) && !assistantModels.has(k))
+const compactionAllowlist = autoCompaction && [...usageModels].some((k) => !accepted(k) && !assistantModels.has(k))
   ? readAllowlist(compactionFile, 'compaction', 'compaction model') : [];
-const compactionModel = (k) => !JUDGE && autoCompaction && compactionAllowlist.includes(k) && !assistantModels.has(k);
+const compactionModel = (k) => autoCompaction && compactionAllowlist.includes(k) && !assistantModels.has(k);
 
 let unexpected = 0;
 const usedFallbacks = new Set();

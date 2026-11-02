@@ -551,7 +551,10 @@ for j in cross-check tie-break; do
   assert_eq "1" "$(rc "$j" "$tmp/t.json")" "a refusal fallback event fails $j"
   assert_contains "$(run "$j" "$tmp/t.json")" "a model_refusal_fallback event in the $j step, which runs with the refusal fallback off" "and says why as $j"
   trace "$tmp/t.json" "${JUDGED[@]}" "$(sub tc2 Write "{\"file_path\":\"$OUT/agents/tb-2/scratch/entry.json\",\"content\":\"{}\"}")" "$(cb_event auto)" "$(result "$M" "$FB")"
-  assert_eq "1" "$(rc "$j" "$tmp/t.json")" "a compaction model fails $j"
+  assert_eq "0" "$(rc "$j" "$tmp/t.json")" "a compaction model is accepted in $j as in the other jobs"
+  assert_contains "$(run "$j" "$tmp/t.json")" "the $j step's context was summarised by the compaction model $FB" "and is reported in $j"
+  trace "$tmp/t.json" "${JUDGED[@]}" "$(as_model "$FB" "$(sub tc2 Write "{\"file_path\":\"$OUT/agents/tb-2/scratch/entry.json\",\"content\":\"{}\"}")")" "$(cb_event auto)" "$(result "$M" "$FB")"
+  assert_eq "1" "$(rc "$j" "$tmp/t.json")" "an assistant message from that model still fails $j"
 done
 # Other jobs keep the fallback: a subagent with no tool calls still fails them.
 trace "$tmp/t.json" "${JUDGED[@]}" "$(refused_by tc2 cyber)" "$(result "$M")"
