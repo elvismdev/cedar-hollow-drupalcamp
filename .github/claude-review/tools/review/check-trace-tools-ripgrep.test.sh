@@ -60,6 +60,16 @@ for depth in (1, 2, 3):
         # the directory above it.
         if depth < 3:
             globs.add('/'.join((os.path.basename(ws),) + combo))
+# Folder-list shapes: <dir>/*, <dir>/**, */<name>, and brace and comma lists
+# of them, for each folder spelling, under the checkout's own name too.
+DIRS = ['src', 'a', 'src/a', '.git', '.gi*', '*', '**', '{src,.git}', '{a,*}']
+FOLDER = [d + t for d in DIRS for t in ('/*', '/**', '/', '/x.php')] + ['*/x.php', '*/a', '*/*', '**/x.php']
+for f in FOLDER:
+    globs.add(f)
+    globs.add(os.path.basename(ws) + '/' + f)
+for a, b in itertools.combinations(FOLDER, 2):
+    globs.add('{%s,%s}' % (a, b))
+    globs.add('%s,%s' % (a, b))
 globs = sorted(g for g in globs if g)
 
 def accepted(path, options):
@@ -116,12 +126,17 @@ for options in (['--root', up], AUDIT + ['--root', up]):
 print('from above the checkout: accepted %d, refused %d' % (len(above), len(globs) - len(above)))
 
 def run_accepted(names, target):
-    bad, errors = [], []
+    bad, errors, unparsed = [], [], []
     for g in sorted(names):
         code, leaked, files, err = leaks(g, target)
         if leaked:
             bad.append(g)
-        if code == 2:
+        # ripgrep refuses a glob it cannot parse (nested brace groups) before
+        # searching anything, which Claude Code reports as an error; any other
+        # error can hide a match.
+        if code == 2 and not files and re.sub(r'^rg: ', '', err).startswith('error parsing glob'):
+            unparsed.append(g)
+        elif code == 2:
             errors.append((g, err))
     where = 'from above the checkout ' if target else ''
     if bad:
@@ -131,8 +146,10 @@ def run_accepted(names, target):
         sys.exit('FAIL: ripgrep failed %son %d accepted glob(s), e.g. %s: %s'
                  % (where, len(errors), errors[0][0], errors[0][1]))
 
-run_accepted(ok, None)
-run_accepted(above, up)
+    return len(unparsed)
+
+unparsed_top = run_accepted(ok, None)
+unparsed_above = run_accepted(above, up)
 # The search must find ordinary files through an accepted glob, and the token
 # through a refused one, or a clean result proves nothing.
 if '/x.php' not in ''.join(leaks('*.php')[2]) or '*.php' not in ok:
@@ -143,10 +160,10 @@ if not reached:
 reached_above = [g for g in globs if g not in above and leaks(g, up)[1]]
 if not reached_above:
     sys.exit('FAIL: no glob refused from above the checkout returned the .git token')
-print('searched %d accepted glob(s) with no ripgrep error, none reached .git; %d refused glob(s) did, e.g. %s'
-      % (len(ok), len(reached), ' '.join(reached[:5])))
-print('from above: searched %d accepted glob(s) with no ripgrep error, none reached .git; %d refused glob(s) did, e.g. %s'
-      % (len(above), len(reached_above), ' '.join(reached_above[:5])))
+print('searched %d accepted glob(s) (%d that ripgrep cannot parse), none reached .git; %d refused glob(s) did, e.g. %s'
+      % (len(ok), unparsed_top, len(reached), ' '.join(reached[:5])))
+print('from above: searched %d accepted glob(s) (%d that ripgrep cannot parse), none reached .git; %d refused glob(s) did, e.g. %s'
+      % (len(above), unparsed_above, len(reached_above), ' '.join(reached_above[:5])))
 PY
 status=$?
 [ "$status" -eq 0 ] && echo "ok: check-trace-tools-ripgrep.test.sh"
