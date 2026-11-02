@@ -18,10 +18,10 @@ check_tool_lists() { # line ; prints a failure per line, nothing when sound
   deny=$(flag_value "$1" --disallowedTools | tr ',' '\n')
   [ "$(printf '%s\n' "$allow" | sort | tr '\n' ' ')" = "Glob Grep Read " ] || echo "allow list is not exactly Read, Glob, Grep"
   for t in $REQUIRED_DENY; do
-    printf '%s\n' "$deny" | grep -qxF -- "$t" || echo "deny list lacks $t"
+    grep -qxF -- "$t" <<<"$deny" || echo "deny list lacks $t"
   done
   for t in $allow; do
-    ! printf '%s\n' "$deny" | grep -qxF -- "$t" || echo "$t is both allowed and denied"
+    ! grep -qxF -- "$t" <<<"$deny" || echo "$t is both allowed and denied"
   done
 }
 
@@ -147,20 +147,20 @@ print(f.get("model"), f.get("max-turns"), f.get("setting-sources"), "strict-mcp-
   assert_eq "$want_allow,Edit(//mnt/audit/$job/out/**)" "$allow" "$name allows exactly its tools and its output directory"
   for t in ${NO_HUMAN//,/ } ${NO_WRITE//,/ }; do
     case "$t" in Agent|Task|Write|Edit) continue ;; esac
-    printf '%s\n' "${deny//,/$'\n'}" | grep -qxF -- "$t" || { echo "FAIL: $name does not deny the review's $t" >&2; exit 1; }
+    grep -qxF -- "$t" <<<"${deny//,/$'\n'}" || { echo "FAIL: $name does not deny the review's $t" >&2; exit 1; }
   done
   for t in ${AUDIT_DENY//,/ }; do
-    printf '%s\n' "${deny//,/$'\n'}" | grep -qxF -- "$t" || { echo "FAIL: $name does not deny $t" >&2; exit 1; }
+    grep -qxF -- "$t" <<<"${deny//,/$'\n'}" || { echo "FAIL: $name does not deny $t" >&2; exit 1; }
   done
   for t in Read Glob Grep Write Edit; do
-    ! printf '%s\n' "${deny//,/$'\n'}" | grep -qxF -- "$t" || { echo "FAIL: $name denies $t by name" >&2; exit 1; }
+    ! grep -qxF -- "$t" <<<"${deny//,/$'\n'}" || { echo "FAIL: $name denies $t by name" >&2; exit 1; }
   done
   for r in ${PATH_RULES//,/ }; do
-    printf '%s\n' "${deny//,/$'\n'}" | grep -qxF -- "$r" || { echo "FAIL: $name lacks the rule $r after parsing" >&2; exit 1; }
+    grep -qxF -- "$r" <<<"${deny//,/$'\n'}" || { echo "FAIL: $name lacks the rule $r after parsing" >&2; exit 1; }
   done
   # Only repair denies the subagent tool, under both of its names.
   for t in Agent Task; do
-    if printf '%s\n' "${deny//,/$'\n'}" | grep -qxF -- "$t"; then denied=yes; else denied=no; fi
+    if grep -qxF -- "$t" <<<"${deny//,/$'\n'}"; then denied=yes; else denied=no; fi
     if [ "$subs" = yes ]; then want=no; else want=yes; fi
     assert_eq "$want" "$denied" "$name denies $t only if it is the repair step"
   done
