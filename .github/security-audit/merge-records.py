@@ -1326,6 +1326,8 @@ def cmd_apply_cross_check(state, args):
     selected = set(cc["selected"])
     if same_model_as_checked(state, "cross-check"):
         # Not applied: a check on the source's own model is not independent.
+        # status reads same_model and adds no cross_check_missing for it.
+        cc["same_model"] = True
         state.incomplete("cross_check_same_model")
         write_json(args.out, {"disputes": []})
         print("merge-records: the cross-check ran on the source job's model, so its entries are not applied")
@@ -1455,7 +1457,9 @@ def cmd_status(state, args):
         if not cc.get("applied"):
             for fp in cc.get("selected", []):
                 add_unique(cc["not_cross_checked"], fp)
-            if cc.get("selected"):
+            # A cross-check refused for its model already carries
+            # cross_check_same_model; it is not also counted as missing.
+            if cc.get("selected") and not cc.get("same_model"):
                 state.incomplete("cross_check_missing")
         for fp in list(cc.get("pending") or []):
             original = state.record(fp)

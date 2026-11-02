@@ -927,6 +927,14 @@ class SameModelTest(MergeTest):
         self.assertNotEqual(self.record("m-1")["trace"][0]["line"], 77)
         self.assertIn("cross_check_same_model", self.load("trusted-meta.json")["incomplete_reasons"])
 
+    def test_a_model_refusal_is_not_also_counted_as_missing(self):
+        self.assert_refused(*self.run_cross_check(("source", "claude-opus-5-5", None),
+                                                  ("cross-check", "claude-opus-5-5", None)))
+        self.run_merge("status")
+        reasons = self.load("trusted-meta.json")["incomplete_reasons"]
+        self.assertIn("cross_check_same_model", reasons)
+        self.assertNotIn("cross_check_missing", reasons)
+
     def test_a_cross_check_on_poc_decides_fallback_model_is_refused(self):
         self.assert_refused(*self.run_cross_check(("source", "claude-opus-5-5", None),
                                                   ("poc-decide", "claude-opus-5-5", "claude-opus-4-8"),
