@@ -526,6 +526,37 @@ for j in cross-check tie-break; do
   assert_eq "1" "$(rc "$j" "$tmp/t.json")" "a state file write fails as $j"
 done
 
+# The cross-check and tie-break run with the refusal fallback off. A refused
+# request with no fallback is reported, not refused: the main loop's event, or
+# a subagent's refused response, which exempts that subagent from the
+# no-tool-calls rule. Any fallback in those jobs fails them.
+nf_event () { printf '{"type":"system","subtype":"model_refusal_no_fallback","original_model":"%s","request_id":"req_1","api_refusal_category":"%s","api_refusal_explanation":"LEAKEXPLAIN52","refused_user_message_uuid":null,"content":"","uuid":"u1","session_id":"s1"}' "$M" "$1"; }
+refused_by () { # call-id category: the subagent's refused response
+  printf '{"type":"assistant","parent_tool_use_id":"%s","message":{"model":"%s","stop_reason":"refusal","stop_details":{"type":"refusal","category":"%s","explanation":"LEAKEXPLAIN52"},"content":[{"type":"text","text":"refused"}]}}' "$1" "$M" "$2"
+}
+JUDGED=("$INIT" "$(agent tc1 "agent-id: tb-1 judge")" "$(agent tc2 "agent-id: tb-2 judge")"
+  "$(sub tc1 Write "{\"file_path\":\"$OUT/agents/tb-1/scratch/entry.json\",\"content\":\"{}\"}")")
+for j in cross-check tie-break; do
+  trace "$tmp/t.json" "${JUDGED[@]}" "$(sub tc2 Write "{\"file_path\":\"$OUT/agents/tb-2/scratch/entry.json\",\"content\":\"{}\"}")" "$(nf_event cyber)" "$(result "$M")"
+  assert_eq "0" "$(rc "$j" "$tmp/t.json")" "a main-loop refusal with no fallback passes as $j"
+  assert_contains "$(run "$j" "$tmp/t.json")" "the $j step's request was refused with no fallback (main loop), category cyber" "and is reported as $j"
+  case "$(run "$j" "$tmp/t.json")" in *LEAKEXPLAIN52*) echo "FAIL: the refusal explanation was printed" >&2; exit 1;; esac
+  trace "$tmp/t.json" "${JUDGED[@]}" "$(refused_by tc2 cyber)" "$(result "$M")"
+  assert_eq "0" "$(rc "$j" "$tmp/t.json")" "a refused subagent with no tool calls passes as $j"
+  assert_contains "$(run "$j" "$tmp/t.json")" "Agent call 2: (agent id tb-2) was refused with no fallback, category cyber; its entry is never merged" "and is reported by call and agent id as $j"
+  case "$(run "$j" "$tmp/t.json")" in *LEAKEXPLAIN52*) echo "FAIL: the refusal explanation was printed" >&2; exit 1;; esac
+  trace "$tmp/t.json" "${JUDGED[@]}" "$(refused_by tc2 'Not A Category!')" "$(result "$M")"
+  assert_contains "$(run "$j" "$tmp/t.json")" "was refused with no fallback, category not given" "a category off the pattern is not printed as $j"
+  trace "$tmp/t.json" "${JUDGED[@]}" "$(sub tc2 Write "{\"file_path\":\"$OUT/agents/tb-2/scratch/entry.json\",\"content\":\"{}\"}")" "$(fb_event "$FB")" "$(result "$M")"
+  assert_eq "1" "$(rc "$j" "$tmp/t.json")" "a refusal fallback event fails $j"
+  assert_contains "$(run "$j" "$tmp/t.json")" "a model_refusal_fallback event in the $j step, which runs with the refusal fallback off" "and says why as $j"
+  trace "$tmp/t.json" "${JUDGED[@]}" "$(sub tc2 Write "{\"file_path\":\"$OUT/agents/tb-2/scratch/entry.json\",\"content\":\"{}\"}")" "$(cb_event auto)" "$(result "$M" "$FB")"
+  assert_eq "1" "$(rc "$j" "$tmp/t.json")" "a compaction model fails $j"
+done
+# Other jobs keep the fallback: a subagent with no tool calls still fails them.
+trace "$tmp/t.json" "${JUDGED[@]}" "$(refused_by tc2 cyber)" "$(result "$M")"
+assert_eq "1" "$(rc poc-decide "$tmp/t.json")" "a refused subagent with no tool calls still fails poc-decide"
+
 # The allowlist is read only for a trace holding a fallback event: with the
 # file gone, a trace with no event still passes, and one with an event fails
 # with a reason line rather than a stack.
