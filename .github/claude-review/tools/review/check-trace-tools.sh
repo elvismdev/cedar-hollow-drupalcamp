@@ -489,6 +489,10 @@ def subfolder_search(path):
         return False
     if path_refusal('path', path, ws):
         return False
+    # A path through a symlink can open the checkout's top level or above it,
+    # so it is judged by the glob rule, which refuses it.
+    if grep_path_refusal(path):
+        return False
     # Every brace expansion of the path must be such a folder.
     exps = expansions(path)
     return bool(exps) and all(not under(ws, resolve(e, ws)) for e in exps)

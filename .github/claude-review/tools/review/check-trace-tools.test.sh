@@ -257,6 +257,13 @@ assert_contains "$out" "Grep call 1: Grep path passes through a symlink (field p
 assert_contains "$(sym_grep web 'web/**')" "rc=0" "an ordinary subfolder with web/** still passes"
 assert_contains "$(sym_grep "$sws/web" '*.php')" "rc=0" "an ordinary absolute subfolder still passes"
 assert_contains "$(sym_grep "$sws" '*.php')" "rc=0" "the workspace itself still passes"
+# A symlinked folder is not a subfolder for --grep-any-glob-in-subfolders: the
+# link to the checkout with * returned .git/info/x.php, searched as Claude Code
+# 2.1.309 spawns ripgrep (in the opened folder) and by its raw path.
+out=$(sym_grep web/link '*' --tools Read,Glob,Grep --grep-any-glob-in-subfolders)
+assert_contains "$out" "Grep call 1: Grep path passes through a symlink (field path)" "a symlinked folder with * in subfolder mode is refused"
+assert_contains "$out" "rc=1" "and fails"
+assert_contains "$(sym_grep web '*' --tools Read,Glob,Grep --grep-any-glob-in-subfolders)" "rc=0" "an ordinary subfolder with * in subfolder mode still passes"
 
 # Closed input fields. Each tool's input may hold only the fields of its own
 # schema in Claude Code 2.1.309. Claude Code reads aliases and stray fields
