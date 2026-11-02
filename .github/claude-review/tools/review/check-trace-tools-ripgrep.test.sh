@@ -6,10 +6,11 @@
 # path (in the checkout, with the path as written as the target), for these
 # paths: none, the checkout, a subfolder, src/.., <checkout>/.. and the parent
 # as an added root, and folders linked to the checkout and to its parent. It
-# fails if any accepted call returns the token either way, if no refused glob
-# returns the token in either spawn mode, which would mean the search could
-# not have found it, and if the check accepts a call that leaked by its raw
-# path. ripgrep is required: without it the test fails.
+# fails if any accepted call returns the token either way, if a glob ripgrep
+# cannot parse holds no nested brace group, if no refused glob returns the
+# token in either spawn mode, which would mean the search could not have found
+# it, and if the check accepts a call that leaked by its raw path. ripgrep is
+# required: without it the test fails.
 #
 # The spawn and the argument order were read from the Claude Code 2.1.309
 # binary, the version claude-code-action ae68417 installs, and match 2.1.316.
@@ -131,6 +132,20 @@ def leaks(glob, path, mode):
     files = [f for f in out.split('\0') if f]
     return code, [f for f in files if '/.git/' in f or f.startswith('.git/')], files, (err.splitlines() or [''])[0]
 
+def nested_braces(glob):
+    """True when a brace group opens inside another."""
+    depth = 0
+    for c in glob:
+        if c == '{':
+            if depth:
+                return True
+            depth += 1
+        elif c == '}' and depth:
+            depth -= 1
+    return False
+if nested_braces('{a,b}/{c,d}') or not nested_braces('{a,{b,c}}'):
+    sys.exit('FAIL: the nested brace test misjudges its own examples')
+
 # The path variants: no path, the checkout, a subfolder, a .. that resolves to
 # the checkout, the parent reached with .. and as itself (an added root), and
 # folders linked to the checkout and to its parent.
@@ -161,13 +176,15 @@ for name, path, _ in VARIANTS:
         for (g, _p, _m), (code, leaked, files, err) in run_all([(g, path, mode) for g in sorted(ok[name])]):
             if leaked:
                 bad.append(g)
-            # ripgrep refuses a glob it cannot parse (nested brace groups)
-            # before searching anything, which Claude Code reports as an error;
-            # any other error can hide a match.
+            # ripgrep refuses a glob it cannot parse before searching anything,
+            # which Claude Code reports as an error; the only such glob measured
+            # is one with a nested brace group, so any other fails the canary,
+            # as does any other error, which can hide a match.
             if code == 2 and not files and re.sub(r'^rg: ', '', err).startswith('error parsing glob'):
                 unparsed.append(g)
             elif code == 2:
                 errors.append((g, err))
+        odd = [g for g in unparsed if not nested_braces(g)]
         print('%-17s %-3s: accepted %4d, unparsed %3d, leaked %d' % (name, mode, len(ok[name]), len(unparsed), len(bad)))
         if bad:
             failures.append('%d accepted glob(s) with path %s (%s) returned the .git token: %s'
@@ -175,6 +192,9 @@ for name, path, _ in VARIANTS:
         if errors:
             failures.append('ripgrep failed with path %s (%s) on %d accepted glob(s), e.g. %s: %s'
                             % (name, mode, len(errors), errors[0][0], errors[0][1]))
+        if odd:
+            failures.append('%d glob(s) ripgrep could not parse with path %s (%s) hold no nested brace group: %s'
+                            % (len(odd), name, mode, ' '.join(odd[:20])))
 if failures:
     sys.exit('FAIL: ' + '\nFAIL: '.join(failures))
 
