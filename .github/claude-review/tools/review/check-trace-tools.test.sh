@@ -288,6 +288,45 @@ assert_contains "$out" "Grep call 1: Grep path passes through a symlink (field p
 assert_contains "$out" "rc=1" "and fails"
 assert_contains "$(sym_grep web '*' --tools Read,Glob,Grep --grep-any-glob-in-subfolders)" "rc=0" "an ordinary subfolder with * in subfolder mode still passes"
 
+# Every containment decision is made on the spelled and on the resolved form
+# of the path, the workspace and each root, and a call passes only under both.
+# With the workspace spelled through a link and an added root given by its
+# real path, a Grep at that root with * or repo/** passed and ripgrep 13.0.0
+# returned repo/.git files.
+zr="$(realpath "$tmp")/zf7"
+mkdir -p "$zr/real/repo/web" "$zr/other"
+ln -s "$zr/real" "$zr/link"            # the workspace's parent, spelled through a link
+ln -s "$zr/real/repo" "$zr/rootlink"   # an added root that is a link to the checkout
+ln -s "$zr/real" "$zr/uplink"          # an added root that is a link to the checkout's parent
+ln -s ../.git "$zr/real/repo/web/gitlink"
+ln -s "$zr/other" "$zr/outlink"
+zgrep () { # workspace path glob [option...]: the check's output for one Grep
+  local w="$1"
+  printf '[%s]' "$(call Grep "{\"pattern\":\"x\",\"path\":\"$2\",\"glob\":\"$3\"}")" > "$tmp/z.json"; shift 3
+  GITHUB_WORKSPACE="$w" bash "$C" "$tmp/z.json" "$@" 2>&1; echo "rc=$?"
+}
+zcall () { # workspace name input-json [option...]: the check's output for one call
+  local w="$1"
+  printf '[%s]' "$(call "$2" "$3")" > "$tmp/z.json"; shift 3
+  GITHUB_WORKSPACE="$w" bash "$C" "$tmp/z.json" "$@" 2>&1; echo "rc=$?"
+}
+for g in '*' 'repo/**'; do
+  out=$(zgrep "$zr/link/repo" "$zr/real" "$g" --root "$zr/real")
+  assert_contains "$out" "Grep glob can reach .git (field glob)" "a workspace behind a link and the real parent as a root refuse $g"
+  out=$(zgrep "$zr/real/repo" "$zr/uplink" "$g" --root "$zr/uplink")
+  assert_contains "$out" "Grep glob can reach .git (field glob)" "a real workspace and a root linked to its parent refuse $g"
+done
+out=$(zgrep "$zr/real/repo" "$zr/rootlink" '*' --root "$zr/rootlink")
+assert_contains "$out" "Grep glob can reach .git (field glob)" "a root that is a link to the checkout keeps the glob rule"
+out=$(zgrep "$zr/real/repo" "$zr/rootlink/web" '*' --root "$zr/rootlink" --grep-any-glob-in-subfolders)
+assert_contains "$out" "rc=0" "a subfolder under a root linked to the checkout still takes any glob"
+assert_contains "$(zgrep "$zr/link/repo" "$zr/real" 'repo/web/*.php' --root "$zr/real")" "rc=0" "a folder glob at the real parent still passes"
+assert_contains "$(zgrep "$zr/real/repo" "$zr/uplink" 'repo/web/*.php' --root "$zr/uplink")" "rc=0" "a folder glob at the linked parent still passes"
+out=$(zcall "$zr/real/repo" Read '{"file_path":"web/gitlink/config"}')
+assert_contains "$out" "Read call 1: path under .git (field file_path)" "a Read through a link into .git is refused"
+out=$(zcall "$zr/real/repo" Read "{\"file_path\":\"$zr/rootlink/.git/config\"}" --root "$zr/rootlink")
+assert_contains "$out" "Read call 1: path under .git (field file_path)" "a Read of .git through a root linked to the checkout is refused"
+
 # Closed input fields. Each tool's input may hold only the fields of its own
 # schema in Claude Code 2.1.309. Claude Code reads aliases and stray fields
 # (Grep reads file_path as path when path is absent), so any other key is

@@ -266,8 +266,25 @@ def expansions(value):
     not be computed with confidence (or the value was never expanded)."""
     e = EXPANDED.get(value) if isinstance(value, str) else None
     return e if isinstance(e, list) and all(isinstance(x, str) for x in e) else None
-roots = [ws] + [posixpath.normpath(os.environ[v])
-                for v in ('REVIEW_HEAD_DIR', 'REVIEW_INPUT_DIR') if os.environ.get(v)] + extra_roots
+away_roots = [posixpath.normpath(os.environ[v])
+              for v in ('REVIEW_HEAD_DIR', 'REVIEW_INPUT_DIR') if os.environ.get(v)]
+roots = [ws] + away_roots + extra_roots
+
+# Every containment decision is made twice: on the paths as spelled, and on
+# their real paths on disk now (os.path.realpath), for the path, the
+# workspace and every root. A link can put the checkout under a root spelled
+# away from it, or a root spelled above it away from it, so a call passes
+# only when it passes under both views.
+class View:
+    def __init__(self, f):
+        self.f = f
+        self.ws = f(ws)
+        self.git_dir = posixpath.join(self.ws, '.git')
+        self.roots = [f(r) for r in roots]
+        self.away_roots = [f(r) for r in away_roots]
+        self.extra_roots = [f(r) for r in extra_roots]
+        self.write_roots = [f(r) for r in write_roots]
+VIEWS = (View(lambda p: p), View(os.path.realpath))
 
 # The input fields of each tool's schema in Claude Code 2.1.309, the version
 # claude-code-action ae68417 installs. Anything else is refused, aliases
@@ -374,14 +391,29 @@ def git_targets(path):
     # real path) differs from the target as spelled, so a glob is matched
     # against the target's absolute path: .git's absolute paths, spelled and
     # real, are targets too.
+    # The same holds for a search root spelled through a symlink, whose
+    # spelling of .git is a target too. From a root above the workspace,
+    # .git's path from that root is judged in both views.
     real_ws = os.path.realpath(ws)
-    if real_ws != ws:
-        targets |= {posixpath.join(w, '.git').lstrip('/') for w in (ws, real_ws)}
+    absolute = {posixpath.join(w, '.git') for w in (ws, real_ws)}
+    linked = real_ws != ws
     exps = expansions(path) if isinstance(path, str) else None
     for e in exps or []:
-        root = resolve(e, ws)
-        if root is not None and root != ws and under(ws, root):
-            targets.add(posixpath.join(posixpath.relpath(ws, root), '.git'))
+        spelled = resolve(e, ws)
+        if spelled is None:
+            continue
+        real_root = os.path.realpath(spelled)
+        if real_root != spelled:
+            linked = True
+            if under(real_ws, real_root):
+                absolute.add(posixpath.normpath(posixpath.join(
+                    spelled, posixpath.relpath(real_ws, real_root), '.git')))
+        for v in VIEWS:
+            root = v.f(spelled)
+            if root != v.ws and under(v.ws, root):
+                targets.add(posixpath.join(posixpath.relpath(v.ws, root), '.git'))
+    if linked:
+        targets |= {a.lstrip('/') for a in absolute}
     return targets
 
 def grep_glob_allowed(value, exps, path):
@@ -426,20 +458,27 @@ def grep_path_refusal(path):
     return None
 
 def inside(p):
-    return p is not None and not under(p, git_dir) and any(under(p, r) for r in roots)
+    return p is not None and all(
+        not under(v.f(p), v.git_dir) and any(under(v.f(p), r) for r in v.roots) for v in VIEWS)
+
+def under_git(p):
+    return p is not None and any(under(v.f(p), v.git_dir) for v in VIEWS)
 
 def away_from_workspace(path):
     """True when a Grep path is a valid path inside the head or the input
     directory, so its search cannot reach the workspace's .git."""
     if not isinstance(path, str) or path_refusal('path', path, ws):
         return False
-    away = [posixpath.normpath(os.environ[v])
-            for v in ('REVIEW_HEAD_DIR', 'REVIEW_INPUT_DIR') if os.environ.get(v)]
-    # An added root counts only where it cannot reach the workspace.
-    away += [r for r in extra_roots if not under(r, ws) and not under(ws, r)]
-    # Every brace expansion of the path must lie in one of them.
     exps = expansions(path)
-    return bool(exps) and all(any(under(resolve(e, ws), r) for r in away) for e in exps)
+    if not exps:
+        return False
+    for v in VIEWS:
+        # An added root counts only where it cannot reach the workspace.
+        away = v.away_roots + [r for r in v.extra_roots if not under(r, v.ws) and not under(v.ws, r)]
+        # Every brace expansion of the path must lie in one of them.
+        if not all(any(under(v.f(resolve(e, ws)), r) for r in away) for e in exps):
+            return False
+    return True
 
 def calls(node):
     if isinstance(node, dict):
@@ -468,7 +507,7 @@ def path_refusal(field, value, base):
         if e.startswith('~'):
             return ('path starts with ~', field)
         resolved = resolve(e, base)
-        if resolved is not None and under(resolved, git_dir):
+        if under_git(resolved):
             return ('path under .git', field)
         if not inside(resolved):
             return ('path outside the allowed roots', field)
@@ -490,9 +529,9 @@ def write_refusal(value):
     if '..' in value.split('/'):
         return ('write path contains ..', field)
     resolved = posixpath.normpath(value)
-    if under(resolved, git_dir):
+    if under_git(resolved):
         return ('path under .git', field)
-    if not any(under(resolved, r) for r in write_roots):
+    if not all(any(under(v.f(resolved), r) for r in v.write_roots) for v in VIEWS):
         return ('path outside the write roots', field)
     return None
 
@@ -510,7 +549,7 @@ def subfolder_search(path):
         return False
     # Every brace expansion of the path must be such a folder.
     exps = expansions(path)
-    return bool(exps) and all(not under(ws, resolve(e, ws)) for e in exps)
+    return bool(exps) and all(not under(v.ws, v.f(resolve(e, ws))) for e in exps for v in VIEWS)
 
 def refusal(call):
     """(label, field or None) for the first rule that refuses the call, else None.
@@ -594,7 +633,7 @@ def refusal(call):
             if e.startswith('/'):
                 return ('Glob pattern is absolute', 'pattern')
             resolved = resolve(e, base)
-            if resolved is not None and under(resolved, git_dir):
+            if under_git(resolved):
                 return ('path under .git', 'pattern')
             if not inside(resolved):
                 return ('path outside the allowed roots', 'pattern')
