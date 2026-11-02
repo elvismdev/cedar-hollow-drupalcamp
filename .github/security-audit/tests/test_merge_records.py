@@ -876,7 +876,7 @@ class SameModelTest(MergeTest):
         self.assertEqual(self.load("trusted-meta.json")["job_models"],
                          {"source": "claude-opus-5-5", "cross-check": "claude-fable-5-1"})
 
-    def tie_break_after(self, cross_fallback, tie_fallback, count_tie_break=True):
+    def tie_break_after(self, cross_fallback, tie_fallback, count_tie_break=True, select_poc=False):
         """Runs source (opus-5-5), a cross-check on fable-5-1 with its fallback
         and a tie-break on sonnet-5-5 with its fallback, each counted as its
         own job, and returns whether the tie-break's answer was applied."""
@@ -884,6 +884,10 @@ class SameModelTest(MergeTest):
         self.seed([record], [unit("m-9", fps=["m-9"], unresolved=[])])
         self.count_job("source", "claude-opus-5-5", None)
         self.count_job("cross-check", "claude-fable-5-1", cross_fallback)
+        if select_poc:
+            trusted = self.load("trusted-meta.json")
+            trusted["poc"] = {"selected": ["m-9"], "not_tried": [], "not_rechecked": [], "confirmed": []}
+            self.write(os.path.join(self.state, "trusted-meta.json"), trusted)
         self.subagent("checker-1", {"decision": "replace", "fingerprint": "m-9", "reason": "Another cause.",
                                     "record": confirmed("m-9", root_cause="Another cause")})
         inputs = os.path.join(self.tmp, "tie-break-inputs.json")
@@ -921,6 +925,15 @@ class SameModelTest(MergeTest):
                 self.assertNotIn("cross_check_same_model", reasons)
                 self.assertNotIn("cross_check_model_unrecorded", reasons)
                 self.assertEqual([d["removed_because"] for d in self.load("disputed.json")], ["tie_break_refused"])
+
+    def test_a_tie_break_with_uncounted_poc_jobs_is_applied(self):
+        # Items were selected for the proof-of-concept jobs, but neither was
+        # counted, so neither handed anything on for the tie-break to judge.
+        applied, meta = self.tie_break_after(None, None, select_poc=True)
+        self.assertNotIn("poc-write", meta["job_models"])
+        self.assertNotIn("poc-decide", meta["job_models"])
+        self.assertTrue(applied)
+        self.assertNotIn("tie_break_model_unrecorded", meta["incomplete_reasons"])
 
     def test_a_tie_break_off_the_cross_checks_models_is_applied(self):
         applied, meta = self.tie_break_after("claude-opus-4-8", None)
@@ -1038,6 +1051,13 @@ class SameModelTest(MergeTest):
                                                             ("poc-decide", "claude-opus-5-5", None),
                                                             ("cross-check", "claude-fable-5-1", None))
         self.assert_applied(applied, meta)
+
+    def test_an_uncounted_source_repair_does_not_refuse_the_cross_check(self):
+        applied, meta = self.run_cross_check(("source", "claude-opus-5-5", None),
+                                             ("cross-check", "claude-fable-5-1", None))
+        self.assertNotIn("source_repair", meta["job_models"])
+        self.assert_applied(applied, meta)
+        self.assertNotIn("cross_check_model_unrecorded", meta["incomplete_reasons"])
 
     def test_an_overlap_names_the_judged_job(self):
         _applied, meta, out = self.cross_check_with_selection(("source", "claude-opus-5-5", None),
