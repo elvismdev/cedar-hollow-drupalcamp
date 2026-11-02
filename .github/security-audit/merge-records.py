@@ -85,9 +85,10 @@
 #                        applied, pending, inputs_sha256, same_model,
 #                        model_unrecorded, tie_break_same_model,
 #                        tie_break_model_unrecorded}; same_model and
-#                        model_unrecorded mark a cross-check refused for its
-#                        models (see the incomplete reasons below), so status
-#                        adds no cross_check_missing for that cause, and the
+#                        model_unrecorded mark a cross-check refused because
+#                        its models overlap a judged job's or a required
+#                        model was never recorded, so status adds no
+#                        cross_check_missing for that cause, and the
 #                        tie_break_ pair marks a tie-break refused for the
 #                        same causes; apply-tie-break
 #                        refuses inputs whose sha256 is not inputs_sha256,

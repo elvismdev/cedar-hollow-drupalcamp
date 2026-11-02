@@ -834,7 +834,8 @@ class RefusalFallbackTest(MergeTest):
 class SameModelTest(MergeTest):
     """D24: the cross-check and the tie-break must run on models different
     from those of every job whose results they judge. A job's models are its
-    pinned model and every refusal fallback recorded for it."""
+    pinned model, every helper model it was counted with and every refusal
+    fallback recorded for it."""
 
     def count_job(self, job, pinned, fallback=None, helper=None):
         ran_on = fallback or pinned
