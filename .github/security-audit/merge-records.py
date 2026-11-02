@@ -100,6 +100,7 @@
 #                        and apply-decide drops a manifest item naming an
 #                        interrupted poc-write subagent or a script under its
 #                        agents/<id>/, and any decision on that item
+#   job_models           {job: pinned model} for every counted job
 #   refusal_fallback     [{job, pinned_model, fallback_model}] for each job
 #                        whose trace holds a top-level system
 #                        model_refusal_fallback message naming a model on
@@ -107,7 +108,10 @@
 #                        use; recorded by count, which takes the pinned model
 #                        as --model
 # and, in trusted-meta.json only, run_id and source_run_status.
-# Incomplete reasons it sets: cap_exceeded:<job>, cross_check_cap,
+# Incomplete reasons it sets: cross_check_same_model (the cross-check or the
+# tie-break ran on the source job's effective model, its recorded refusal
+# fallback or else its pinned model, so its entries were not applied, D24),
+# cap_exceeded:<job>, cross_check_cap,
 # cross_check_missing (a selected record with no valid cross-check entry, or
 # a cross-check that never applied), cross_check_dispute, cross_check_not_run
 # and source_run_not_finished (status found run_status still in_progress).
@@ -148,6 +152,9 @@ FINGERPRINT = _shared.FINGERPRINT
 Refused = _shared.Refused
 MODEL_NAME, refusal_fallback_models = _shared.MODEL_NAME, _shared.refusal_fallback_models
 REFUSAL_FALLBACK = _shared.REFUSAL_FALLBACK
+# trusted-meta.json key: each counted job's pinned model, so its effective
+# model can be decided whether or not it fell back.
+JOB_MODELS = "job_models"
 parse_strict, read_bytes, read_json = _shared.parse_strict, _shared.read_bytes, _shared.read_json
 
 MAX_STATE_BYTES = 5 * 1024 * 1024
@@ -421,7 +428,7 @@ class State:
                 isinstance(v, dict) and set(v) == {"invocations", "cap"}
                 and non_negative_int(v["invocations"]) and non_negative_int(v["cap"]) for v in usage.values()):
             raise Refused(TRUSTED_META + " usage is not a map of non-negative invocations and caps")
-        for key in ("poc", "cross_check", "dispute_rate"):
+        for key in ("poc", "cross_check", "dispute_rate", JOB_MODELS):
             if key in trusted and not isinstance(trusted[key], dict):
                 raise Refused(TRUSTED_META + " %s is not an object" % key)
         for key in ("merge_discarded", "prior_run_paths", "interrupted", REFUSAL_FALLBACK):
@@ -771,6 +778,7 @@ def cmd_count(state, args):
     messages = read_trace(args.trace)
     used = subagent_count(messages)
     bindings, _ = subagent_bindings(messages)
+    state.trusted.setdefault(JOB_MODELS, {})[args.job] = args.model
     fallbacks = state.trusted.setdefault(REFUSAL_FALLBACK, [])
     for fallback in refusal_fallbacks(messages, args.model):
         key = {"job": args.job, "pinned_model": args.model, "fallback_model": fallback}
@@ -1269,11 +1277,38 @@ def cross_entry_valid(entry, selected):
     return False
 
 
+def effective_model(state, job):
+    """The model a counted job ran on: its recorded refusal fallback if it
+    has one, else its pinned model; None when the job was not counted."""
+    fallbacks = [r.get("fallback_model") for r in state.trusted.get(REFUSAL_FALLBACK, [])
+                 if isinstance(r, dict) and r.get("job") == job and isinstance(r.get("fallback_model"), str)]
+    if fallbacks:
+        return fallbacks[-1]
+    model = state.trusted.get(JOB_MODELS, {}).get(job)
+    return model if isinstance(model, str) else None
+
+
+def same_model_as_source(state, checker):
+    """D24: the cross-check and the tie-break run on a different model from
+    the source job (and the source repair, if it ran). True when the checking
+    job's effective model equals one of theirs; a job never counted is not
+    known and decides nothing."""
+    mine = effective_model(state, checker)
+    sources = [effective_model(state, job) for job in ("source", "source_repair")]
+    return mine is not None and mine in sources
+
+
 def cmd_apply_cross_check(state, args):
     cc = state.trusted.get("cross_check")
     if not isinstance(cc, dict) or not isinstance(cc.get("selected"), list):
         raise Refused("no cross-check selection in trusted-meta.json")
     selected = set(cc["selected"])
+    if same_model_as_source(state, "cross-check"):
+        # Not applied: a check on the source's own model is not independent.
+        state.incomplete("cross_check_same_model")
+        write_json(args.out, {"disputes": []})
+        print("merge-records: the cross-check ran on the source job's model, so its entries are not applied")
+        return
     raw = read_entries(state, "cross-check", args.entries, args.trace)
     valid = {}
     for agent_id, entry in raw.items():
@@ -1336,6 +1371,11 @@ def cmd_apply_tie_break(state, args):
     cc = state.trusted.get("cross_check")
     if not isinstance(cc, dict) or not cc.get("applied"):
         raise Refused("apply-cross-check has not run")
+    if same_model_as_source(state, "tie-break"):
+        # Not applied: the disputes stay pending and status removes them.
+        state.incomplete("cross_check_same_model")
+        print("merge-records: the tie-break ran on the source job's model, so its entries are not applied")
+        return
     try:
         data = read_bytes(args.inputs, MAX_STATE_BYTES)
     except (OSError, Refused):

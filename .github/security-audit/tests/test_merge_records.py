@@ -818,6 +818,109 @@ class RefusalFallbackTest(MergeTest):
         self.assertEqual(result.returncode, 1)
 
 
+class SameModelTest(MergeTest):
+    """D24: the cross-check and the tie-break must run on a different model
+    from the source job. A job's effective model is its recorded refusal
+    fallback, else its pinned model."""
+
+    def count_job(self, job, pinned, fallback=None):
+        ran_on = fallback or pinned
+        self.messages.append({"type": "assistant", "message": {"model": ran_on, "content": []}})
+        if fallback:
+            self.messages.append({"type": "system", "subtype": "model_refusal_fallback", "fallback_model": fallback,
+                                  "api_refusal_category": "x", "api_refusal_explanation": None})
+        self.run_merge("count", "--job", job, "--cap", "60", "--trace", self.trace_file(), "--model", pinned)
+
+    def run_cross_check(self, *counts):
+        record = confirmed("m-1")
+        self.seed([record], [unit("m-1", fps=["m-1"], unresolved=[])])
+        for job, pinned, fallback in counts:
+            self.count_job(job, pinned, fallback)
+        moved = confirmed("m-1")
+        moved["trace"][0]["line"] = 77
+        self.subagent("checker-1", {"decision": "replace", "fingerprint": "m-1", "reason": "Line moved.", "record": moved})
+        inputs = os.path.join(self.tmp, "tie-break-inputs.json")
+        self.run_merge("select-cross-check", "--out", os.path.join(self.tmp, "list.json"))
+        self.run_merge("apply-cross-check", "--entries", self.out, "--trace", self.trace_file(), "--out", inputs)
+        meta = self.load("trusted-meta.json")
+        return self.record("m-1")["trace"][0]["line"] == 77, meta
+
+    def assert_refused(self, applied, meta):
+        self.assertFalse(applied)
+        self.assertIn("cross_check_same_model", meta["incomplete_reasons"])
+        with open(os.path.join(self.tmp, "tie-break-inputs.json"), encoding="utf-8") as handle:
+            self.assertEqual(json.load(handle), {"disputes": []})
+
+    def assert_applied(self, applied, meta):
+        self.assertTrue(applied)
+        self.assertNotIn("cross_check_same_model", meta["incomplete_reasons"])
+
+    def test_different_pinned_models_are_applied(self):
+        self.assert_applied(*self.run_cross_check(("source", "claude-opus-5-5", None),
+                                                  ("cross-check", "claude-fable-5-1", None)))
+        self.assertEqual(self.load("trusted-meta.json")["job_models"],
+                         {"source": "claude-opus-5-5", "cross-check": "claude-fable-5-1"})
+
+    def test_the_same_pinned_model_is_refused(self):
+        self.assert_refused(*self.run_cross_check(("source", "claude-opus-5-5", None),
+                                                  ("cross-check", "claude-opus-5-5", None)))
+
+    def test_both_falling_back_to_the_same_model_is_refused(self):
+        self.assert_refused(*self.run_cross_check(("source", "claude-opus-5-5", "claude-opus-4-8"),
+                                                  ("cross-check", "claude-fable-5-1", "claude-opus-4-8")))
+
+    def test_only_the_source_falling_back_is_applied(self):
+        self.assert_applied(*self.run_cross_check(("source", "claude-opus-5-5", "claude-opus-4-8"),
+                                                  ("cross-check", "claude-fable-5-1", None)))
+
+    def test_only_the_cross_check_falling_back_is_applied(self):
+        self.assert_applied(*self.run_cross_check(("source", "claude-opus-5-5", None),
+                                                  ("cross-check", "claude-fable-5-1", "claude-opus-4-8")))
+
+    def test_the_cross_check_falling_back_to_the_source_model_is_refused(self):
+        self.assert_refused(*self.run_cross_check(("source", "claude-opus-4-8", None),
+                                                  ("cross-check", "claude-fable-5-1", "claude-opus-4-8")))
+
+    def test_the_source_repair_on_the_same_model_is_refused(self):
+        self.assert_refused(*self.run_cross_check(("source", "claude-opus-5-5", None),
+                                                  ("source_repair", "claude-opus-5-5", "claude-opus-4-8"),
+                                                  ("cross-check", "claude-fable-5-1", "claude-opus-4-8")))
+
+    def test_a_tie_break_on_the_source_model_is_not_applied(self):
+        record = confirmed("m-2")
+        self.seed([record], [unit("m-2", fps=["m-2"], unresolved=[])])
+        self.count_job("source", "claude-opus-5-5", "claude-opus-4-8")
+        self.count_job("cross-check", "claude-fable-5-1", None)
+        self.subagent("checker-1", {"decision": "replace", "fingerprint": "m-2", "reason": "Another cause.",
+                                    "record": confirmed("m-2", root_cause="Another cause")})
+        inputs = os.path.join(self.tmp, "tie-break-inputs.json")
+        self.run_merge("select-cross-check", "--out", os.path.join(self.tmp, "list.json"))
+        self.run_merge("apply-cross-check", "--entries", self.out, "--trace", self.trace_file(), "--out", inputs)
+        self.count_job("tie-break", "claude-sonnet-5-5", "claude-opus-4-8")
+        self.subagent("tie-1", {"fingerprint": "m-2", "answer": "replacement", "reason": "Read the source."})
+        self.run_merge("apply-tie-break", "--inputs", inputs, "--entries", self.out, "--trace", self.trace_file())
+        self.assertEqual(self.record("m-2")["root_cause"], "Missing access check")
+        self.assertIn("cross_check_same_model", self.load("trusted-meta.json")["incomplete_reasons"])
+        self.run_merge("status")
+        self.assertIsNone(self.record("m-2"))
+        self.assertEqual([d["removed_because"] for d in self.load("disputed.json")], ["tie_break_not_run"])
+
+    def test_a_tie_break_on_its_own_model_is_applied(self):
+        record = confirmed("m-3")
+        self.seed([record], [unit("m-3", fps=["m-3"], unresolved=[])])
+        self.count_job("source", "claude-opus-5-5", None)
+        self.count_job("cross-check", "claude-fable-5-1", None)
+        self.subagent("checker-1", {"decision": "replace", "fingerprint": "m-3", "reason": "Another cause.",
+                                    "record": confirmed("m-3", root_cause="Another cause")})
+        inputs = os.path.join(self.tmp, "tie-break-inputs.json")
+        self.run_merge("select-cross-check", "--out", os.path.join(self.tmp, "list.json"))
+        self.run_merge("apply-cross-check", "--entries", self.out, "--trace", self.trace_file(), "--out", inputs)
+        self.count_job("tie-break", "claude-sonnet-5-5", None)
+        self.subagent("tie-1", {"fingerprint": "m-3", "answer": "replacement", "reason": "Read the source."})
+        self.run_merge("apply-tie-break", "--inputs", inputs, "--entries", self.out, "--trace", self.trace_file())
+        self.assertEqual(self.record("m-3")["root_cause"], "Another cause")
+
+
 class HostileEntryTest(MergeTest):
     """Agent-written input shaped to crash the merge, override a decision or
     skew a count; each case comes from a review probe."""

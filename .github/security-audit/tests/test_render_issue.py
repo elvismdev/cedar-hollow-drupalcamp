@@ -164,6 +164,11 @@ class ContentTest(RenderTest):
         self.assertIn("*   Dispute rate: 1 of 4 records cross-checked (25%)", body)
         self.assertIn("*   Tie-breaks: original 1, replacement 0, neither 0", body)
 
+    def test_a_cross_check_on_the_source_model_is_named_as_a_reason(self):
+        self.seed([], final_meta(incomplete_reasons=["cross_check_same_model"]))
+        body = self.render()
+        self.assertIn("cross_check_same_model", self.line(body, "**Status: incomplete"))
+
     def test_a_refusal_fallback_is_one_line_per_job(self):
         self.seed([], final_meta(refusal_fallback=[
             {"job": "poc-write", "pinned_model": "claude-opus-5-5", "fallback_model": "claude-opus-4-8"},
