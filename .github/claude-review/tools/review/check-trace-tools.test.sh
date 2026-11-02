@@ -331,6 +331,26 @@ assert_contains "$out" "Read call 1: path under .git (field file_path)" "a Read 
 # A path in no root gets that label before the symlink check.
 out=$(zgrep "$zr/real/repo" "$zr/outlink" '*.php')
 assert_contains "$out" "Grep call 1: path outside the allowed roots (field path)" "a linked path in no root is refused as outside the roots"
+# A link from the head or the input directory to the checkout or its parent
+# resolves into the workspace, so the glob rule holds there.
+mkdir -p "$zr/head" "$zr/input"
+ln -s "$zr/real/repo" "$zr/head/wslink"
+ln -s "$zr/real/repo" "$zr/input/wslink"
+ln -s "$zr/real" "$zr/head/uplink"
+for p in head/wslink input/wslink head/uplink; do
+  out=$(REVIEW_HEAD_DIR="$zr/head" REVIEW_INPUT_DIR="$zr/input" zgrep "$zr/real/repo" "$zr/$p" '*')
+  assert_contains "$out" "Grep glob can reach .git (field glob)" "$p with * is refused"
+done
+assert_contains "$(REVIEW_HEAD_DIR="$zr/head" REVIEW_INPUT_DIR="$zr/input" zgrep "$zr/real/repo" "$zr/head" '*')" "rc=0" "the head itself still takes *"
+# A Grep path must be in normal form where the glob rule applies: ripgrep
+# matches a glob against the path as written.
+for p in './/web' 'web//x' "//$zr/real/repo" "///$zr/real/repo" "$zr/real/repo/." 'web/./x' 'web/.'; do
+  out=$(zgrep "$zr/real/repo" "$p" '*.php')
+  assert_contains "$out" "Grep call 1: Grep path is not in normal form (field path)" "the Grep path $p is refused"
+done
+for p in './web' 'web/' '.' "$zr/real/repo/web/"; do
+  assert_contains "$(zgrep "$zr/real/repo" "$p" '*.php')" "rc=0" "the Grep path $p still passes"
+done
 
 # Closed input fields. Each tool's input may hold only the fields of its own
 # schema in Claude Code 2.1.309. Claude Code reads aliases and stray fields

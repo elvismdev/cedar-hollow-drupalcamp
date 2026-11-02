@@ -446,6 +446,11 @@ def grep_path_refusal(path):
         return None
     if '..' in path.split('/'):
         return ('Grep path holds a .. segment', 'path')
+    # ripgrep matches a glob against the target as written, so the raw path
+    # must be in normal form: no //, no . segment after the first, no
+    # trailing /. (a leading ./ and a trailing / match as the plain path).
+    if '//' in path or '/./' in path or path.endswith('/.'):
+        return ('Grep path is not in normal form', 'path')
     for e in expansions(path) or [path]:
         p = resolve(e, ws)
         if p is None:
