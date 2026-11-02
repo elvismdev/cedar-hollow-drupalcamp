@@ -139,6 +139,63 @@ launch_trace "[{\"type\":\"text\",\"text\":\"Summary first.\"},{\"type\":\"text\
 assert_eq "0" "$(rc source "$tmp/t.json")" "a report of several blocks is not a launch"
 launch_trace "[{\"type\":\"text\",\"text\":\"Read tracked.txt; nothing found.\"}]"
 assert_eq "0" "$(rc source "$tmp/t.json")" "a subagent call whose result is the subagent's report passes"
+# A subagent the safety classifier interrupted is reported, not refused, even
+# with no calls; the other rules still apply to its calls in the trace, and a
+# launch still fails.
+INTERRUPTION="$(cat "$(dirname "$C")/classifier-interruption.txt")"
+trace "$tmp/t.json" "${CLEAN[@]}" "$(agent ta2 "agent-id: h02 hunt" false "$INTERRUPTION")" "$(result "$M")"
+assert_eq "0" "$(rc source "$tmp/t.json")" "an interrupted subagent with no calls passes"
+assert_contains "$(run source "$tmp/t.json")" "(agent id h02) was interrupted by the safety classifier" "and is reported by call and agent id"
+trace "$tmp/t.json" "$INIT" "$(agent ta2 "agent-id: h02 hunt" false "$INTERRUPTION")" "$(result "$M")"
+assert_eq "0" "$(rc source "$tmp/t.json")" "a run whose only subagent was interrupted passes"
+trace "$tmp/t.json" "${CLEAN[@]}" "$(agent ta2 "agent-id: h02 hunt" false "$INTERRUPTION")" "$(sub ta2 Read "{\"file_path\":\"$WS/tracked.txt\"}")" "$(result "$M")"
+assert_eq "0" "$(rc source "$tmp/t.json")" "an interrupted subagent with allowed calls passes"
+trace "$tmp/t.json" "${CLEAN[@]}" "$(agent ta2 "agent-id: h02 hunt" false "$INTERRUPTION")" "$(sub ta2 Bash '{"command":"id"}')" "$(result "$M")"
+assert_eq "1" "$(rc source "$tmp/t.json")" "an interrupted subagent's refused call still fails the run"
+trace "$tmp/t.json" "${CLEAN[@]}" "$(agent ta2 "agent-id: h02 hunt" false "Done, though the log quoted $INTERRUPTION.")" "$(result "$M")"
+assert_eq "1" "$(rc source "$tmp/t.json")" "a report only quoting the interruption is not one, so a subagent with no calls still fails"
+launch_trace "[{\"type\":\"text\",\"text\":\"$LAUNCH successfully. agentId: a1b2\"}]"
+assert_eq "1" "$(rc source "$tmp/t.json")" "an async launch still fails alongside the interruption rule"
+# An interruption is exactly the sentence, alone in one text block of a
+# top-level result, for a general-purpose call; anything else is not one, so
+# a subagent with no calls then fails.
+int_result () { # parent content-json
+  printf '{"type":"user","parent_tool_use_id":%s,"message":{"content":[{"type":"tool_result","tool_use_id":"ta2","content":%s}]}}' "$1" "$2"
+}
+int_case () { # message parent content-json
+  trace "$tmp/t.json" "${CLEAN[@]}" "$(agent ta2 "agent-id: h02 hunt" false none)" "$(int_result "$2" "$3")" "$(result "$M")"
+  assert_eq "1" "$(rc source "$tmp/t.json")" "$1"
+}
+int_case "a report starting with the sentence is not an interruption" null "[{\"type\":\"text\",\"text\":\"$INTERRUPTION Then I read three files.\"}]"
+int_case "the sentence in a second block is not an interruption" null "[{\"type\":\"text\",\"text\":\"Report.\"},{\"type\":\"text\",\"text\":\"$INTERRUPTION\"}]"
+int_case "the sentence as a plain string is not an interruption" null "\"$INTERRUPTION\""
+int_case "the sentence in a subagent's own message is not an interruption" '"ta1"' "[{\"type\":\"text\",\"text\":\"$INTERRUPTION\"}]"
+trace "$tmp/t.json" "${CLEAN[@]}" "$(int_result null "[{\"type\":\"text\",\"text\":\"  $INTERRUPTION\\n\"}]")" \
+  "$(agent ta2 "agent-id: h02 hunt" false none)" "$(result "$M")"
+assert_eq "0" "$(rc source "$tmp/t.json")" "the sentence with surrounding whitespace is an interruption"
+explore () { # call-id
+  printf '{"type":"assistant","parent_tool_use_id":null,"message":{"model":"%s","content":[{"type":"tool_use","id":"%s","name":"Agent","input":{"description":"agent-id: h03 explore","prompt":"p","subagent_type":"Explore"}}]}}' "$M" "$1"
+}
+trace "$tmp/t.json" "${CLEAN[@]}" "$(explore ta3)" \
+  '{"type":"user","parent_tool_use_id":null,"message":{"content":[{"type":"tool_result","tool_use_id":"ta3","content":[{"type":"text","text":"'"$INTERRUPTION"'"}]}]}}' "$(result "$M")"
+assert_eq "1" "$(rc source "$tmp/t.json")" "an Explore-type call is refused and its interruption does not count"
+assert_contains "$(run source "$tmp/t.json")" "asks for a subagent type other than general-purpose" "and says why"
+assert_contains "$(run source "$tmp/t.json")" "started a subagent with no tool calls" "and its subagent is not treated as interrupted"
+trace "$tmp/t.json" "${CLEAN[@]}" "$(explore ta3)" "$(sub ta3 Read "{\"file_path\":\"$WS/tracked.txt\"}")" \
+  '{"type":"user","parent_tool_use_id":null,"message":{"content":[{"type":"tool_result","tool_use_id":"ta3","content":"done"}]}}' "$(result "$M")"
+assert_eq "1" "$(rc source "$tmp/t.json")" "an Explore-type call is refused even with calls"
+
+# More subagent starts than subagent calls means a call is missing from the
+# trace, and an interruption does not excuse it.
+started_event () { printf '{"type":"system","subtype":"task_started","tool_use_id":"%s","is_backgrounded":false}' "$1"; }
+trace "$tmp/t.json" "$INIT" "$(agent ta2 "agent-id: h02 hunt" false "$INTERRUPTION")" \
+  "$(started_event ta2)" "$(started_event tx1)" "$(started_event tx2)" "$(result "$M")"
+assert_eq "1" "$(rc source "$tmp/t.json")" "one interrupted call with three task_started events fails"
+assert_contains "$(run source "$tmp/t.json")" "3 subagent start(s) for 1 subagent call(s)" "and says why"
+trace "$tmp/t.json" "$INIT" "$(agent ta2 "agent-id: h02 hunt" false "$INTERRUPTION")" "$(started_event ta2)" "$(result "$M")"
+assert_eq "0" "$(rc source "$tmp/t.json")" "one interrupted call with its one task_started event passes"
+trace "$tmp/t.json" "${CLEAN[@]}" '{"type":"result","subtype":"success","modelUsage":{},"subagent_stats":{"spawned":2,"started_in_background":0}}'
+assert_eq "1" "$(rc source "$tmp/t.json")" "a spawned count above the subagent calls fails"
 # A subagent call with no result cannot be shown to have finished.
 trace "$tmp/t.json" "${CLEAN[@]}" "$(agent ta2 "agent-id: h02 hunt" false none)" "$(sub ta2 Read "{\"file_path\":\"$WS/tracked.txt\"}")" "$(result "$M")"
 assert_eq "1" "$(rc source "$tmp/t.json")" "a subagent call with no result fails"
@@ -338,6 +395,33 @@ trace "$tmp/t.json" "$INIT" '{"type":"result","subtype":"success","modelUsage":{
 assert_eq "1" "$(rc source "$tmp/t.json")" "a spawned count with no subagent calls fails"
 trace "$tmp/t.json" "$INIT" "$(top Read "{\"file_path\":\"$WS/tracked.txt\"}")" "$(result "$M")"
 assert_eq "0" "$(rc source "$tmp/t.json")" "a run with no subagents at all passes"
+
+# The job folder holding in/ and out/ is a read root only while it holds
+# nothing else on disk. Glob 3 of audit run 41347206214 was pattern **/* with
+# that folder as its path.
+JOB_DIR="$tmp/audit/source"
+mkdir -p "$JOB_DIR/in" "$JOB_DIR/out"
+jobdir_rc () { AUDIT_INPUT_DIR="${JD_IN-$JOB_DIR/in}" bash "$C" source "$tmp/jd.json" "$TOOLS" "$JOB_DIR/out" "$FP" "$M" >/dev/null 2>&1; echo $?; }
+trace "$tmp/jd.json" "$INIT" "$(top Glob "{\"pattern\":\"**/*\",\"path\":\"$JOB_DIR\"}")" "$(result "$M")"
+assert_eq "0" "$(jobdir_rc)" "a Glob of the job folder holding only in and out passes"
+JD_IN="" ; assert_eq "1" "$(jobdir_rc)" "the job folder is no root when AUDIT_INPUT_DIR is unset"
+JD_IN="$tmp/elsewhere/in" ; assert_eq "1" "$(jobdir_rc)" "the job folder is no root when AUDIT_INPUT_DIR is another job's in"
+JD_IN="$JOB_DIR/in/" ; assert_eq "1" "$(jobdir_rc)" "the job folder is no root when AUDIT_INPUT_DIR is not exactly <job>/in"
+unset JD_IN
+touch "$JOB_DIR/extra"
+assert_eq "1" "$(jobdir_rc)" "a Glob of the job folder fails once it holds anything else"
+rm "$JOB_DIR/extra"
+rmdir "$JOB_DIR/in"
+assert_eq "1" "$(jobdir_rc)" "a Glob of the job folder fails when in/ is missing"
+mkdir "$JOB_DIR/in"
+mv "$JOB_DIR/in" "$tmp/real-in" && ln -s "$tmp/real-in" "$JOB_DIR/in"
+assert_eq "1" "$(jobdir_rc)" "a Glob of the job folder fails when in/ is a link"
+rm "$JOB_DIR/in" && mv "$tmp/real-in" "$JOB_DIR/in"
+trace "$tmp/jd.json" "$INIT" "$(top Glob "{\"pattern\":\"**/*\",\"path\":\"$tmp/audit\"}")" "$(result "$M")"
+assert_eq "1" "$(jobdir_rc)" "a Glob of the folder above the job folder still fails"
+trace "$tmp/jd.json" "$INIT" "$(top Glob "{\"pattern\":\"**/*\",\"path\":\"$JOB_DIR\"}")" "$(result "$M")"
+assert_eq "1" "$(bash "$C" source "$tmp/jd.json" "$TOOLS" "$OUT" "$FP" "$M" >/dev/null 2>&1; echo $?)" \
+  "a Glob of another job folder is not made a root by this one"
 
 # The fingerprint: the checkout and the watched parts of ~/.claude.
 assert_eq "0" "$(rc source "$tmp/clean.json")" "unchanged state passes"

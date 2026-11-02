@@ -72,8 +72,15 @@
 #     a brace group is kept whole) each part must end in a literal file
 #     extension or a brace group of extensions (*.php, *.{php,module},
 #     src/**/*.ts). Its last segment may instead be a brace group of plain
-#     names before that extension (**/{a,b}.php); a brace group anywhere else
-#     is refused. No part may name .git.
+#     names before that extension (**/{a,b}.php), or a brace group of literal
+#     file names that each end in an extension ({REVIEW.md,AGENTS.md},
+#     src/{a.php,b.yml}); a brace group anywhere else, or one holding a
+#     wildcard, is refused. Every brace expansion must pass the same rule, so
+#     each ends in a file extension. No path segment of a part or expansion,
+#     read as a glob pattern, may match .git in any letter case (.git, .git*,
+#     *.git, *.GIT) or end in .git ({a,b}.git); a segment of only ** is
+#     recursion and is judged by the segments after it, and a literal name
+#     such as .gitignore passes.
 #
 # A Glob or Grep with no path searches the working directory and is allowed. A
 # Read with no file_path, and any of these fields present but empty, is
@@ -244,7 +251,7 @@ if ! jq -c '[.. | objects | select(.type? == "tool_use") | .input? | objects
 fi
 
 outside_roots=$(python3 -I - "$TRACE" "$ROOT_ARGS" "$WRITE_ROOT_ARGS" "$any_glob_in_subfolders" "$EXPANSIONS" <<'PY'
-import json, os, posixpath, re, sys
+import fnmatch, json, os, posixpath, re, sys
 
 ws = posixpath.normpath(os.environ['GITHUB_WORKSPACE'])
 git_dir = posixpath.join(ws, '.git')
@@ -300,10 +307,14 @@ def resolve(p, base):
 
 # A part ends in a file extension or a brace group of extensions. Its last
 # segment may instead be a brace group of plain names before that extension
-# (**/{a,b}.php); a brace group anywhere else is refused.
+# (**/{a,b}.php), or a brace group of literal file names that each end in an
+# extension ({REVIEW.md,AGENTS.md}, src/{a.php,b.yml}); a brace group anywhere
+# else is refused.
 _EXT = r'\.([A-Za-z0-9]+|\{[A-Za-z0-9]+(,[A-Za-z0-9]+)*\})'
+_NAME_EXT = r'[A-Za-z0-9_.-]*[A-Za-z0-9_-]\.[A-Za-z0-9]+'
 EXTENSION_GLOB = re.compile(r'[^{},]*' + _EXT
-                            + r'|([^{},]*/)?\{[A-Za-z0-9_-]+(,[A-Za-z0-9_-]+)*\}' + _EXT)
+                            + r'|([^{},]*/)?\{[A-Za-z0-9_-]+(,[A-Za-z0-9_-]+)*\}' + _EXT
+                            + r'|([^{},]*/)?\{' + _NAME_EXT + r'(,' + _NAME_EXT + r')*\}')
 
 def grep_glob_allowed(value):
     if not glob_ok(value):
@@ -311,8 +322,16 @@ def grep_glob_allowed(value):
     # Claude Code splits on whitespace, which glob_ok has already refused, then
     # on commas unless a part holds a brace group.
     parts = [value] if '{' in value and '}' in value else [t for t in value.split(',') if t]
-    return bool(parts) and all(EXTENSION_GLOB.fullmatch(t) and '.git' not in t.lower()
-                               for t in parts)
+    return bool(parts) and all(EXTENSION_GLOB.fullmatch(t) and not git_segment(t) for t in parts)
+
+
+def git_segment(value):
+    """True when a path segment of value, read as a glob pattern, can match
+    .git in any letter case (.git, .git*, *.git, *.GIT), or ends in .git (a.git,
+    x.git). A segment of only ** is directory recursion, judged by the
+    segments after it, and a literal name such as .gitignore passes."""
+    return any(seg != '**' and (fnmatch.fnmatchcase('.git', seg.lower()) or seg.lower().endswith('.git'))
+               for seg in value.split('/'))
 
 def inside(p):
     return p is not None and not under(p, git_dir) and any(under(p, r) for r in roots)

@@ -10,7 +10,9 @@
 # The tool names, each tool's closed input fields, the character allowlist and
 # the read and write roots are checked by the review practice's
 # check-trace-tools.sh, given the allowed tools, the output root (read and
-# write), $AUDIT_INPUT_DIR (read, when set) and --grep-any-glob-in-subfolders,
+# write), $AUDIT_INPUT_DIR (read, when set), the job folder that holds the
+# output root (read, only when it holds nothing but in/ and out/ on disk) and
+# --grep-any-glob-in-subfolders,
 # so a Grep rooted in a folder below the checkout's top level may use negated
 # globs and brace lists of folders. The rules below are the audit's own:
 #
@@ -36,6 +38,16 @@
 #     declared agent id, which has the canonical form below.
 #   - Every subagent call has a tool_result in the trace: a call with none
 #     cannot be shown to have finished in the foreground.
+#   - A subagent call asks for no subagent_type or general-purpose; any other
+#     type is refused.
+#   - A subagent whose result is the safety classifier's interruption is
+#     reported by its call's position and agent id, not refused. It is one
+#     only when the call's tool_result, in a top-level message, is a single
+#     text block whose trimmed text equals the sentence in
+#     classifier-interruption.txt, for a general-purpose call:
+#     it is exempt from the no-tool-calls rules below, merge-records.py never
+#     uses its entry, and every other rule still applies to its calls that
+#     reached the trace.
 #   - A subagent's Write or Edit lands under
 #     <output-root>/agents/<its-id>/scratch/, and never on a file whose name is
 #     one of the shared or combined files that only the top-level agent or the
@@ -74,9 +86,12 @@
 #     check-trace-tools.sh accepts only with exactly a string message and only
 #     when the allowed tools name it; it counts as a call attributed to that
 #     subagent like any other.
-#   - Every subagent call must have at least one tool call attributed to it,
-#     and if subagents were used at all (a subagent call, a task_started event
-#     or a spawned count) the trace must hold their tool calls.
+#   - The task_started events and the result's spawned count never exceed
+#     the subagent calls in the trace, interrupted ones included.
+#   - Every subagent call, except an interrupted one, must have at least one
+#     tool call attributed to it, and if subagents were used at all (a
+#     subagent call that was not interrupted, or with none, a task_started
+#     event or a spawned count) the trace must hold their tool calls.
 #   - The checkout (git status and HEAD), ~/.claude/settings.json apart from
 #     enableAllProjectMcpServers, ~/.claude/CLAUDE.md and the ~/.claude agents,
 #     commands and hooks trees match the fingerprint taken before the step.
@@ -174,17 +189,27 @@ failed=0
 
 roots=(--root "$out_root")
 if [ -n "${AUDIT_INPUT_DIR:-}" ]; then roots+=(--root "$AUDIT_INPUT_DIR"); fi
+# The job folder holding in/ and out/ (/mnt/audit/<job>) is a read root too,
+# but only when the input root is exactly <job>/in and the output root
+# exactly <job>/out, and, on disk now, it holds nothing else: then a search
+# from it reaches only what the two roots already allow.
+job_dir="$(dirname "$out_root")"
+if [ "$out_root" = "$job_dir/out" ] && [ "${AUDIT_INPUT_DIR:-}" = "$job_dir/in" ] && [ -d "$job_dir" ] && [ ! -L "$job_dir" ] \
+  && [ "$(find "$job_dir" -mindepth 1 -maxdepth 1 -printf '%f\n' 2>/dev/null | sort | paste -sd' ' -)" = "in out" ] \
+  && [ -d "$job_dir/in" ] && [ ! -L "$job_dir/in" ] && [ -d "$job_dir/out" ] && [ ! -L "$job_dir/out" ]; then
+  roots+=(--root "$job_dir")
+fi
 if ! bash "$CTT" "$trace" --tools "$allowed" "${roots[@]}" --write-root "$out_root" \
   --grep-any-glob-in-subfolders; then
   failed=1
 fi
 
 if ! node - "$trace" "$job" "$out_root" "$GITHUB_WORKSPACE" "$model" "$helper" \
-  "$HERE/../claude-review/tools/review/expand-braces.cjs" "$HERE/async-launch.txt" <<'JS'
+  "$HERE/../claude-review/tools/review/expand-braces.cjs" "$HERE/async-launch.txt" "$HERE/classifier-interruption.txt" <<'JS'
 const fs = require('fs');
 const path = require('path').posix;
 
-const [trace, job, outArg, wsArg, model, helper, expander, launchFile] = process.argv.slice(2);
+const [trace, job, outArg, wsArg, model, helper, expander, launchFile, interruptionFile] = process.argv.slice(2);
 const say = (line) => console.error(`check-agent-run: ${line}`);
 
 let msgs;
@@ -261,6 +286,9 @@ for (const call of calls) {
     id = ids[0];
     seenIds.add(id);
   }
+  if ('subagent_type' in input && input.subagent_type !== 'general-purpose') {
+    refuse(call, 'asks for a subagent type other than general-purpose');
+  }
   if (typeof c.id !== 'string' || c.id === '') {
     refuse(call, 'has no call id, so its subagent cannot be attributed');
   } else {
@@ -302,6 +330,12 @@ function* toolResults(node) {
     for (const v of node) yield* toolResults(v);
   }
 }
+// A subagent the safety classifier stopped returns this text instead of a
+// report. It is reported, not refused: merge-records.py never uses its entry,
+// and the rules below still apply to whatever calls of it reached the trace.
+const INTERRUPTION = fs.readFileSync(interruptionFile, 'utf8').trim();
+if (!INTERRUPTION) { say('the classifier interruption text is empty, so an interruption cannot be recognised'); process.exit(1); }
+const interrupted = new Set();
 const callById = new Map(calls.filter(({ c }) => typeof c.id === 'string').map((call) => [call.c.id, call]));
 const answered = new Set();
 for (const r of toolResults(msgs)) {
@@ -314,8 +348,37 @@ for (const r of toolResults(msgs)) {
       `(agent id ${id === null ? 'not valid' : id}) returned an async launch: the subagent ran in the background`);
   }
 }
+// An interruption is exactly Claude Code's sentence, alone in one text block
+// of a top-level tool_result for a general-purpose subagent call; a report
+// that starts with it, carries it in another block, or answers another kind
+// of call is not one.
+for (const m of msgs) {
+  if (!isObj(m) || m.type !== 'user' || (m.parent_tool_use_id !== null && m.parent_tool_use_id !== undefined)
+      || !isObj(m.message) || !Array.isArray(m.message.content)) continue;
+  for (const r of m.message.content) {
+    if (!isObj(r) || r.type !== 'tool_result' || typeof r.tool_use_id !== 'string' || !subagents.has(r.tool_use_id)) continue;
+    const call = callById.get(r.tool_use_id);
+    const type = isObj(call.c.input) ? call.c.input.subagent_type : undefined;
+    if (type !== undefined && type !== 'general-purpose') continue;
+    if (Array.isArray(r.content) && r.content.length === 1 && isObj(r.content[0]) && r.content[0].type === 'text'
+        && typeof r.content[0].text === 'string' && r.content[0].text.trim() === INTERRUPTION) {
+      interrupted.add(r.tool_use_id);
+      const id = subagents.get(r.tool_use_id);
+      say(`${label(call)}: (agent id ${id === null ? 'not valid' : id}) was interrupted by the safety classifier; its entry is never merged`);
+    }
+  }
+}
 for (const [callId] of subagents) {
   if (!answered.has(callId)) refuse(callById.get(callId), 'has no result in the trace, so it cannot be shown to have finished in the foreground');
+}
+
+// Claude Code cannot start more subagents than the trace has subagent calls
+// for; more task_started events or a larger spawned count means some
+// subagent's call is missing. Interruptions do not relax this.
+const subagentCalls = calls.filter(({ c }) => SUBAGENT_TOOLS.has(c.name)).length;
+if (started > subagentCalls || spawned > subagentCalls) {
+  bad += 1;
+  say(`the trace reports ${Math.max(started, spawned)} subagent start(s) for ${subagentCalls} subagent call(s)`);
 }
 
 // Brace expansion shared with check-trace-tools.sh: an array of expansions,
@@ -445,12 +508,14 @@ for (const call of calls) {
 
 for (const call of calls) {
   if (SUBAGENT_TOOLS.has(call.c.name) && typeof call.c.id === 'string' && call.c.id !== ''
-      && !perSubagent.has(call.c.id)) {
+      && !perSubagent.has(call.c.id) && !interrupted.has(call.c.id)) {
     refuse(call, 'started a subagent with no tool calls in the trace, so what it did cannot be checked');
   }
 }
 
-const used = subagents.size > 0 || started > 0 || spawned > 0;
+// An interrupted subagent may have made no call that reached the trace, so it
+// alone does not count as subagent use whose calls must appear.
+const used = subagents.size > interrupted.size || (subagents.size === 0 && (started > 0 || spawned > 0));
 if (used && attributed === 0) {
   bad += 1;
   say('subagents were used but the trace holds none of their tool calls, so what they did cannot be checked');

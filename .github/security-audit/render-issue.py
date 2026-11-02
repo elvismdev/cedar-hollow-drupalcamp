@@ -4,7 +4,8 @@
 # merge step settled: a confirmed record only when two scripts demonstrated it
 # this run (trusted-meta.json poc.confirmed) and the cross-check settled it
 # (cross_check.settled), and a lead only when the cross-check settled it. The
-# bookkeeping it shows (usage, poc, cross_check, dispute_rate, tie-break
+# bookkeeping it shows (usage, the number of subagents the safety classifier
+# interrupted, never their ids, poc, cross_check, dispute_rate, tie-break
 # sides, run_status and the incomplete reasons) is read only from
 # trusted-meta.json, which only merge-records.py writes; run-metadata.json,
 # which agents can write, supplies only source_ref, profile and scope_paths.
@@ -357,6 +358,8 @@ def header(run, cut_note):
         if isinstance(entry, dict) and isinstance(entry.get("invocations"), int) and isinstance(entry.get("cap"), int):
             parts.append("%s %d of %d" % (label(job), entry["invocations"], entry["cap"]))
     lines.append("*   Subagent invocations against cap: %s" % ("; ".join(parts) if parts else "none recorded"))
+    interrupted = trusted.get("interrupted") if isinstance(trusted.get("interrupted"), list) else []
+    lines.append("*   Subagents stopped by the safety classifier and left out: %d" % len(interrupted))
     rate = trusted.get("dispute_rate") if isinstance(trusted.get("dispute_rate"), dict) else {}
     if isinstance(rate.get("rate"), (int, float)) and not isinstance(rate.get("rate"), bool):
         lines.append("*   Dispute rate: %d of %d records cross-checked (%.0f%%)" % (

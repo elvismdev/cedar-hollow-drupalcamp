@@ -563,6 +563,149 @@ class CountTest(MergeTest):
         self.assertEqual(result.returncode, 1)
 
 
+INTERRUPTION = open(os.path.join(os.path.dirname(SCRIPT), "classifier-interruption.txt"), encoding="utf-8").read().strip()
+
+
+class InterruptionTest(MergeTest):
+    """A subagent the safety classifier stopped is recorded by count, keyed by
+    job, agent id and call id, and nothing it left is used: its entry, though
+    written by it and on disk, is never merged, and a manifest item naming it
+    or a script under its directory is dropped with any decision on it."""
+
+    def result(self, blocks, call=None, parent=None):
+        """A tool_result for the last subagent added (or call), as blocks."""
+        message = {"type": "user", "message": {"content": [
+            {"type": "tool_result", "tool_use_id": call or "toolu_%d" % self.calls, "content": blocks}]}}
+        if parent is not None:
+            message["parent_tool_use_id"] = parent
+        self.messages.append(message)
+
+    def text(self, value):
+        return [{"type": "text", "text": value}]
+
+    def decide_once(self, blocks, subagent_type=None, parent=None):
+        self.seed([lead("fp-1")], [unit("u1", fps=["fp-1"])])
+        self.select()
+        manifest = self.manifest(["fp-1"])
+        self.subagent("decider-1", self.decided("fp-1", "needs_validation", lead("fp-1"),
+                                                a="not_demonstrated", b="not_demonstrated"))
+        if subagent_type is not None:
+            self.messages[-2]["message"]["content"][0]["input"]["subagent_type"] = subagent_type
+        self.result(blocks, parent=parent)
+        messages = list(self.messages)
+        self.run_merge("count", "--job", "poc-decide", "--cap", "6", "--trace", self.trace_file())
+        self.messages = messages
+        self.decide(manifest)
+        return self.load("trusted-meta.json")
+
+    def assert_merged(self, meta):
+        self.assertEqual(meta.get("interrupted"), [])
+        self.assertNotIn("subagent interrupted by the safety classifier", self.discarded())
+        self.assertEqual(meta["poc"]["decided"], ["fp-1"])
+
+    def test_an_interrupted_subagents_entry_is_not_merged(self):
+        meta = self.decide_once(self.text("  " + INTERRUPTION + "\n"))
+        self.assertEqual(meta["interrupted"], [{"job": "poc-decide", "agent_id": "decider-1", "tool_use_id": "toolu_1"}])
+        self.assertIn("subagent interrupted by the safety classifier", self.discarded())
+        self.assertEqual(meta["poc"]["decided"], [])
+
+    def test_a_report_is_merged_and_records_no_interruption(self):
+        self.assert_merged(self.decide_once(self.text("Judged both scripts; neither showed the claim.")))
+
+    def test_a_report_quoting_the_interruption_is_not_one(self):
+        self.assert_merged(self.decide_once(self.text("Done. A log line read: " + INTERRUPTION)))
+
+    def test_a_report_starting_with_the_sentence_is_not_one(self):
+        self.assert_merged(self.decide_once(self.text(INTERRUPTION + " Then I judged both scripts.")))
+
+    def test_the_sentence_in_a_second_block_is_not_one(self):
+        self.assert_merged(self.decide_once(self.text("Report.") + self.text(INTERRUPTION)))
+
+    def test_the_sentence_as_a_plain_string_is_not_one(self):
+        self.assert_merged(self.decide_once(INTERRUPTION))
+
+    def test_the_sentence_for_an_explore_type_call_is_not_one(self):
+        self.assert_merged(self.decide_once(self.text(INTERRUPTION), subagent_type="Explore"))
+
+    def test_the_sentence_in_a_subagents_own_message_is_not_one(self):
+        self.assert_merged(self.decide_once(self.text(INTERRUPTION), parent="toolu_9"))
+
+    def test_status_copies_the_interruptions_into_run_metadata(self):
+        self.decide_once(self.text(INTERRUPTION))
+        self.run_merge("status")
+        self.assertEqual(self.load("run-metadata.json")["interrupted"],
+                         [{"job": "poc-decide", "agent_id": "decider-1", "tool_use_id": "toolu_1"}])
+
+    def test_a_reused_agent_id_in_a_second_trace_counts_twice(self):
+        self.seed([], [])
+        for _ in range(2):
+            self.subagent("h01", "{}")
+            self.result(self.text(INTERRUPTION))
+            self.run_merge("count", "--job", "source", "--cap", "60", "--trace", self.trace_file())
+        recorded = self.load("trusted-meta.json")["interrupted"]
+        self.assertEqual([(r["agent_id"], r["tool_use_id"]) for r in recorded], [("h01", "toolu_1"), ("h01", "toolu_2")])
+
+    def poc_write_count(self, interrupt):
+        """count for poc-write, whose writer-0a subagent was or was not
+        interrupted."""
+        self.subagent("writer-0a", "{}")
+        self.result(self.text(INTERRUPTION if interrupt else "Wrote poc.php."))
+        self.run_merge("count", "--job", "poc-write", "--cap", "12", "--trace", self.trace_file())
+
+    def test_a_manifest_item_from_an_interrupted_writer_is_dropped(self):
+        self.seed([lead("fp-1")], [unit("u1", fps=["fp-1"])])
+        self.select()
+        self.poc_write_count(interrupt=True)
+        manifest = self.manifest(["fp-1"])
+        self.subagent("decider-1", self.decided("fp-1", "needs_validation", lead("fp-1"),
+                                                a="not_demonstrated", b="not_demonstrated"))
+        self.decide(manifest)
+        meta = self.load("trusted-meta.json")
+        self.assertIn("manifest item from an interrupted subagent", self.discarded())
+        self.assertIn("decision on scripts from an interrupted subagent", self.discarded())
+        self.assertEqual(meta["poc"]["decided"], [])
+        self.assertFalse(os.path.exists(os.path.join(self.out, "agents", "decider-1", "artifacts")))
+
+    def test_a_script_under_an_interrupted_writers_folder_is_dropped_whatever_id_it_names(self):
+        self.seed([lead("fp-1")], [unit("u1", fps=["fp-1"])])
+        self.select()
+        self.poc_write_count(interrupt=True)
+        manifest = self.manifest(["fp-1"])
+        with open(manifest, encoding="utf-8") as handle:
+            data = json.load(handle)
+        data["items"][0]["scripts"][0]["agent_id"] = "someone-else"
+        self.write(manifest, data)
+        self.subagent("decider-1", self.decided("fp-1", "needs_validation", lead("fp-1"),
+                                                a="not_demonstrated", b="not_demonstrated"))
+        self.decide(manifest)
+        self.assertIn("manifest item from an interrupted subagent", self.discarded())
+        self.assertEqual(self.load("trusted-meta.json")["poc"]["decided"], [])
+
+    def test_a_manifest_agent_id_that_is_not_a_string_does_not_crash_the_check(self):
+        self.seed([lead("fp-1")], [unit("u1", fps=["fp-1"])])
+        self.select()
+        self.poc_write_count(interrupt=True)
+        manifest = self.manifest(["fp-1"])
+        with open(manifest, encoding="utf-8") as handle:
+            data = json.load(handle)
+        data["items"][0]["scripts"][0]["agent_id"] = ["writer-0a"]
+        self.write(manifest, data)
+        self.subagent("decider-1", self.decided("fp-1", "needs_validation", lead("fp-1"),
+                                                a="not_demonstrated", b="not_demonstrated"))
+        self.decide(manifest)
+
+    def test_a_manifest_item_from_a_writer_that_finished_is_used(self):
+        self.seed([lead("fp-1")], [unit("u1", fps=["fp-1"])])
+        self.select()
+        self.poc_write_count(interrupt=False)
+        manifest = self.manifest(["fp-1"])
+        self.subagent("decider-1", self.decided("fp-1", "needs_validation", lead("fp-1"),
+                                                a="not_demonstrated", b="not_demonstrated"))
+        self.decide(manifest)
+        self.assertEqual(self.load("trusted-meta.json")["poc"]["decided"], ["fp-1"])
+        self.assertNotIn("manifest item from an interrupted subagent", self.discarded())
+
+
 class HostileEntryTest(MergeTest):
     """Agent-written input shaped to crash the merge, override a decision or
     skew a count; each case comes from a review probe."""
