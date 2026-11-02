@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Runs real ripgrep, in Claude Code's argument order, for every Grep glob the
-# trace check accepts from the checkout's top level, against a scratch checkout
-# whose .git holds a random token. It fails if any accepted glob returns the
+# trace check accepts from the checkout's top level, and from the directory
+# above it given as an added root, against a scratch checkout whose .git holds
+# a random token. It fails if any accepted glob returns the
 # token, and also if no refused glob does, which would mean the search could
 # not have found it. ripgrep is required: without it the test fails.
 #
@@ -21,7 +22,9 @@ echo "ripgrep: $(rg --version | head -n 1)"
 
 # The scratch checkout: a token in .git/config and in a file under .git that
 # has an extension, and ordinary files that hold another token.
-ws="$tmp/repo"
+up="$tmp/up"
+ws="$up/repo"
+mkdir -p "$up"
 git init -q "$ws"
 token="Gt$(od -An -N12 -tx1 /dev/urandom | tr -d ' \n')"
 plain="Pt$(od -An -N12 -tx1 /dev/urandom | tr -d ' \n')"
@@ -33,10 +36,10 @@ for f in x.php .gitignore composer.json README.md src/x.php src/a/x.php a/x.php 
   printf '%s\n' "$plain" > "$ws/$f"
 done
 
-GITHUB_WORKSPACE="$ws" python3 -I - "$C" "$SUITE" "$ws" "$token" "$plain" "$tmp" <<'PY'
+GITHUB_WORKSPACE="$ws" python3 -I - "$C" "$SUITE" "$ws" "$token" "$plain" "$tmp" "$up" <<'PY'
 import itertools, json, os, re, subprocess, sys
 
-check, suite, ws, token, plain, tmp = sys.argv[1:]
+check, suite, ws, token, plain, tmp, up = sys.argv[1:]
 AUDIT = ['--tools', 'Read,Glob,Grep,Write,Edit,Agent,Task,SubagentHandback',
          '--root', '/mnt/audit/source/in', '--root', '/mnt/audit/source/out',
          '--write-root', '/mnt/audit/source/out', '--grep-any-glob-in-subfolders']
@@ -53,6 +56,10 @@ SEGS = ['*', '**', 'a', 'x.php', '.gitignore', '.git', '.gi*', '{a,.git}', '*.{p
 for depth in (1, 2, 3):
     for combo in itertools.product(SEGS, repeat=depth):
         globs.add('/'.join(combo))
+        # The same shapes under the checkout's own name, for the search from
+        # the directory above it.
+        if depth < 3:
+            globs.add('/'.join((os.path.basename(ws),) + combo))
 globs = sorted(g for g in globs if g)
 
 def accepted(path, options):
@@ -72,7 +79,7 @@ def accepted(path, options):
         sys.exit('FAIL: the trace check did not run: %s' % r.stderr[-400:])
     return {g for i, g in enumerate(globs, 1) if i not in refused}
 
-def search(glob):
+def search(glob, target=None):
     """ripgrep as Claude Code 2.1.316 runs it: --hidden, its own exclusions,
     --max-columns, the mode flags, the pattern, then the agent's glob split on
     whitespace and on commas unless a part holds a brace group."""
@@ -83,14 +90,16 @@ def search(glob):
     for part in glob.split():
         for p in ([part] if '{' in part and '}' in part else [t for t in part.split(',') if t]):
             args += ['--glob', p]
-    r = subprocess.run(args + [ws], capture_output=True, cwd=ws)
+    # Claude Code runs ripgrep in its working directory, the checkout, and
+    # passes the Grep's path as the target, even when it lies outside it.
+    r = subprocess.run(args + [target or ws], capture_output=True, cwd=ws)
     return r.returncode, r.stdout.decode('utf-8', 'replace'), r.stderr.decode('utf-8', 'replace')
 
-def leaks(glob):
+def leaks(glob, target=None):
     """ripgrep's exit status, the files under .git it listed, every file it
     listed and its first error line. Files are read even when it exits 2, since
     an error elsewhere does not stop it listing matches."""
-    code, out, err = search(glob)
+    code, out, err = search(glob, target)
     files = [f for f in out.split('\0') if f]
     return code, [f for f in files if '/.git/' in f], files, (err.splitlines() or [''])[0]
 
@@ -100,20 +109,30 @@ for path in ('', ws):
         ok |= accepted(path, options)
 refused = [g for g in globs if g not in ok]
 print('globs %d, accepted %d, refused %d' % (len(globs), len(ok), len(refused)))
+# From the directory above the checkout, allowed as an added root.
+above = set()
+for options in (['--root', up], AUDIT + ['--root', up]):
+    above |= accepted(up, options)
+print('from above the checkout: accepted %d, refused %d' % (len(above), len(globs) - len(above)))
 
-bad, errors = [], []
-for g in sorted(ok):
-    code, leaked, files, err = leaks(g)
-    if leaked:
-        bad.append(g)
-    if code == 2:
-        errors.append((g, err))
-if bad:
-    sys.exit('FAIL: %d accepted glob(s) returned the .git token: %s' % (len(bad), ' '.join(bad[:20])))
-# An error can hide a match, so any ripgrep error fails the canary.
-if errors:
-    sys.exit('FAIL: ripgrep failed on %d accepted glob(s), e.g. %s: %s'
-             % (len(errors), errors[0][0], errors[0][1]))
+def run_accepted(names, target):
+    bad, errors = [], []
+    for g in sorted(names):
+        code, leaked, files, err = leaks(g, target)
+        if leaked:
+            bad.append(g)
+        if code == 2:
+            errors.append((g, err))
+    where = 'from above the checkout ' if target else ''
+    if bad:
+        sys.exit('FAIL: %d accepted glob(s) %sreturned the .git token: %s' % (len(bad), where, ' '.join(bad[:20])))
+    # An error can hide a match, so any ripgrep error fails the canary.
+    if errors:
+        sys.exit('FAIL: ripgrep failed %son %d accepted glob(s), e.g. %s: %s'
+                 % (where, len(errors), errors[0][0], errors[0][1]))
+
+run_accepted(ok, None)
+run_accepted(above, up)
 # The search must find ordinary files through an accepted glob, and the token
 # through a refused one, or a clean result proves nothing.
 if '/x.php' not in ''.join(leaks('*.php')[2]) or '*.php' not in ok:
@@ -121,8 +140,13 @@ if '/x.php' not in ''.join(leaks('*.php')[2]) or '*.php' not in ok:
 reached = [g for g in refused if leaks(g)[1]]
 if not reached:
     sys.exit('FAIL: no refused glob returned the .git token, so the canary cannot fail')
+reached_above = [g for g in globs if g not in above and leaks(g, up)[1]]
+if not reached_above:
+    sys.exit('FAIL: no glob refused from above the checkout returned the .git token')
 print('searched %d accepted glob(s) with no ripgrep error, none reached .git; %d refused glob(s) did, e.g. %s'
       % (len(ok), len(reached), ' '.join(reached[:5])))
+print('from above: searched %d accepted glob(s) with no ripgrep error, none reached .git; %d refused glob(s) did, e.g. %s'
+      % (len(above), len(reached_above), ' '.join(reached_above[:5])))
 PY
 status=$?
 [ "$status" -eq 0 ] && echo "ok: check-trace-tools-ripgrep.test.sh"
