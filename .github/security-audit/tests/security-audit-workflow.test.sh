@@ -60,6 +60,8 @@ if can.get("type") != "choice" or can.get("default") != "none" or set(can.get("o
 # whole workflow.
 if str((wf.get("env") or {}).get("CLAUDE_CODE_DISABLE_BACKGROUND_TASKS")) != "1":
     err("the workflow-level env must set CLAUDE_CODE_DISABLE_BACKGROUND_TASKS to 1, so subagents run in the foreground")
+if "CLAUDE_CODE_DISABLE_REFUSAL_FALLBACK" in (wf.get("env") or {}):
+    err("CLAUDE_CODE_DISABLE_REFUSAL_FALLBACK belongs on the cross-check and tie-break agent steps only, not the workflow's env")
 if wf.get("permissions") != {}:
     err("the workflow's top-level permissions must be {}")
 conc = wf.get("concurrency") or {}
@@ -105,6 +107,10 @@ AGENT_STEPS = {"source": ["source", "repair"], "poc-write": ["poc_write"], "poc-
                "cross-check": ["cross_check", "tie_break"]}
 ACTION = "anthropics/claude-code-action@ae68417a745a5df4b2124873632bd73a2255e6f6"
 MODEL_VARS = {"ANTHROPIC_DEFAULT_SONNET_MODEL", "ANTHROPIC_DEFAULT_HAIKU_MODEL", "CLAUDE_CODE_SUBAGENT_MODEL"}
+# The judging agents run with Claude Code's refusal fallback off, so a refused
+# request stops instead of moving to another model (D24); the others keep it.
+NO_FALLBACK = "CLAUDE_CODE_DISABLE_REFUSAL_FALLBACK"
+NO_FALLBACK_AGENTS = {"agent-cross-check", "agent-tie-break"}
 
 def norm(text):
     return re.sub(r"\s+", " ", str(text or "")).strip()
@@ -195,10 +201,15 @@ for name, job in jobs.items():
                 err("%s step %d: show_full_output and display_report must be 'false'" % (name, i))
             if norm(w.get("claude_code_oauth_token")) != "${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}":
                 err("%s step %d: the agent's token must be secrets.CLAUDE_CODE_OAUTH_TOKEN" % (name, i))
-            if set(st.get("env") or {}) != MODEL_VARS:
-                err("%s step %d: the agent step's env must set exactly %s" % (name, i, sorted(MODEL_VARS)))
+            want_env = MODEL_VARS | ({NO_FALLBACK} if st.get("id") in NO_FALLBACK_AGENTS else set())
+            if set(st.get("env") or {}) != want_env:
+                err("%s step %d: the agent step's env must set exactly %s" % (name, i, sorted(want_env)))
+            if st.get("id") in NO_FALLBACK_AGENTS and str((st.get("env") or {}).get(NO_FALLBACK)) != "1":
+                err("%s step %d: the %s step must set %s to \"1\"" % (name, i, st.get("id"), NO_FALLBACK))
             if not re.fullmatch(r"\$\{\{ steps\.args-[a-z-]+\.outputs\.claude_args \}\}", norm(w.get("claude_args"))):
                 err("%s step %d: claude_args must come from a compose step" % (name, i))
+    if NO_FALLBACK in (job.get("env") or {}):
+        err("%s: %s belongs on the cross-check and tie-break agent steps only, not the job's env" % (name, NO_FALLBACK))
     if len(agent_ids) != len(AGENT_STEPS.get(name, [])):
         err("%s must have %d agent step(s), has %d" % (name, len(AGENT_STEPS.get(name, [])), len(agent_ids)))
 
@@ -789,6 +800,11 @@ mutate "marker=true for the previous run's marker" '("jq -rR --arg id \"$GITHUB_
 
 mutate "publishing before audit-state is uploaded" "(\"steps.own-marker.outputs.own == 'false' || steps.upload-state.outcome == 'success')\", \"steps.own-marker.outputs.own != 'x')\", 1)"
 mutate_moved_upload
+mutate "the tie-break with its refusal fallback on" '("          CLAUDE_CODE_SUBAGENT_MODEL: ${{ steps.args-tie-break.outputs.CLAUDE_CODE_SUBAGENT_MODEL }}\n          # A refused request stops here instead of switching models (D24).\n          CLAUDE_CODE_DISABLE_REFUSAL_FALLBACK: \"1\"\n", "          CLAUDE_CODE_SUBAGENT_MODEL: ${{ steps.args-tie-break.outputs.CLAUDE_CODE_SUBAGENT_MODEL }}\n", 1)'
+mutate "the cross-check refusal fallback set to 0" '("CLAUDE_CODE_DISABLE_REFUSAL_FALLBACK: \"1\"", "CLAUDE_CODE_DISABLE_REFUSAL_FALLBACK: \"0\"", 1)'
+mutate "the source agent with its refusal fallback off" '("          CLAUDE_CODE_SUBAGENT_MODEL: ${{ steps.args-source.outputs.CLAUDE_CODE_SUBAGENT_MODEL }}\n", "          CLAUDE_CODE_SUBAGENT_MODEL: ${{ steps.args-source.outputs.CLAUDE_CODE_SUBAGENT_MODEL }}\n          CLAUDE_CODE_DISABLE_REFUSAL_FALLBACK: \"1\"\n", 1)'
+mutate "the poc-write agent with its refusal fallback off" '("          CLAUDE_CODE_SUBAGENT_MODEL: ${{ steps.args-poc-write.outputs.CLAUDE_CODE_SUBAGENT_MODEL }}\n", "          CLAUDE_CODE_SUBAGENT_MODEL: ${{ steps.args-poc-write.outputs.CLAUDE_CODE_SUBAGENT_MODEL }}\n          CLAUDE_CODE_DISABLE_REFUSAL_FALLBACK: \"1\"\n", 1)'
+mutate "the refusal fallback off for the whole workflow" '("  CLAUDE_CODE_DISABLE_BACKGROUND_TASKS:", "  CLAUDE_CODE_DISABLE_REFUSAL_FALLBACK: \"1\"\n  CLAUDE_CODE_DISABLE_BACKGROUND_TASKS:", 1)'
 
 mutate "background subagents allowed" '("  CLAUDE_CODE_DISABLE_BACKGROUND_TASKS: \"1\"\n", "", 1)'
 mutate "background subagents set to 0" '("  CLAUDE_CODE_DISABLE_BACKGROUND_TASKS: \"1\"", "  CLAUDE_CODE_DISABLE_BACKGROUND_TASKS: \"0\"", 1)'
