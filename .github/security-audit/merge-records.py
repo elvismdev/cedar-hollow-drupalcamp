@@ -1040,7 +1040,7 @@ def cmd_apply_decide(state, args):
     for fp, slots in list(modes.items()):
         for _mode, script, agent_id in slots.values():
             parts = posixpath.normpath(script).split("/") if isinstance(script, str) else []
-            if agent_id in writers or (len(parts) > 1 and parts[0] == "agents" and parts[1] in writers):
+            if (isinstance(agent_id, str) and agent_id in writers) or (len(parts) > 1 and parts[0] == "agents" and parts[1] in writers):
                 dropped.add(fp)
         if fp in dropped:
             del modes[fp]

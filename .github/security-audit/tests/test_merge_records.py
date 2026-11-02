@@ -681,6 +681,19 @@ class InterruptionTest(MergeTest):
         self.assertIn("manifest item from an interrupted subagent", self.discarded())
         self.assertEqual(self.load("trusted-meta.json")["poc"]["decided"], [])
 
+    def test_a_manifest_agent_id_that_is_not_a_string_does_not_crash_the_check(self):
+        self.seed([lead("fp-1")], [unit("u1", fps=["fp-1"])])
+        self.select()
+        self.poc_write_count(interrupt=True)
+        manifest = self.manifest(["fp-1"])
+        with open(manifest, encoding="utf-8") as handle:
+            data = json.load(handle)
+        data["items"][0]["scripts"][0]["agent_id"] = ["writer-0a"]
+        self.write(manifest, data)
+        self.subagent("decider-1", self.decided("fp-1", "needs_validation", lead("fp-1"),
+                                                a="not_demonstrated", b="not_demonstrated"))
+        self.decide(manifest)
+
     def test_a_manifest_item_from_a_writer_that_finished_is_used(self):
         self.seed([lead("fp-1")], [unit("u1", fps=["fp-1"])])
         self.select()
