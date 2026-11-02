@@ -147,6 +147,7 @@ DISPUTED, HISTORY, TRUSTED_META = _shared.DISPUTED, _shared.HISTORY, _shared.TRU
 FINGERPRINT = _shared.FINGERPRINT
 Refused = _shared.Refused
 MODEL_NAME, refusal_fallback_models = _shared.MODEL_NAME, _shared.refusal_fallback_models
+REFUSAL_FALLBACK = _shared.REFUSAL_FALLBACK
 parse_strict, read_bytes, read_json = _shared.parse_strict, _shared.read_bytes, _shared.read_json
 
 MAX_STATE_BYTES = 5 * 1024 * 1024
@@ -391,7 +392,7 @@ def record_valid(record):
 # does not hold), so their copies there, which the source and repair agents
 # can write, are never read.
 MIRRORED_KEYS = ("usage", "poc", "cross_check", "merge_discarded", "incomplete_reasons", "dispute_rate",
-                 "prior_run_paths", "interrupted", "refusal_fallback")
+                 "prior_run_paths", "interrupted", REFUSAL_FALLBACK)
 
 
 def non_negative_int(value):
@@ -423,7 +424,7 @@ class State:
         for key in ("poc", "cross_check", "dispute_rate"):
             if key in trusted and not isinstance(trusted[key], dict):
                 raise Refused(TRUSTED_META + " %s is not an object" % key)
-        for key in ("merge_discarded", "prior_run_paths", "interrupted", "refusal_fallback"):
+        for key in ("merge_discarded", "prior_run_paths", "interrupted", REFUSAL_FALLBACK):
             if not isinstance(trusted.get(key, []), list):
                 raise Refused(TRUSTED_META + " %s is not a list" % key)
         reasons = trusted.get("incomplete_reasons")
@@ -634,15 +635,24 @@ def interrupted_ids(state, job):
             if isinstance(r, dict) and r.get("job") == job and isinstance(r.get("agent_id"), str)}
 
 
-def refusal_fallbacks(messages):
-    """The allowlisted models that a top-level system model_refusal_fallback
-    message names as fallback_model and that the trace shows in use (an
-    assistant message's model or a result's modelUsage), read as
-    check-agent-run.sh reads them."""
-    allowed = refusal_fallback_models()
-    named = {m["fallback_model"] for m in messages
-             if isinstance(m, dict) and m.get("type") == "system" and m.get("subtype") == "model_refusal_fallback"
-             and isinstance(m.get("fallback_model"), str) and m["fallback_model"] in allowed}
+def refusal_fallbacks(messages, pinned):
+    """The allowlisted models, other than the pinned one, that a top-level
+    system model_refusal_fallback message names as fallback_model and that
+    the trace shows in use (an assistant message's model or a result's
+    modelUsage), read as check-agent-run.sh reads them. The allowlist is read
+    only when such a message exists; when it cannot be read, nothing is
+    recorded and the run check, which reads the same file, fails the run."""
+    events = [m for m in messages
+              if isinstance(m, dict) and m.get("type") == "system" and m.get("subtype") == "model_refusal_fallback"]
+    if not events:
+        return []
+    try:
+        allowed = refusal_fallback_models()
+    except Refused:
+        return []
+    named = {m["fallback_model"] for m in events
+             if isinstance(m.get("fallback_model"), str) and m["fallback_model"] in allowed
+             and m["fallback_model"] != pinned}
     used = set()
     for m in messages:
         if not isinstance(m, dict):
@@ -756,13 +766,13 @@ def cmd_count(state, args):
         raise Refused("invalid job name")
     if args.cap < 0:
         raise Refused("the cap must not be negative")
+    if not MODEL_NAME.fullmatch(args.model):
+        raise Refused("the pinned model is not a model name")
     messages = read_trace(args.trace)
     used = subagent_count(messages)
     bindings, _ = subagent_bindings(messages)
-    if not MODEL_NAME.fullmatch(args.model):
-        raise Refused("the pinned model is not a model name")
-    fallbacks = state.trusted.setdefault("refusal_fallback", [])
-    for fallback in refusal_fallbacks(messages):
+    fallbacks = state.trusted.setdefault(REFUSAL_FALLBACK, [])
+    for fallback in refusal_fallbacks(messages, args.model):
         key = {"job": args.job, "pinned_model": args.model, "fallback_model": fallback}
         if key not in fallbacks:
             fallbacks.append(key)

@@ -25,6 +25,10 @@ TRUSTED_META = "trusted-meta.json"
 
 FINGERPRINT = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:/@+-]*$")
 
+# The trusted-meta.json and run-metadata.json key that records each job
+# Claude Code's refusal fallback moved to another model.
+REFUSAL_FALLBACK = "refusal_fallback"
+
 # A model name as the audit records and prints it.
 MODEL_NAME = re.compile(r"^claude-[a-z0-9-]+$")
 # The models Claude Code's refusal fallback may switch a job to, one per line;

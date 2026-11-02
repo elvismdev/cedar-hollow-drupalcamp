@@ -89,7 +89,7 @@ FINDINGS, LEDGER, METADATA = _shared.FINDINGS, _shared.LEDGER, _shared.METADATA
 DISPUTED, HISTORY, TRUSTED_META = _shared.DISPUTED, _shared.HISTORY, _shared.TRUSTED_META
 FINGERPRINT = _shared.FINGERPRINT
 Refused = _shared.Refused
-MODEL_NAME = _shared.MODEL_NAME
+MODEL_NAME, REFUSAL_FALLBACK = _shared.MODEL_NAME, _shared.REFUSAL_FALLBACK
 
 MAX_STATE_BYTES = 5 * 1024 * 1024
 MAX_ARTIFACT_BYTES = 1024 * 1024
@@ -363,7 +363,7 @@ def header(run, cut_note):
     lines.append("*   Subagent invocations against cap: %s" % ("; ".join(parts) if parts else "none recorded"))
     interrupted = trusted.get("interrupted") if isinstance(trusted.get("interrupted"), list) else []
     lines.append("*   Subagents stopped by the safety classifier and left out: %d" % len(interrupted))
-    fallbacks = trusted.get("refusal_fallback") if isinstance(trusted.get("refusal_fallback"), list) else []
+    fallbacks = trusted.get(REFUSAL_FALLBACK) if isinstance(trusted.get(REFUSAL_FALLBACK), list) else []
     for entry in fallbacks:
         if not isinstance(entry, dict):
             continue

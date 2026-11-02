@@ -765,6 +765,52 @@ class RefusalFallbackTest(MergeTest):
         self.count(self.trace_file())
         self.assertEqual(self.load("trusted-meta.json")["refusal_fallback"], [])
 
+    def test_an_event_naming_the_pinned_model_is_not_a_fallback(self):
+        # The pinned model here is the allowlisted one, so only R2's rule
+        # keeps it from being recorded as a fallback from itself.
+        self.seed([], [])
+        trace = self.fallback_trace("claude-opus-4-8", self.event("claude-opus-4-8"))
+        self.run_merge("count", "--job", "poc-write", "--cap", "12", "--trace", trace, "--model", "claude-opus-4-8")
+        self.assertEqual(self.load("trusted-meta.json")["refusal_fallback"], [])
+
+    def copy_without_allowlist(self):
+        """A copy of the scripts with refusal-fallback-models.txt removed."""
+        copy = os.path.join(self.tmp, "sa")
+        shutil.copytree(os.path.dirname(SCRIPT), copy, ignore=shutil.ignore_patterns("tests", "__pycache__"))
+        os.remove(os.path.join(copy, "refusal-fallback-models.txt"))
+        return os.path.join(copy, "merge-records.py")
+
+    def count_with(self, script, trace):
+        return subprocess.run([sys.executable, "-I", script, "--state", self.state, "count", "--job", "poc-write",
+                               "--cap", "0", "--trace", trace, "--model", self.PINNED], capture_output=True, text=True)
+
+    def test_a_trace_with_no_event_counts_without_the_allowlist(self):
+        self.seed([], [])
+        script = self.copy_without_allowlist()
+        self.subagent("w-1", "{}")
+        result = self.count_with(script, self.trace_file())
+        self.assertEqual(result.returncode, 0, result.stderr)
+        meta = self.load("trusted-meta.json")
+        self.assertEqual(meta["usage"]["poc-write"], {"invocations": 1, "cap": 0})
+        self.assertIn("cap_exceeded:poc-write", meta["incomplete_reasons"])
+
+    def test_an_event_without_the_allowlist_records_no_fallback_but_still_counts(self):
+        self.seed([], [])
+        script = self.copy_without_allowlist()
+        self.subagent("w-1", "{}")
+        self.messages.append(self.event("claude-opus-4-8"))
+        result = self.count_with(script, self.trace_file())
+        self.assertEqual(result.returncode, 0, result.stderr)
+        meta = self.load("trusted-meta.json")
+        self.assertEqual(meta["refusal_fallback"], [])
+        self.assertEqual(meta["usage"]["poc-write"], {"invocations": 1, "cap": 0})
+
+    def test_a_malformed_pinned_model_is_refused_before_the_trace_is_read(self):
+        self.seed([], [])
+        result = self.run_merge("count", "--job", "source", "--cap", "1", "--trace",
+                                os.path.join(self.tmp, "missing.json"), "--model", "opus; rm", ok=False)
+        self.assertIn("the pinned model is not a model name", result.stderr)
+
     def test_a_malformed_pinned_model_is_refused(self):
         self.seed([], [])
         result = self.run_merge("count", "--job", "source", "--cap", "1", "--trace", self.trace_file(),
