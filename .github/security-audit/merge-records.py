@@ -110,7 +110,8 @@
 # and, in trusted-meta.json only, run_id and source_run_status.
 # Incomplete reasons it sets: cross_check_same_model (the cross-check or the
 # tie-break ran on the source job's effective model, its recorded refusal
-# fallback or else its pinned model, so its entries were not applied, D24),
+# fallback or else its pinned model, or either model was never recorded, so
+# its entries were not applied, D24),
 # cap_exceeded:<job>, cross_check_cap,
 # cross_check_missing (a selected record with no valid cross-check entry, or
 # a cross-check that never applied), cross_check_dispute, cross_check_not_run
@@ -1291,11 +1292,14 @@ def effective_model(state, job):
 def same_model_as_source(state, checker):
     """D24: the cross-check and the tie-break run on a different model from
     the source job (and the source repair, if it ran). True when the checking
-    job's effective model equals one of theirs; a job never counted is not
-    known and decides nothing."""
+    job's effective model equals one of theirs, or when the checking job's or
+    the source job's model is not known, since independence cannot then be
+    shown. The source repair counts only when it ran."""
     mine = effective_model(state, checker)
-    sources = [effective_model(state, job) for job in ("source", "source_repair")]
-    return mine is not None and mine in sources
+    source = effective_model(state, "source")
+    if mine is None or source is None:
+        return True
+    return mine in (source, effective_model(state, "source_repair"))
 
 
 def cmd_apply_cross_check(state, args):

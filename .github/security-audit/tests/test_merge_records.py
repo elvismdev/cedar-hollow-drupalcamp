@@ -237,9 +237,22 @@ class MergeTest(unittest.TestCase):
         return self.run_merge("apply-decide", "--manifest", manifest, "--records", self.records,
                               "--scripts", self.scripts, "--entries", self.out, "--trace", self.trace_file())
 
+    def pin_models(self):
+        """Record each job's pinned model as count does, unless a test already
+        recorded one, so the cross-check is known to run on a different model
+        from the source (D24)."""
+        path = os.path.join(self.state, "trusted-meta.json")
+        trusted = self.load("trusted-meta.json") if os.path.exists(path) else {}
+        models = trusted.setdefault("job_models", {})
+        for job, model in (("source", "claude-opus-5-5"), ("cross-check", "claude-fable-5-1"),
+                           ("tie-break", "claude-sonnet-5-5")):
+            models.setdefault(job, model)
+        self.write(path, trusted)
+
     def cross_check(self):
         inputs = os.path.join(self.tmp, "tie-break-inputs.json")
         self.run_merge("select-cross-check", "--out", os.path.join(self.tmp, "list.json"))
+        self.pin_models()
         self.run_merge("apply-cross-check", "--entries", self.out, "--trace", self.trace_file(), "--out", inputs)
         with open(inputs, encoding="utf-8") as handle:
             return json.load(handle)["disputes"]
@@ -860,6 +873,12 @@ class SameModelTest(MergeTest):
                                                   ("cross-check", "claude-fable-5-1", None)))
         self.assertEqual(self.load("trusted-meta.json")["job_models"],
                          {"source": "claude-opus-5-5", "cross-check": "claude-fable-5-1"})
+
+    def test_an_unrecorded_source_model_is_refused(self):
+        self.assert_refused(*self.run_cross_check(("cross-check", "claude-fable-5-1", None)))
+
+    def test_an_unrecorded_cross_check_model_is_refused(self):
+        self.assert_refused(*self.run_cross_check(("source", "claude-opus-5-5", None)))
 
     def test_the_same_pinned_model_is_refused(self):
         self.assert_refused(*self.run_cross_check(("source", "claude-opus-5-5", None),
