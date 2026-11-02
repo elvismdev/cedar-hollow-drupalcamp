@@ -244,8 +244,7 @@ class MergeTest(unittest.TestCase):
         path = os.path.join(self.state, "trusted-meta.json")
         trusted = self.load("trusted-meta.json") if os.path.exists(path) else {}
         models = trusted.setdefault("job_models", {})
-        for job, model in (("source", "claude-opus-5-5"), ("poc-write", "claude-opus-5-5"),
-                           ("poc-decide", "claude-opus-5-5"), ("cross-check", "claude-fable-5-1"),
+        for job, model in (("source", "claude-opus-5-5"), ("cross-check", "claude-fable-5-1"),
                            ("tie-break", "claude-sonnet-5-5")):
             models.setdefault(job, model)
         self.write(path, trusted)
