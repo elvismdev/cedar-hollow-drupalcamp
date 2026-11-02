@@ -704,20 +704,20 @@ def refusal_fallbacks(messages, pinned, helper=None):
     return sorted(named & used)
 
 
-def compactions(messages, pinned, helper=None):
+def compactions(messages, pinned, helper, fallbacks):
     """The models Claude Code's automatic compaction summarised the context
     on, read as check-agent-run.sh reads them: a model in a result's
-    modelUsage that is not the pinned model, the helper or a model a refusal
-    fallback event names from its allowlist, that no assistant message is
-    from, that is on compaction-models.txt, in a trace whose top-level array
-    holds a system compact_boundary message with compact_metadata.trigger
-    "auto". The allowlist is read only when such a model exists; when it
+    modelUsage that is not the pinned model, the helper or one of fallbacks
+    (what refusal_fallbacks returned for the same trace), that no assistant
+    message is from, that is on compaction-models.txt, in a trace whose
+    top-level array holds a system compact_boundary message with
+    compact_metadata.trigger "auto". The allowlist is read only when such a model exists; when it
     cannot be read, nothing is recorded and the run check fails the run."""
     if not any(isinstance(m, dict) and m.get("type") == "system" and m.get("subtype") == "compact_boundary"
                and isinstance(m.get("compact_metadata"), dict) and m["compact_metadata"].get("trigger") == "auto"
                for m in messages):
         return []
-    usage, assistants, named = set(), set(), set()
+    usage, assistants = set(), set()
     for m in messages:
         if not isinstance(m, dict):
             continue
@@ -725,14 +725,7 @@ def compactions(messages, pinned, helper=None):
             usage.update(m["modelUsage"])
         if m.get("type") == "assistant" and isinstance(m.get("message"), dict) and isinstance(m["message"].get("model"), str):
             assistants.add(m["message"]["model"])
-        if m.get("type") == "system" and m.get("subtype") == "model_refusal_fallback":
-            named.add(m.get("fallback_model"))
-    if named:
-        try:
-            named &= set(refusal_fallback_models())
-        except Refused:
-            named = set()
-    candidates = usage - {pinned, helper} - named - assistants
+    candidates = usage - {pinned, helper} - set(fallbacks) - assistants
     if not candidates:
         return []
     try:
@@ -860,12 +853,13 @@ def cmd_count(state, args):
         if args.helper not in helpers:
             helpers.append(args.helper)
     fallbacks = state.trusted.setdefault(REFUSAL_FALLBACK, [])
-    for fallback in refusal_fallbacks(messages, args.model, args.helper):
+    fell_back = refusal_fallbacks(messages, args.model, args.helper)
+    for fallback in fell_back:
         key = {"job": args.job, "pinned_model": args.model, "fallback_model": fallback}
         if key not in fallbacks:
             fallbacks.append(key)
     compacted = state.trusted.setdefault(COMPACTION, [])
-    for model in compactions(messages, args.model, args.helper):
+    for model in compactions(messages, args.model, args.helper, fell_back):
         key = {"job": args.job, "pinned_model": args.model, "compaction_model": model}
         if key not in compacted:
             compacted.append(key)

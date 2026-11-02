@@ -555,6 +555,9 @@ assert_eq "1" "$(copy_rc source)" "a compaction model without the compaction all
 out=$(copy_run source || true)
 assert_contains "$out" "check-agent-run: the compaction allowlist is missing, empty or malformed" "and says why"
 case "$out" in *"at Object"*|*"ENOENT"*|*"node:"*) echo "FAIL: a missing compaction allowlist printed a stack" >&2; exit 1;; esac
+printf 'not a model\n' > "$COPY/security-audit/compaction-models.txt"
+assert_eq "1" "$(copy_rc source)" "a malformed compaction allowlist file fails a compaction run"
+assert_contains "$(copy_run source || true)" "check-agent-run: the compaction allowlist is missing, empty or malformed" "and says why, as for the fallback allowlist"
 
 # The fingerprint: the checkout and the watched parts of ~/.claude.
 assert_eq "0" "$(rc source "$tmp/clean.json")" "unchanged state passes"

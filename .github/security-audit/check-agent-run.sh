@@ -549,20 +549,25 @@ if (used && attributed === 0) {
 // The allowlist is read only when the trace holds such an event; a missing
 // or malformed allowlist then refuses the fallback with a reason line.
 const MODEL_NAME = /^claude-[a-z0-9-]+$/;
-const events = msgs.filter((m) => isObj(m) && m.type === 'system' && m.subtype === 'model_refusal_fallback');
-let allowlist = [];
-if (events.length > 0) {
+// One reader for both model allowlists: one model name per line. A missing,
+// empty or malformed file fails the run with a reason line and accepts
+// nothing.
+const readAllowlist = (file, what, models) => {
+  let lines = [];
   try {
-    allowlist = fs.readFileSync(fallbackFile, 'utf8').split('\n').map((l) => l.trim()).filter(Boolean);
+    lines = fs.readFileSync(file, 'utf8').split('\n').map((l) => l.trim()).filter(Boolean);
   } catch (err) {
-    allowlist = [];
+    lines = [];
   }
-  if (allowlist.length === 0 || !allowlist.every((l) => MODEL_NAME.test(l))) {
-    allowlist = [];
+  if (lines.length === 0 || !lines.every((l) => MODEL_NAME.test(l))) {
     bad += 1;
-    say('the refusal fallback allowlist is missing, empty or malformed, so no refusal fallback can be accepted');
+    say(`the ${what} allowlist is missing, empty or malformed, so no ${models} can be accepted`);
+    return [];
   }
-}
+  return lines;
+};
+const events = msgs.filter((m) => isObj(m) && m.type === 'system' && m.subtype === 'model_refusal_fallback');
+const allowlist = events.length > 0 ? readAllowlist(fallbackFile, 'refusal fallback', 'refusal fallback') : [];
 const fallbacks = new Set();
 for (const m of events) {
   if (allowlist.length === 0) break;
@@ -589,19 +594,8 @@ const assistantModels = new Set(msgs.filter((m) => isObj(m) && m.type === 'assis
   && typeof m.message.model === 'string').map((m) => m.message.model));
 const usageModels = new Set(msgs.filter((m) => isObj(m) && m.type === 'result' && isObj(m.modelUsage))
   .flatMap((m) => Object.keys(m.modelUsage)));
-let compactionAllowlist = [];
-if (autoCompaction && [...usageModels].some((k) => !accepted(k) && !assistantModels.has(k))) {
-  try {
-    compactionAllowlist = fs.readFileSync(compactionFile, 'utf8').split('\n').map((l) => l.trim()).filter(Boolean);
-  } catch (err) {
-    compactionAllowlist = [];
-  }
-  if (compactionAllowlist.length === 0 || !compactionAllowlist.every((l) => MODEL_NAME.test(l))) {
-    compactionAllowlist = [];
-    bad += 1;
-    say('the compaction allowlist is missing, empty or malformed, so no compaction model can be accepted');
-  }
-}
+const compactionAllowlist = autoCompaction && [...usageModels].some((k) => !accepted(k) && !assistantModels.has(k))
+  ? readAllowlist(compactionFile, 'compaction', 'compaction model') : [];
 const compactionModel = (k) => autoCompaction && compactionAllowlist.includes(k) && !assistantModels.has(k);
 
 let unexpected = 0;
