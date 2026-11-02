@@ -17,9 +17,40 @@
   "names-pinned": [],
   "model-not-a-string": [],
   "other-subtype": [],
-  "names-helper": []
+  "names-helper": [],
+  "compaction-accepted": [],
+  "compaction-manual": [],
+  "compaction-no-event": [],
+  "compaction-assistant": [],
+  "compaction-off-allowlist": [],
+  "compaction-in-tool-result": [],
+  "compaction-and-fallback": [
+   "claude-opus-4-8"
+  ]
  },
  "helpers": {
   "names-helper": "claude-opus-4-8"
+ },
+ "compaction": {
+  "accepted": [],
+  "compaction-accepted": [
+   "claude-opus-4-8"
+  ],
+  "compaction-and-fallback": [],
+  "compaction-assistant": [],
+  "compaction-in-tool-result": [],
+  "compaction-manual": [],
+  "compaction-no-event": [],
+  "compaction-off-allowlist": [],
+  "event-after-messages": [],
+  "event-unused": [],
+  "in-tool-result": [],
+  "model-not-a-string": [],
+  "names-helper": [],
+  "names-pinned": [],
+  "no-event": [],
+  "off-allowlist": [],
+  "other-subtype": [],
+  "two-events": []
  }
 }

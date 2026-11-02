@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
 # Runs every trace in fixtures/refusal-fallback through check-agent-run.sh and
 # merge-records.py count, the two readers of Claude Code's refusal fallback
-# event, and requires both to accept exactly the fallback models that
-# expected.json lists for it: the run check by the line it prints for each
-# fallback model used, count by what it records under refusal_fallback. A
+# and automatic compaction events, and requires both to accept exactly the
+# fallback models that expected.json lists under accepted and the compaction
+# models it lists under compaction: the run check by the line it prints for
+# each model, count by what it records under refusal_fallback and compaction. A
 # fixture named in expected.json's helpers runs both with that helper model,
 # which neither treats as a fallback.
 set -euo pipefail
@@ -30,12 +31,16 @@ for f in "$FIX"/*.json; do
   count=$((count + 1))
   want=$(jq -c --arg n "$name" '.accepted[$n] | sort' "$FIX/expected.json")
   [ "$want" != null ] || { echo "FAIL: $name has no entry in expected.json" >&2; exit 1; }
+  want_c=$(jq -c --arg n "$name" '.compaction[$n] | sort' "$FIX/expected.json")
+  [ "$want_c" != null ] || { echo "FAIL: $name has no compaction entry in expected.json" >&2; exit 1; }
 
   helper=$(jq -r --arg n "$name" '.helpers[$n] // ""' "$FIX/expected.json")
   helper_args=()
   if [ -n "$helper" ]; then helper_args=(--helper "$helper"); fi
   check=$(bash "$SA/check-agent-run.sh" poc-write "$f" "Read,Glob,Grep" /mnt/audit/poc-write/out "$tmp/fp" "$PINNED" ${helper:+"$helper"} 2>&1 || true)
   by_check=$(sed -n 's/^check-agent-run: the poc-write step ran on the refusal fallback model \(.*\)$/\1/p' <<<"$check" \
+    | jq -Rsc 'split("\n") | map(select(length > 0)) | sort')
+  c_check=$(sed -n "s/^check-agent-run: the poc-write step's context was summarised by the compaction model \(.*\)\$/\1/p" <<<"$check" \
     | jq -Rsc 'split("\n") | map(select(length > 0)) | sort')
 
   state="$tmp/state-$name"
@@ -45,10 +50,13 @@ for f in "$FIX"/*.json; do
   echo '{"run_id": "1"}' > "$state/run-metadata.json"
   python3 -I "$SA/merge-records.py" --state "$state" count --job poc-write --cap 12 --trace "$f" --model "$PINNED" "${helper_args[@]}" >/dev/null
   by_count=$(jq -c '[.refusal_fallback[].fallback_model] | sort' "$state/trusted-meta.json")
+  c_count=$(jq -c '[.compaction[].compaction_model] | sort' "$state/trusted-meta.json")
 
   assert_eq "$want" "$by_check" "$name: the run check accepts the expected fallback models"
   assert_eq "$want" "$by_count" "$name: count records the expected fallback models"
   assert_eq "$by_check" "$by_count" "$name: the run check and count agree"
+  assert_eq "$want_c" "$c_check" "$name: the run check accepts the expected compaction models"
+  assert_eq "$want_c" "$c_count" "$name: count records the expected compaction models"
 done
-[ "$count" -ge 11 ] || { echo "FAIL: only $count fixture(s) were read" >&2; exit 1; }
+[ "$count" -ge 18 ] || { echo "FAIL: only $count fixture(s) were read" >&2; exit 1; }
 pass "refusal-fallback-fixtures.test.sh ($count fixtures)"

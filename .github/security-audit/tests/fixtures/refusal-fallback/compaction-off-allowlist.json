@@ -1,0 +1,39 @@
+[
+ {
+  "type": "system",
+  "subtype": "init",
+  "tools": [
+   "Read"
+  ]
+ },
+ {
+  "type": "assistant",
+  "parent_tool_use_id": null,
+  "message": {
+   "model": "claude-opus-5-5",
+   "content": []
+  }
+ },
+ {
+  "type": "system",
+  "subtype": "compact_boundary",
+  "compact_metadata": {
+   "trigger": "auto",
+   "pre_tokens": 989974,
+   "post_tokens": 44263
+  }
+ },
+ {
+  "type": "result",
+  "subtype": "success",
+  "is_error": false,
+  "modelUsage": {
+   "claude-opus-5-5": {
+    "inputTokens": 1
+   },
+   "claude-other-1": {
+    "inputTokens": 1
+   }
+  }
+ }
+]

@@ -831,6 +831,87 @@ class RefusalFallbackTest(MergeTest):
         self.assertEqual(result.returncode, 1)
 
 
+class CompactionTest(MergeTest):
+    """count records a job whose context Claude Code's automatic compaction
+    summarised on an allowlisted model, and only such a job."""
+    PINNED = "claude-opus-5-5"
+    C = "claude-opus-4-8"
+
+    def boundary(self, trigger="auto"):
+        return {"type": "system", "subtype": "compact_boundary", "compact_metadata": {"trigger": trigger}}
+
+    def compaction_trace(self, usage_model, *extra, assistant=None):
+        self.messages.append({"type": "assistant", "message": {"model": assistant or self.PINNED, "content": []}})
+        self.messages.extend(extra)
+        path = self.trace_file()
+        with open(path, encoding="utf-8") as handle:
+            data = json.load(handle)
+        data[-1]["modelUsage"] = {self.PINNED: {}, usage_model: {}}
+        self.write(path, data)
+        return path
+
+    def count(self, trace, job="source"):
+        return self.run_merge("count", "--job", job, "--cap", "12", "--trace", trace, "--model", self.PINNED)
+
+    def test_an_automatic_compaction_model_is_recorded_and_copied_by_status(self):
+        self.seed([], [])
+        self.count(self.compaction_trace(self.C, self.boundary()))
+        expected = [{"job": "source", "pinned_model": self.PINNED, "compaction_model": self.C}]
+        self.assertEqual(self.load("trusted-meta.json")["compaction"], expected)
+        self.run_merge("status")
+        self.assertEqual(self.load("run-metadata.json")["compaction"], expected)
+
+    def assert_not_recorded(self, *extra):
+        self.seed([], [])
+        self.count(self.compaction_trace(self.C, *extra))
+        self.assertEqual(self.load("trusted-meta.json")["compaction"], [])
+
+    def test_no_boundary_records_nothing(self):
+        self.assert_not_recorded()
+
+    def test_a_manual_boundary_records_nothing(self):
+        self.assert_not_recorded(self.boundary("manual"))
+
+    def test_a_boundary_inside_a_tool_result_records_nothing(self):
+        self.assert_not_recorded({"type": "user", "message": {"content": [
+            {"type": "tool_result", "tool_use_id": "t", "content": [self.boundary()]}]}})
+
+    def test_a_model_off_the_allowlist_is_not_recorded(self):
+        self.seed([], [])
+        self.count(self.compaction_trace("claude-other-1", self.boundary()))
+        self.assertEqual(self.load("trusted-meta.json")["compaction"], [])
+
+    def test_a_model_with_an_assistant_message_is_not_recorded(self):
+        self.seed([], [])
+        self.count(self.compaction_trace(self.C, self.boundary(), assistant=self.C))
+        self.assertEqual(self.load("trusted-meta.json")["compaction"], [])
+
+    def test_a_named_refusal_fallback_is_recorded_as_a_fallback_only(self):
+        self.seed([], [])
+        event = {"type": "system", "subtype": "model_refusal_fallback", "fallback_model": self.C}
+        self.count(self.compaction_trace(self.C, self.boundary(), event))
+        meta = self.load("trusted-meta.json")
+        self.assertEqual(meta["compaction"], [])
+        self.assertEqual([r["fallback_model"] for r in meta["refusal_fallback"]], [self.C])
+
+    def test_a_compaction_model_joins_the_jobs_model_set(self):
+        # D24: a cross-check pinned to the source's compaction model is not
+        # independent of the source.
+        record = confirmed("m-1")
+        self.seed([record], [unit("m-1", fps=["m-1"], unresolved=[])])
+        self.count(self.compaction_trace(self.C, self.boundary()))
+        self.messages = [{"type": "assistant", "message": {"model": self.C, "content": []}}]
+        self.run_merge("count", "--job", "cross-check", "--cap", "30", "--trace", self.trace_file(), "--model", self.C)
+        moved = confirmed("m-1")
+        moved["trace"][0]["line"] = 77
+        self.subagent("checker-1", {"decision": "replace", "fingerprint": "m-1", "reason": "Line moved.", "record": moved})
+        inputs = os.path.join(self.tmp, "tie-break-inputs.json")
+        self.run_merge("select-cross-check", "--out", os.path.join(self.tmp, "list.json"))
+        self.run_merge("apply-cross-check", "--entries", self.out, "--trace", self.trace_file(), "--out", inputs)
+        self.assertNotEqual(self.record("m-1")["trace"][0]["line"], 77)
+        self.assertIn("cross_check_same_model", self.load("trusted-meta.json")["incomplete_reasons"])
+
+
 class SameModelTest(MergeTest):
     """D24: the cross-check and the tie-break must run on models different
     from those of every job whose results they judge. A job's models are its
