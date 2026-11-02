@@ -90,6 +90,13 @@
 #     nested inside another message does not count. Such an event naming
 #     any model off that list fails; the run prints the job and the fallback
 #     model used, and nothing else from the event.
+#     A model that appears only in modelUsage is also accepted as the model
+#     Claude Code's automatic compaction summarised the context on, when it
+#     is on the fixed list in compaction-models.txt, no assistant message is
+#     from it, and the top-level array holds a system message of subtype
+#     compact_boundary with compact_metadata.trigger "auto"; a manual
+#     compaction does not count, since an audit run has no one to type
+#     /compact. The run prints the job and that model.
 #   - A foreground subagent hands its report back with SubagentHandback, which
 #     check-trace-tools.sh accepts only with exactly a string message and only
 #     when the allowed tools name it; it counts as a call attributed to that
@@ -216,11 +223,11 @@ if ! bash "$CTT" "$trace" --tools "$allowed" "${roots[@]}" --write-root "$out_ro
 fi
 
 if ! node - "$trace" "$job" "$out_root" "$GITHUB_WORKSPACE" "$model" "$helper" \
-  "$HERE/../claude-review/tools/review/expand-braces.cjs" "$HERE/async-launch.txt" "$HERE/classifier-interruption.txt" "$HERE/refusal-fallback-models.txt" <<'JS'
+  "$HERE/../claude-review/tools/review/expand-braces.cjs" "$HERE/async-launch.txt" "$HERE/classifier-interruption.txt" "$HERE/refusal-fallback-models.txt" "$HERE/compaction-models.txt" <<'JS'
 const fs = require('fs');
 const path = require('path').posix;
 
-const [trace, job, outArg, wsArg, model, helper, expander, launchFile, interruptionFile, fallbackFile] = process.argv.slice(2);
+const [trace, job, outArg, wsArg, model, helper, expander, launchFile, interruptionFile, fallbackFile, compactionFile] = process.argv.slice(2);
 const say = (line) => console.error(`check-agent-run: ${line}`);
 
 let msgs;
@@ -567,14 +574,47 @@ for (const m of events) {
   }
 }
 const accepted = (k) => MODELS.has(k) || fallbacks.has(k);
+
+// Compaction. A model in a result's modelUsage that is none of those is
+// accepted only as the model Claude Code's automatic compaction summarised the
+// context on: it is on the fixed allowlist in compaction-models.txt, no
+// assistant message in the trace is from it, and the trace's top-level array
+// holds a system message of subtype compact_boundary whose
+// compact_metadata.trigger is "auto". A manual compaction is not accepted: an
+// audit run has no one to type /compact. The allowlist is read only when such
+// a model needs it.
+const autoCompaction = msgs.some((m) => isObj(m) && m.type === 'system' && m.subtype === 'compact_boundary'
+  && isObj(m.compact_metadata) && m.compact_metadata.trigger === 'auto');
+const assistantModels = new Set(msgs.filter((m) => isObj(m) && m.type === 'assistant' && isObj(m.message)
+  && typeof m.message.model === 'string').map((m) => m.message.model));
+const usageModels = new Set(msgs.filter((m) => isObj(m) && m.type === 'result' && isObj(m.modelUsage))
+  .flatMap((m) => Object.keys(m.modelUsage)));
+let compactionAllowlist = [];
+if (autoCompaction && [...usageModels].some((k) => !accepted(k) && !assistantModels.has(k))) {
+  try {
+    compactionAllowlist = fs.readFileSync(compactionFile, 'utf8').split('\n').map((l) => l.trim()).filter(Boolean);
+  } catch (err) {
+    compactionAllowlist = [];
+  }
+  if (compactionAllowlist.length === 0 || !compactionAllowlist.every((l) => MODEL_NAME.test(l))) {
+    compactionAllowlist = [];
+    bad += 1;
+    say('the compaction allowlist is missing, empty or malformed, so no compaction model can be accepted');
+  }
+}
+const compactionModel = (k) => autoCompaction && compactionAllowlist.includes(k) && !assistantModels.has(k);
+
 let unexpected = 0;
 const usedFallbacks = new Set();
+const usedCompaction = new Set();
 for (const m of msgs) {
   if (!isObj(m)) continue;
   if (m.type === 'result' && isObj(m.modelUsage)) {
     for (const k of Object.keys(m.modelUsage)) {
-      if (!accepted(k)) unexpected += 1;
-      else if (!MODELS.has(k)) usedFallbacks.add(k);
+      if (accepted(k)) {
+        if (!MODELS.has(k)) usedFallbacks.add(k);
+      } else if (compactionModel(k)) usedCompaction.add(k);
+      else unexpected += 1;
     }
   }
   if (m.type === 'assistant' && isObj(m.message) && typeof m.message.model === 'string'
@@ -585,9 +625,10 @@ for (const m of msgs) {
 }
 if (unexpected > 0) {
   bad += 1;
-  say(`${unexpected} model use(s) other than the pinned model, the allowlisted helper or a recorded refusal fallback`);
+  say(`${unexpected} model use(s) other than the pinned model, the allowlisted helper, a recorded refusal fallback or an automatic compaction's allowlisted model`);
 }
 for (const f of [...usedFallbacks].sort()) console.log(`check-agent-run: the ${job} step ran on the refusal fallback model ${f}`);
+for (const c of [...usedCompaction].sort()) console.log(`check-agent-run: the ${job} step's context was summarised by the compaction model ${c}`);
 
 if (bad > 0) process.exit(1);
 console.log(`check-agent-run: ${subagents.size} subagent call(s), ${attributed} subagent tool call(s), the ${job} rules pass`);

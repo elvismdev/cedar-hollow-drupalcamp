@@ -475,6 +475,33 @@ case "$(run poc-write "$tmp/t.json")" in *"ran on the refusal fallback"*) echo "
 fb_trace "$FB" "$(fb_event "$FB")" "$(top Bash '{"command":"id"}')"
 assert_eq "1" "$(rc poc-write "$tmp/t.json")" "every other rule still applies on a fallback run"
 
+# Automatic compaction: a model only in modelUsage is accepted when it is on
+# the compaction allowlist, no assistant message is from it, and a top-level
+# compact_boundary event has trigger "auto".
+cb_event () { printf '{"type":"system","subtype":"compact_boundary","compact_metadata":{"trigger":"%s","pre_tokens":989974}}' "$1"; }
+cb_trace () { # usage-model [message...]: a pinned-model run whose modelUsage also lists usage-model
+  local use="$1"; shift
+  trace "$tmp/t.json" "$INIT" "$@" "$(top Read "{\"file_path\":\"$WS/tracked.txt\"}")" "$(result "$M" "$use")"
+}
+cb_trace "$FB" "$(cb_event auto)"
+assert_eq "0" "$(rc source "$tmp/t.json")" "an allowlisted model only in modelUsage, after an automatic compaction, passes"
+assert_contains "$(run source "$tmp/t.json")" "the source step's context was summarised by the compaction model $FB" "and names the job and the model"
+cb_trace "$FB"
+assert_eq "1" "$(rc source "$tmp/t.json")" "the same usage with no compaction event fails"
+assert_contains "$(run source "$tmp/t.json")" "model use(s) other than the pinned model" "and fails on the model rule"
+cb_trace "$FB" "$(cb_event manual)"
+assert_eq "1" "$(rc source "$tmp/t.json")" "a manual compaction does not count"
+cb_trace claude-other-1 "$(cb_event auto)"
+assert_eq "1" "$(rc source "$tmp/t.json")" "a model off the compaction allowlist fails"
+cb_trace "$FB" "$(cb_event auto)" "$(as_model "$FB" "$(top Read "{\"file_path\":\"$WS/tracked.txt\"}")")"
+assert_eq "1" "$(rc source "$tmp/t.json")" "an assistant message from the compaction model fails"
+cb_trace "$FB" "{\"type\":\"user\",\"parent_tool_use_id\":null,\"message\":{\"content\":[{\"type\":\"tool_result\",\"tool_use_id\":\"tx\",\"content\":[$(cb_event auto)]}]}}"
+assert_eq "1" "$(rc source "$tmp/t.json")" "a compaction event only inside a tool_result does not count"
+cb_trace "$FB" '{"type":"system","subtype":"compact_boundary","compact_metadata":"auto"}'
+assert_eq "1" "$(rc source "$tmp/t.json")" "a compaction event without a trigger object does not count"
+cb_trace "$FB" "$(cb_event auto)" "$(top Bash '{"command":"id"}')"
+assert_eq "1" "$(rc source "$tmp/t.json")" "every other rule still applies after a compaction"
+
 # source_repair runs with exactly the source rules: the clean source trace,
 # with its state-file writes, passes in both, and a refused call fails in both.
 for j in source source_repair; do
@@ -518,6 +545,16 @@ assert_contains "$out" "check-agent-run: the refusal fallback allowlist is missi
 case "$out" in *"at Object"*|*"ENOENT"*|*"node:"*) echo "FAIL: a missing allowlist printed a stack" >&2; exit 1;; esac
 printf 'not a model\n' > "$COPY/security-audit/refusal-fallback-models.txt"
 assert_eq "1" "$(copy_rc)" "a malformed allowlist file fails a fallback run"
+
+# The compaction allowlist is read only when a compaction model needs it.
+rm "$COPY/security-audit/compaction-models.txt"
+cb_trace "$M" "$(cb_event auto)"
+assert_eq "0" "$(copy_rc source)" "a compaction with every model accepted passes without the compaction allowlist file"
+cb_trace "$FB" "$(cb_event auto)"
+assert_eq "1" "$(copy_rc source)" "a compaction model without the compaction allowlist file fails"
+out=$(copy_run source || true)
+assert_contains "$out" "check-agent-run: the compaction allowlist is missing, empty or malformed" "and says why"
+case "$out" in *"at Object"*|*"ENOENT"*|*"node:"*) echo "FAIL: a missing compaction allowlist printed a stack" >&2; exit 1;; esac
 
 # The fingerprint: the checkout and the watched parts of ~/.claude.
 assert_eq "0" "$(rc source "$tmp/clean.json")" "unchanged state passes"
