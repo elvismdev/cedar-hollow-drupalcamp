@@ -4,6 +4,10 @@
 # whose .git holds a random token. It fails if any accepted glob returns the
 # token, and also if no refused glob does, which would mean the search could
 # not have found it. ripgrep is required: without it the test fails.
+#
+# The argument order below was read from the Claude Code 2.1.316 binary;
+# claude-code-action ae68417 installs Claude Code 2.1.309, the version
+# check-trace-tools.sh's field lists are taken from.
 set -uo pipefail
 ROOT="$(git rev-parse --show-toplevel)/.github/claude-review"
 C="$ROOT/tools/review/check-trace-tools.sh"
@@ -13,6 +17,7 @@ if ! command -v rg >/dev/null 2>&1; then
   exit 1
 fi
 tmp=$(mktemp -d); trap 'rm -rf "$tmp"' EXIT
+echo "ripgrep: $(rg --version | head -n 1)"
 
 # The scratch checkout: a token in .git/config and in a file under .git that
 # has an extension, and ordinary files that hold another token.
