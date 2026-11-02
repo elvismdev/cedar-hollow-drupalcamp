@@ -8,8 +8,9 @@
 # A fixture named in expected.json's jobs runs as that job instead of
 # poc-write; for the cross-check and tie-break, which run with the fallback
 # off, both must report the same refusals with no fallback as refusals lists
-# them: main:<category> for the main loop, subagent:<agent id>:<category> for
-# a subagent, "not given" for a category off the pattern. A
+# them: main:<index>:<category> for the main loop, subagent:<agent id>:<index>:
+# <category> for a subagent, where index is the message's position in the
+# trace's top-level array, and "not given" for a category off the pattern. A
 # fixture named in expected.json's helpers runs both with that helper model,
 # which neither treats as a fallback.
 set -euo pipefail
@@ -51,8 +52,8 @@ for f in "$FIX"/*.json; do
     | jq -Rsc 'split("\n") | map(select(length > 0)) | sort')
   c_check=$(sed -n "s/^check-agent-run: the $job step's context was summarised by the compaction model \(.*\)\$/\1/p" <<<"$check" \
     | jq -Rsc 'split("\n") | map(select(length > 0)) | sort')
-  r_check=$( { sed -n "s/^check-agent-run: the $job step's request was refused with no fallback (main loop), category \(.*\)\$/main:\1/p" <<<"$check"
-               sed -n "s/^check-agent-run: .*(agent id \(.*\)) was refused with no fallback, category \(.*\); its entry is never merged\$/subagent:\1:\2/p" <<<"$check"; } \
+  r_check=$( { sed -n "s/^check-agent-run: the $job step's request was refused with no fallback (main loop, message \([0-9]*\)), category \(.*\)\$/main:\1:\2/p" <<<"$check"
+               sed -n "s/^check-agent-run: .*(agent id \(.*\)) was refused with no fallback (message \([0-9]*\)), category \(.*\); its entry is never merged\$/subagent:\1:\2:\3/p" <<<"$check"; } \
     | jq -Rsc 'split("\n") | map(select(length > 0)) | sort')
 
   state="$tmp/state-$name"
@@ -63,8 +64,8 @@ for f in "$FIX"/*.json; do
   python3 -I "$SA/merge-records.py" --state "$state" count --job "$job" --cap 12 --trace "$f" --model "$PINNED" "${helper_args[@]}" >/dev/null
   by_count=$(jq -c '[.refusal_fallback[].fallback_model] | sort' "$state/trusted-meta.json")
   c_count=$(jq -c '[.compaction[].compaction_model] | sort' "$state/trusted-meta.json")
-  r_count=$(jq -c '[(.classifier_refusals // [])[] | if .where == "main" then "main:\(.category // "not given")"
-                    else "subagent:\(.agent_id):\(.category // "not given")" end] | sort' "$state/trusted-meta.json")
+  r_count=$(jq -c '[(.classifier_refusals // [])[] | if .where == "main" then "main:\(.index):\(.category // "not given")"
+                    else "subagent:\(.agent_id):\(.index):\(.category // "not given")" end] | sort' "$state/trusted-meta.json")
 
   assert_eq "$want" "$by_check" "$name: the run check accepts the expected fallback models"
   assert_eq "$want" "$by_count" "$name: count records the expected fallback models"
@@ -74,5 +75,5 @@ for f in "$FIX"/*.json; do
   assert_eq "$want_r" "$r_check" "$name: the run check reports the expected refusals with no fallback"
   assert_eq "$want_r" "$r_count" "$name: count records the expected refusals with no fallback"
 done
-[ "$count" -ge 22 ] || { echo "FAIL: only $count fixture(s) were read" >&2; exit 1; }
+[ "$count" -ge 24 ] || { echo "FAIL: only $count fixture(s) were read" >&2; exit 1; }
 pass "refusal-fallback-fixtures.test.sh ($count fixtures)"

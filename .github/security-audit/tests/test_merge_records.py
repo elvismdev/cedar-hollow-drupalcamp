@@ -984,7 +984,7 @@ class RefusalWithoutFallbackTest(MergeTest):
     def test_a_refused_subagent_is_left_out_and_the_rest_applied(self):
         meta = self.judge(refuse_second=True)
         self.assertEqual(meta["classifier_refusals"],
-                         [{"job": "cross-check", "where": "subagent", "agent_id": "c-2", "category": "cyber"}])
+                         [{"job": "cross-check", "where": "subagent", "agent_id": "c-2", "index": 4, "category": "cyber"}])
         self.assertEqual(self.moved_lines()["r-1"], 77)
         self.assertNotEqual(self.moved_lines()["r-2"], 77)
         self.assertIn("subagent refused by the safety classifier", self.discarded())
@@ -994,7 +994,8 @@ class RefusalWithoutFallbackTest(MergeTest):
 
     def test_a_main_loop_refusal_marks_the_check_incomplete_and_keeps_written_entries(self):
         meta = self.judge(self.no_fallback_event())
-        self.assertEqual(meta["classifier_refusals"], [{"job": "cross-check", "where": "main", "category": "cyber"}])
+        self.assertEqual(meta["classifier_refusals"],
+                         [{"job": "cross-check", "where": "main", "index": 4, "category": "cyber"}])
         self.assertEqual(self.moved_lines(), {"r-1": 77, "r-2": 77})
         self.assertIn("cross_check_refused", meta["incomplete_reasons"])
         self.run_merge("status")
@@ -1002,7 +1003,13 @@ class RefusalWithoutFallbackTest(MergeTest):
 
     def test_a_category_off_the_pattern_is_not_kept(self):
         meta = self.judge(self.no_fallback_event("Not A Category!"))
-        self.assertEqual(meta["classifier_refusals"], [{"job": "cross-check", "where": "main", "category": None}])
+        self.assertEqual(meta["classifier_refusals"],
+                         [{"job": "cross-check", "where": "main", "index": 4, "category": None}])
+
+    def test_two_alike_main_loop_refusals_are_two_records(self):
+        meta = self.judge(self.no_fallback_event(), self.no_fallback_event())
+        self.assertEqual([(r["where"], r["index"]) for r in meta["classifier_refusals"]], [("main", 4), ("main", 5)])
+        self.assertEqual(meta["cross_check"]["refused_by_classifier"], 2)
 
     def test_no_refusal_records_nothing(self):
         meta = self.judge()

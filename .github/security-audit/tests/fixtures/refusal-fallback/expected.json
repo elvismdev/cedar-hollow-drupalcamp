@@ -31,7 +31,8 @@
   "no-fallback-subagent": [],
   "no-fallback-off-pattern": [],
   "no-fallback-in-poc-write": [],
-  "compaction-in-cross-check": []
+  "compaction-in-cross-check": [],
+  "no-fallback-two-main": []
  },
  "helpers": {
   "names-helper": "claude-opus-4-8"
@@ -63,13 +64,15 @@
   "no-fallback-in-poc-write": [],
   "compaction-in-cross-check": [
    "claude-opus-4-8"
-  ]
+  ],
+  "no-fallback-two-main": []
  },
  "jobs": {
   "no-fallback-main": "cross-check",
   "no-fallback-subagent": "tie-break",
   "no-fallback-off-pattern": "cross-check",
-  "compaction-in-cross-check": "cross-check"
+  "compaction-in-cross-check": "cross-check",
+  "no-fallback-two-main": "cross-check"
  },
  "refusals": {
   "accepted": [],
@@ -89,17 +92,21 @@
   "no-event": [],
   "no-fallback-in-poc-write": [],
   "no-fallback-main": [
-   "main:cyber"
+   "main:2:cyber"
   ],
   "no-fallback-off-pattern": [
-   "main:not given"
+   "main:2:not given"
   ],
   "no-fallback-subagent": [
-   "subagent:c-1:cyber"
+   "subagent:c-1:2:cyber"
   ],
   "off-allowlist": [],
   "other-subtype": [],
   "two-events": [],
-  "compaction-in-cross-check": []
+  "compaction-in-cross-check": [],
+  "no-fallback-two-main": [
+   "main:2:cyber",
+   "main:3:cyber"
+  ]
  }
 }

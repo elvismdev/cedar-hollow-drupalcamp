@@ -408,26 +408,27 @@ for (const [callId] of subagents) {
 // and entries already written stand. A refused subagent stops alone; its
 // response is an assistant message attributed to its call whose stop_reason
 // is "refusal", and its entry is never merged. Either is reported, not
-// refused, with only a category that matches ^[a-z_]{1,32}$; merge-records.py
-// counts it and marks the check incomplete. Other jobs keep the fallback.
+// refused, with its position in the top-level array and only a category that
+// matches ^[a-z_]{1,32}$; merge-records.py counts it and marks the check
+// incomplete. Other jobs keep the fallback.
 const JUDGE = job === 'cross-check' || job === 'tie-break';
 const CATEGORY = /^[a-z_]{1,32}$/;
 const category = (v) => (typeof v === 'string' && CATEGORY.test(v) ? v : 'not given');
 const refusedSubagents = new Set();
 if (JUDGE) {
-  for (const m of msgs) {
-    if (!isObj(m)) continue;
+  msgs.forEach((m, index) => {
+    if (!isObj(m)) return;
     if (m.type === 'system' && m.subtype === 'model_refusal_no_fallback') {
-      console.log(`check-agent-run: the ${job} step's request was refused with no fallback (main loop), category ${category(m.api_refusal_category)}`);
+      console.log(`check-agent-run: the ${job} step's request was refused with no fallback (main loop, message ${index}), category ${category(m.api_refusal_category)}`);
     }
     if (m.type === 'assistant' && typeof m.parent_tool_use_id === 'string' && subagents.has(m.parent_tool_use_id)
         && isObj(m.message) && m.message.stop_reason === 'refusal' && !refusedSubagents.has(m.parent_tool_use_id)) {
       refusedSubagents.add(m.parent_tool_use_id);
       const id = subagents.get(m.parent_tool_use_id);
       const details = isObj(m.message.stop_details) ? m.message.stop_details.category : undefined;
-      console.log(`check-agent-run: ${label(callById.get(m.parent_tool_use_id))}: (agent id ${id === null ? 'not valid' : id}) was refused with no fallback, category ${category(details)}; its entry is never merged`);
+      console.log(`check-agent-run: ${label(callById.get(m.parent_tool_use_id))}: (agent id ${id === null ? 'not valid' : id}) was refused with no fallback (message ${index}), category ${category(details)}; its entry is never merged`);
     }
-  }
+  });
 }
 
 // Claude Code cannot start more subagents than the trace has subagent calls

@@ -539,14 +539,18 @@ JUDGED=("$INIT" "$(agent tc1 "agent-id: tb-1 judge")" "$(agent tc2 "agent-id: tb
 for j in cross-check tie-break; do
   trace "$tmp/t.json" "${JUDGED[@]}" "$(sub tc2 Write "{\"file_path\":\"$OUT/agents/tb-2/scratch/entry.json\",\"content\":\"{}\"}")" "$(nf_event cyber)" "$(result "$M")"
   assert_eq "0" "$(rc "$j" "$tmp/t.json")" "a main-loop refusal with no fallback passes as $j"
-  assert_contains "$(run "$j" "$tmp/t.json")" "the $j step's request was refused with no fallback (main loop), category cyber" "and is reported as $j"
+  assert_contains "$(run "$j" "$tmp/t.json")" "the $j step's request was refused with no fallback (main loop, message 7), category cyber" "and is reported with its position as $j"
   case "$(run "$j" "$tmp/t.json")" in *LEAKEXPLAIN52*) echo "FAIL: the refusal explanation was printed" >&2; exit 1;; esac
+  trace "$tmp/t.json" "${JUDGED[@]}" "$(sub tc2 Write "{\"file_path\":\"$OUT/agents/tb-2/scratch/entry.json\",\"content\":\"{}\"}")" "$(nf_event cyber)" "$(nf_event cyber)" "$(result "$M")"
+  out=$(run "$j" "$tmp/t.json")
+  assert_contains "$out" "(main loop, message 7), category cyber" "the first of two alike refusals is reported as $j"
+  assert_contains "$out" "(main loop, message 8), category cyber" "and so is the second as $j"
   trace "$tmp/t.json" "${JUDGED[@]}" "$(refused_by tc2 cyber)" "$(result "$M")"
   assert_eq "0" "$(rc "$j" "$tmp/t.json")" "a refused subagent with no tool calls passes as $j"
-  assert_contains "$(run "$j" "$tmp/t.json")" "Agent call 2: (agent id tb-2) was refused with no fallback, category cyber; its entry is never merged" "and is reported by call and agent id as $j"
+  assert_contains "$(run "$j" "$tmp/t.json")" "Agent call 2: (agent id tb-2) was refused with no fallback (message 6), category cyber; its entry is never merged" "and is reported by call and agent id as $j"
   case "$(run "$j" "$tmp/t.json")" in *LEAKEXPLAIN52*) echo "FAIL: the refusal explanation was printed" >&2; exit 1;; esac
   trace "$tmp/t.json" "${JUDGED[@]}" "$(refused_by tc2 'Not A Category!')" "$(result "$M")"
-  assert_contains "$(run "$j" "$tmp/t.json")" "was refused with no fallback, category not given" "a category off the pattern is not printed as $j"
+  assert_contains "$(run "$j" "$tmp/t.json")" "was refused with no fallback (message 6), category not given" "a category off the pattern is not printed as $j"
   trace "$tmp/t.json" "${JUDGED[@]}" "$(sub tc2 Write "{\"file_path\":\"$OUT/agents/tb-2/scratch/entry.json\",\"content\":\"{}\"}")" "$(fb_event "$FB")" "$(result "$M")"
   assert_eq "1" "$(rc "$j" "$tmp/t.json")" "a refusal fallback event fails $j"
   assert_contains "$(run "$j" "$tmp/t.json")" "a model_refusal_fallback event in the $j step, which runs with the refusal fallback off" "and says why as $j"

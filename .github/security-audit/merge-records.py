@@ -131,14 +131,15 @@
 #                        only in a result's modelUsage, with no assistant
 #                        message from it, that is not the pinned model, the
 #                        helper or a named refusal fallback; recorded by count
-#   classifier_refusals  [{job, where, agent_id, category}] for each request
+#   classifier_refusals  [{job, where, agent_id, index, category}] for each request
 #                        of the cross-check or tie-break, which run with the
 #                        refusal fallback off, refused with no fallback:
 #                        where "main" for the main loop's
 #                        model_refusal_no_fallback system message (no
 #                        agent_id), "subagent" for an assistant message
 #                        attributed to a subagent call whose stop_reason is
-#                        "refusal"; category only when it matches
+#                        "refusal"; index is its position in the trace's
+#                        top-level array; category only when it matches
 #                        ^[a-z_]{1,32}$, else null; recorded by count. A
 #                        refused subagent's entry is never merged
 #                        (label "subagent refused by the safety classifier")
@@ -694,23 +695,25 @@ def refusals_without_fallback(messages, bindings):
     them for a judging job: a model_refusal_no_fallback system message in the
     top-level array is the main loop's ({where: main}); an assistant message
     attributed to a subagent call whose stop_reason is "refusal" is that
-    subagent's ({where: subagent, agent_id}), once per call. The category is
+    subagent's ({where: subagent, agent_id}), once per call, each with index,
+    its position in the top-level array, so two alike are two. The category is
     kept only when it matches ^[a-z_]{1,32}$; the explanation never is."""
     def category(value):
         return value if isinstance(value, str) and REFUSAL_CATEGORY.fullmatch(value) else None
     found, seen = [], set()
-    for m in messages:
+    for index, m in enumerate(messages):
         if not isinstance(m, dict):
             continue
         if m.get("type") == "system" and m.get("subtype") == "model_refusal_no_fallback":
-            found.append({"where": "main", "category": category(m.get("api_refusal_category"))})
+            found.append({"where": "main", "index": index, "category": category(m.get("api_refusal_category"))})
         parent = m.get("parent_tool_use_id")
         body = m.get("message")
         if (m.get("type") == "assistant" and isinstance(parent, str) and parent in bindings and parent not in seen
                 and isinstance(body, dict) and body.get("stop_reason") == "refusal"):
             seen.add(parent)
             details = body.get("stop_details") if isinstance(body.get("stop_details"), dict) else {}
-            found.append({"where": "subagent", "agent_id": bindings[parent], "category": category(details.get("category"))})
+            found.append({"where": "subagent", "agent_id": bindings[parent], "index": index,
+                          "category": category(details.get("category"))})
     return found
 
 
