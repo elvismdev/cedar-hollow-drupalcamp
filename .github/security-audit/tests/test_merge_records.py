@@ -905,26 +905,30 @@ class SameModelTest(MergeTest):
         self.assertIn("tie_break_same_model", meta["incomplete_reasons"])
         self.assertEqual(meta["cross_check"]["tie_breaks"], [])
 
-    def test_a_refused_tie_break_flags_itself_not_the_cross_check(self):
-        for name, tie_fallback, count_tie_break, flag, reason in (
-                ("overlap", "claude-opus-4-8", True, "tie_break_same_model", "tie_break_same_model"),
-                ("unrecorded", None, False, "tie_break_model_unrecorded", "tie_break_model_unrecorded")):
-            with self.subTest(name):
-                self.tearDown()
-                self.setUp()
-                applied, meta = self.tie_break_after("claude-opus-4-8", tie_fallback, count_tie_break)
-                self.assertFalse(applied)
-                self.assertTrue(meta["cross_check"]["applied"])
-                self.assertTrue(meta["cross_check"][flag])
-                self.assertFalse(meta["cross_check"].get("same_model", False))
-                self.assertFalse(meta["cross_check"].get("model_unrecorded", False))
-                self.run_merge("status")
-                reasons = self.load("trusted-meta.json")["incomplete_reasons"]
-                self.assertIn(reason, reasons)
-                self.assertNotIn("cross_check_missing", reasons)
-                self.assertNotIn("cross_check_same_model", reasons)
-                self.assertNotIn("cross_check_model_unrecorded", reasons)
-                self.assertEqual([d["removed_because"] for d in self.load("disputed.json")], ["tie_break_refused"])
+    def assert_tie_break_refused_alone(self, applied, meta, reason):
+        """The cross-check applied and the tie-break was refused for reason:
+        only the tie-break's flag and reason are set, and status removes its
+        dispute as tie_break_refused."""
+        self.assertFalse(applied)
+        self.assertTrue(meta["cross_check"]["applied"])
+        self.assertTrue(meta["cross_check"][reason])
+        self.assertFalse(meta["cross_check"].get("same_model", False))
+        self.assertFalse(meta["cross_check"].get("model_unrecorded", False))
+        self.run_merge("status")
+        reasons = self.load("trusted-meta.json")["incomplete_reasons"]
+        self.assertIn(reason, reasons)
+        self.assertNotIn("cross_check_missing", reasons)
+        self.assertNotIn("cross_check_same_model", reasons)
+        self.assertNotIn("cross_check_model_unrecorded", reasons)
+        self.assertEqual([d["removed_because"] for d in self.load("disputed.json")], ["tie_break_refused"])
+
+    def test_a_tie_break_refused_for_an_overlap_flags_only_itself(self):
+        applied, meta = self.tie_break_after("claude-opus-4-8", "claude-opus-4-8")
+        self.assert_tie_break_refused_alone(applied, meta, "tie_break_same_model")
+
+    def test_a_tie_break_never_counted_flags_only_itself(self):
+        applied, meta = self.tie_break_after("claude-opus-4-8", None, count_tie_break=False)
+        self.assert_tie_break_refused_alone(applied, meta, "tie_break_model_unrecorded")
 
     def test_a_tie_break_with_uncounted_poc_jobs_is_applied(self):
         # Items were selected for the proof-of-concept jobs, but neither was
