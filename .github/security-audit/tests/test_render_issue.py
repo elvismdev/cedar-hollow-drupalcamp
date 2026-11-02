@@ -189,6 +189,21 @@ class ContentTest(RenderTest):
         self.seed([], final_meta())
         self.assertNotIn("Tie-break not applied", self.render())
 
+    def test_a_classifier_refusal_is_a_fixed_line_with_its_count(self):
+        meta = final_meta(incomplete_reasons=["cross_check_refused", "tie_break_refused_by_classifier"])
+        meta["cross_check"].update(refused_by_classifier=2, tie_break_refused_by_classifier=1)
+        self.seed([], meta)
+        body = self.render()
+        self.assertIn("*   The cross-check's request was refused by the safety classifier 2 time(s), with no fallback "
+                      "model; the records it did not reach are not cross-checked.", body.splitlines())
+        self.assertIn("*   The tie-break's request was refused by the safety classifier 1 time(s), with no fallback "
+                      "model; the disputes it did not answer were removed.", body.splitlines())
+        for bad in ("2", True, -1, "LEAK"):
+            meta = final_meta()
+            meta["cross_check"]["refused_by_classifier"] = bad
+            self.seed([], meta)
+            self.assertNotIn("refused by the safety classifier", self.render())
+
     def test_a_refusal_fallback_is_one_line_per_job(self):
         self.seed([], final_meta(refusal_fallback=[
             {"job": "poc-write", "pinned_model": "claude-opus-5-5", "fallback_model": "claude-opus-4-8"},
