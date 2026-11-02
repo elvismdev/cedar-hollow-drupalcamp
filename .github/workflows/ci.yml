@@ -199,7 +199,9 @@ jobs:
       # check-trace-tools-ripgrep.test.sh runs ripgrep as Claude Code's Grep
       # does, and fails when it is missing; the runner image does not ship it.
       - name: Install ripgrep
-        run: sudo apt-get install -y ripgrep
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ripgrep
       - name: Run every reviewer and hook test suite
         run: |
           mapfile -t suites < <(find .github/claude-review/tools .claude/hooks -name '*.test.sh' | sort)
