@@ -84,12 +84,15 @@ def search(glob):
         for p in ([part] if '{' in part and '}' in part else [t for t in part.split(',') if t]):
             args += ['--glob', p]
     r = subprocess.run(args + [ws], capture_output=True, cwd=ws)
-    return r.returncode, r.stdout.decode('utf-8', 'replace')
+    return r.returncode, r.stdout.decode('utf-8', 'replace'), r.stderr.decode('utf-8', 'replace')
 
 def leaks(glob):
-    code, out = search(glob)
+    """ripgrep's exit status, the files under .git it listed, every file it
+    listed and its first error line. Files are read even when it exits 2, since
+    an error elsewhere does not stop it listing matches."""
+    code, out, err = search(glob)
     files = [f for f in out.split('\0') if f]
-    return code, [f for f in files if '/.git/' in f], files
+    return code, [f for f in files if '/.git/' in f], files, (err.splitlines() or [''])[0]
 
 ok = set()
 for path in ('', ws):
@@ -98,17 +101,19 @@ for path in ('', ws):
 refused = [g for g in globs if g not in ok]
 print('globs %d, accepted %d, refused %d' % (len(globs), len(ok), len(refused)))
 
-bad, searched, errors = [], 0, 0
+bad, errors = [], []
 for g in sorted(ok):
-    code, leaked, files = leaks(g)
-    if code == 2:
-        errors += 1
-        continue
-    searched += 1
+    code, leaked, files, err = leaks(g)
     if leaked:
         bad.append(g)
+    if code == 2:
+        errors.append((g, err))
 if bad:
     sys.exit('FAIL: %d accepted glob(s) returned the .git token: %s' % (len(bad), ' '.join(bad[:20])))
+# An error can hide a match, so any ripgrep error fails the canary.
+if errors:
+    sys.exit('FAIL: ripgrep failed on %d accepted glob(s), e.g. %s: %s'
+             % (len(errors), errors[0][0], errors[0][1]))
 # The search must find ordinary files through an accepted glob, and the token
 # through a refused one, or a clean result proves nothing.
 if '/x.php' not in ''.join(leaks('*.php')[2]) or '*.php' not in ok:
@@ -116,8 +121,8 @@ if '/x.php' not in ''.join(leaks('*.php')[2]) or '*.php' not in ok:
 reached = [g for g in refused if leaks(g)[1]]
 if not reached:
     sys.exit('FAIL: no refused glob returned the .git token, so the canary cannot fail')
-print('searched %d accepted glob(s) (%d ripgrep errors), none reached .git; %d refused glob(s) did, e.g. %s'
-      % (searched, errors, len(reached), ' '.join(reached[:5])))
+print('searched %d accepted glob(s) with no ripgrep error, none reached .git; %d refused glob(s) did, e.g. %s'
+      % (len(ok), len(reached), ' '.join(reached[:5])))
 PY
 status=$?
 [ "$status" -eq 0 ] && echo "ok: check-trace-tools-ripgrep.test.sh"
