@@ -173,6 +173,22 @@ class ContentTest(RenderTest):
         body = self.render()
         self.assertIn("cross_check_same_model", self.line(body, "**Status: incomplete"))
 
+    def test_a_refused_tie_break_is_stated_in_plain_words(self):
+        for reason, text in (
+                ("tie_break_same_model", "*   Tie-break not applied: it ran on a model shared with a job it judges, "
+                                         "so its disputed records were removed."),
+                ("tie_break_model_unrecorded", "*   Tie-break not applied: a model it needed to compare was never "
+                                               "recorded, so its disputed records were removed.")):
+            with self.subTest(reason):
+                self.seed([], final_meta(incomplete_reasons=[reason]))
+                body = self.render()
+                self.assertIn(reason, self.line(body, "**Status: incomplete"))
+                self.assertIn(text, body.splitlines())
+
+    def test_no_tie_break_line_without_a_refusal(self):
+        self.seed([], final_meta())
+        self.assertNotIn("Tie-break not applied", self.render())
+
     def test_a_refusal_fallback_is_one_line_per_job(self):
         self.seed([], final_meta(refusal_fallback=[
             {"job": "poc-write", "pinned_model": "claude-opus-5-5", "fallback_model": "claude-opus-4-8"},

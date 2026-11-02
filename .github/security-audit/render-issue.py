@@ -8,7 +8,8 @@
 # interrupted, never their ids, each job Claude Code's refusal fallback moved
 # to another model, named only by the job and the two model names, each
 # matching ^claude-[a-z0-9-]+$, poc, cross_check, dispute_rate, tie-break
-# sides, run_status and the incomplete reasons) is read only from
+# sides, run_status, the incomplete reasons, and a fixed line for a tie-break
+# refused for its models) is read only from
 # trusted-meta.json, which only merge-records.py writes; run-metadata.json,
 # which agents can write, supplies only source_ref, profile and scope_paths.
 # Rejected, disputed, unvalidated and unchecked records appear only as counts,
@@ -223,6 +224,16 @@ def code_block(text):
     return "%s\n%s\n%s" % (fence, text.rstrip("\n"), fence)
 
 
+# Fixed text for a tie-break refused for its models (D24); its disputed
+# records were removed without an answer.
+TIE_BREAK_REFUSALS = (
+    ("tie_break_same_model", "*   Tie-break not applied: it ran on a model shared with a job it judges, "
+                             "so its disputed records were removed."),
+    ("tie_break_model_unrecorded", "*   Tie-break not applied: a model it needed to compare was never recorded, "
+                                   "so its disputed records were removed."),
+)
+
+
 def label(value, default="unknown"):
     return value if isinstance(value, str) and LABEL.fullmatch(value) else default
 
@@ -383,6 +394,10 @@ def header(run, cut_note):
             sides[entry["side"]] += 1
     lines.append("*   Tie-breaks: original %d, replacement %d, neither %d" % (
         sides["original"], sides["replacement"], sides["neither"]))
+    reasons = Run.list_of(trusted, "incomplete_reasons")
+    for reason, text in TIE_BREAK_REFUSALS:
+        if reason in reasons:
+            lines.append(text)
     if run.state_ok:
         rejected = sum(1 for r in run.findings if r.get("verdict") == "rejected")
         lines.append("*   Counts: confirmed %d, leads %d, rejected %d, disputed %d, not cross-checked %d, "
