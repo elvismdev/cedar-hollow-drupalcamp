@@ -832,9 +832,9 @@ class RefusalFallbackTest(MergeTest):
 
 
 class SameModelTest(MergeTest):
-    """D24: the cross-check and the tie-break must run on a different model
-    from the source job. A job's effective model is its recorded refusal
-    fallback, else its pinned model."""
+    """D24: the cross-check and the tie-break must run on models different
+    from those of every job whose results they judge. A job's models are its
+    pinned model and every refusal fallback recorded for it."""
 
     def count_job(self, job, pinned, fallback=None):
         ran_on = fallback or pinned
@@ -873,6 +873,73 @@ class SameModelTest(MergeTest):
                                                   ("cross-check", "claude-fable-5-1", None)))
         self.assertEqual(self.load("trusted-meta.json")["job_models"],
                          {"source": "claude-opus-5-5", "cross-check": "claude-fable-5-1"})
+
+    def tie_break_after(self, cross_fallback, tie_fallback):
+        """Runs source (opus-5-5), a cross-check on fable-5-1 with its fallback
+        and a tie-break on sonnet-5-5 with its fallback, each counted as its
+        own job, and returns whether the tie-break's answer was applied."""
+        record = confirmed("m-9")
+        self.seed([record], [unit("m-9", fps=["m-9"], unresolved=[])])
+        self.count_job("source", "claude-opus-5-5", None)
+        self.count_job("cross-check", "claude-fable-5-1", cross_fallback)
+        self.subagent("checker-1", {"decision": "replace", "fingerprint": "m-9", "reason": "Another cause.",
+                                    "record": confirmed("m-9", root_cause="Another cause")})
+        inputs = os.path.join(self.tmp, "tie-break-inputs.json")
+        self.run_merge("select-cross-check", "--out", os.path.join(self.tmp, "list.json"))
+        self.run_merge("apply-cross-check", "--entries", self.out, "--trace", self.trace_file(), "--out", inputs)
+        self.count_job("tie-break", "claude-sonnet-5-5", tie_fallback)
+        self.subagent("tie-1", {"fingerprint": "m-9", "answer": "replacement", "reason": "Read the source."})
+        self.run_merge("apply-tie-break", "--inputs", inputs, "--entries", self.out, "--trace", self.trace_file())
+        return (self.record("m-9") or {}).get("root_cause") == "Another cause", self.load("trusted-meta.json")
+
+    def test_a_tie_break_on_the_cross_checks_fallback_model_is_not_applied(self):
+        applied, meta = self.tie_break_after("claude-opus-4-8", "claude-opus-4-8")
+        self.assertFalse(applied)
+        self.assertIn("cross_check_same_model", meta["incomplete_reasons"])
+        self.assertEqual(meta["cross_check"]["tie_breaks"], [])
+
+    def test_a_tie_break_off_the_cross_checks_models_is_applied(self):
+        applied, meta = self.tie_break_after("claude-opus-4-8", None)
+        self.assertTrue(applied)
+        self.assertNotIn("cross_check_same_model", meta["incomplete_reasons"])
+
+    def test_a_source_that_fell_back_still_counts_its_pinned_model(self):
+        self.assert_refused(*self.run_cross_check(("source", "claude-fable-5-1", "claude-opus-4-8"),
+                                                  ("cross-check", "claude-fable-5-1", None)))
+
+    def test_every_recorded_fallback_of_a_job_counts(self):
+        record = confirmed("m-1")
+        self.seed([record], [unit("m-1", fps=["m-1"], unresolved=[])])
+        self.count_job("source", "claude-opus-5-5", None)
+        self.count_job("cross-check", "claude-sonnet-5-5", None)
+        trusted = self.load("trusted-meta.json")
+        trusted["refusal_fallback"] = [
+            {"job": "source", "pinned_model": "claude-opus-5-5", "fallback_model": "claude-sonnet-5-5"},
+            {"job": "source", "pinned_model": "claude-opus-5-5", "fallback_model": "claude-opus-4-8"}]
+        trusted["job_models"]["cross-check"] = "claude-sonnet-5-5"
+        self.write(os.path.join(self.state, "trusted-meta.json"), trusted)
+        moved = confirmed("m-1")
+        moved["trace"][0]["line"] = 77
+        self.subagent("checker-1", {"decision": "replace", "fingerprint": "m-1", "reason": "Line moved.", "record": moved})
+        inputs = os.path.join(self.tmp, "tie-break-inputs.json")
+        self.run_merge("select-cross-check", "--out", os.path.join(self.tmp, "list.json"))
+        self.run_merge("apply-cross-check", "--entries", self.out, "--trace", self.trace_file(), "--out", inputs)
+        self.assertNotEqual(self.record("m-1")["trace"][0]["line"], 77)
+        self.assertIn("cross_check_same_model", self.load("trusted-meta.json")["incomplete_reasons"])
+
+    def test_a_cross_check_on_poc_decides_fallback_model_is_refused(self):
+        self.assert_refused(*self.run_cross_check(("source", "claude-opus-5-5", None),
+                                                  ("poc-decide", "claude-opus-5-5", "claude-opus-4-8"),
+                                                  ("cross-check", "claude-fable-5-1", "claude-opus-4-8")))
+
+    def test_a_cross_check_on_poc_writes_model_is_refused(self):
+        self.assert_refused(*self.run_cross_check(("source", "claude-opus-5-5", None),
+                                                  ("poc-write", "claude-fable-5-1", None),
+                                                  ("cross-check", "claude-fable-5-1", None)))
+
+    def test_poc_jobs_never_counted_do_not_refuse(self):
+        self.assert_applied(*self.run_cross_check(("source", "claude-opus-5-5", None),
+                                                  ("cross-check", "claude-fable-5-1", None)))
 
     def test_an_unrecorded_source_model_is_refused(self):
         self.assert_refused(*self.run_cross_check(("cross-check", "claude-fable-5-1", None)))

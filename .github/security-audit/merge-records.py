@@ -1278,28 +1278,45 @@ def cross_entry_valid(entry, selected):
     return False
 
 
-def effective_model(state, job):
-    """The model a counted job ran on: its recorded refusal fallback if it
-    has one, else its pinned model; None when the job was not counted."""
-    fallbacks = [r.get("fallback_model") for r in state.trusted.get(REFUSAL_FALLBACK, [])
-                 if isinstance(r, dict) and r.get("job") == job and isinstance(r.get("fallback_model"), str)]
-    if fallbacks:
-        return fallbacks[-1]
-    model = state.trusted.get(JOB_MODELS, {}).get(job)
-    return model if isinstance(model, str) else None
+def model_set(state, job):
+    """The models a counted job ran on: its pinned model and every refusal
+    fallback recorded for it; None when the job's pinned model was never
+    recorded."""
+    pinned = state.trusted.get(JOB_MODELS, {}).get(job)
+    if not isinstance(pinned, str):
+        return None
+    return {pinned} | {r["fallback_model"] for r in state.trusted.get(REFUSAL_FALLBACK, [])
+                       if isinstance(r, dict) and r.get("job") == job and isinstance(r.get("fallback_model"), str)}
 
 
-def same_model_as_source(state, checker):
-    """D24: the cross-check and the tie-break run on a different model from
-    the source job (and the source repair, if it ran). True when the checking
-    job's effective model equals one of theirs, or when the checking job's or
-    the source job's model is not known, since independence cannot then be
-    shown. The source repair counts only when it ran."""
-    mine = effective_model(state, checker)
-    source = effective_model(state, "source")
-    if mine is None or source is None:
+# The jobs whose results each checking job judges (D24): the cross-check
+# judges the records the source, its repair and the proof-of-concept jobs
+# produced, and the tie-break settles disputes between those records and the
+# cross-check's replacements. A job in OPTIONAL_JOBS that was never counted
+# did not run and is skipped; any other never-counted job fails closed.
+CHECKED_JOBS = {"cross-check": ("source", "source_repair", "poc-write", "poc-decide"),
+                "tie-break": ("source", "source_repair", "poc-write", "poc-decide", "cross-check")}
+OPTIONAL_JOBS = ("source_repair", "poc-write", "poc-decide")
+
+
+def same_model_as_checked(state, checker):
+    """True when the checking job's model set overlaps the set of any job it
+    checks, or when the checking job's, the source's or (for the tie-break)
+    the cross-check's models were never recorded, since independence cannot
+    then be shown. The source repair and the proof-of-concept jobs count only
+    when they ran."""
+    mine = model_set(state, checker)
+    if mine is None:
         return True
-    return mine in (source, effective_model(state, "source_repair"))
+    for job in CHECKED_JOBS[checker]:
+        theirs = model_set(state, job)
+        if theirs is None:
+            if job in OPTIONAL_JOBS:
+                continue
+            return True
+        if mine & theirs:
+            return True
+    return False
 
 
 def cmd_apply_cross_check(state, args):
@@ -1307,7 +1324,7 @@ def cmd_apply_cross_check(state, args):
     if not isinstance(cc, dict) or not isinstance(cc.get("selected"), list):
         raise Refused("no cross-check selection in trusted-meta.json")
     selected = set(cc["selected"])
-    if same_model_as_source(state, "cross-check"):
+    if same_model_as_checked(state, "cross-check"):
         # Not applied: a check on the source's own model is not independent.
         state.incomplete("cross_check_same_model")
         write_json(args.out, {"disputes": []})
@@ -1375,7 +1392,7 @@ def cmd_apply_tie_break(state, args):
     cc = state.trusted.get("cross_check")
     if not isinstance(cc, dict) or not cc.get("applied"):
         raise Refused("apply-cross-check has not run")
-    if same_model_as_source(state, "tie-break"):
+    if same_model_as_checked(state, "tie-break"):
         # Not applied: the disputes stay pending and status removes them.
         state.incomplete("cross_check_same_model")
         print("merge-records: the tie-break ran on the source job's model, so its entries are not applied")
