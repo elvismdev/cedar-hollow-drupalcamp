@@ -82,7 +82,12 @@
 #                        decided, failed}
 #   cross_check          {selected, not_cross_checked, settled, refused,
 #                        disputes, cross_checked, tie_breaks, removed,
-#                        applied, pending, inputs_sha256}; apply-tie-break
+#                        applied, pending, inputs_sha256, same_model,
+#                        model_unrecorded}; same_model and
+#                        model_unrecorded mark a cross-check or tie-break
+#                        refused for its models (see the incomplete reasons
+#                        below), so status adds no cross_check_missing for
+#                        that cause; apply-tie-break
 #                        refuses inputs whose sha256 is not inputs_sha256,
 #                        or whose disputes are not objects whose original
 #                        and replacement carry the dispute's fingerprint
@@ -109,10 +114,14 @@
 #                        use; recorded by count, which takes the pinned model
 #                        as --model
 # and, in trusted-meta.json only, run_id and source_run_status.
-# Incomplete reasons it sets: cross_check_same_model (the cross-check or the
-# tie-break ran on the source job's effective model, its recorded refusal
-# fallback or else its pinned model, or either model was never recorded, so
-# its entries were not applied, D24),
+# Incomplete reasons it sets: cross_check_same_model (the cross-check's or
+# the tie-break's model set overlaps that of a job it judges: source,
+# source_repair, poc-write or poc-decide, and for the tie-break also the
+# cross-check; its entries were not applied, D24), cross_check_model_unrecorded
+# (the checking job's model, or a required judged job's, was never recorded,
+# so independence cannot be shown and its entries were not applied: source
+# and, for the tie-break, the cross-check always; poc-write and poc-decide
+# when items were selected for them; source_repair never),
 # cap_exceeded:<job>, cross_check_cap,
 # cross_check_missing (a selected record with no valid cross-check entry, or
 # a cross-check that never applied), cross_check_dispute, cross_check_not_run
@@ -1297,31 +1306,51 @@ def model_set(state, job):
 # The jobs whose results each checking job judges (D24): the cross-check
 # judges the records the source, its repair and the proof-of-concept jobs
 # produced, and the tie-break settles disputes between those records and the
-# cross-check's replacements. A job in OPTIONAL_JOBS that was never counted
-# did not run and is skipped; any other never-counted job fails closed.
+# cross-check's replacements. A judged job that was never counted fails
+# closed, except the source repair, which runs only when the validators fail,
+# and the proof-of-concept jobs when no item was selected for them.
 CHECKED_JOBS = {"cross-check": ("source", "source_repair", "poc-write", "poc-decide"),
                 "tie-break": ("source", "source_repair", "poc-write", "poc-decide", "cross-check")}
-OPTIONAL_JOBS = ("source_repair", "poc-write", "poc-decide")
+POC_JOBS = ("poc-write", "poc-decide")
 
 
-def same_model_as_checked(state, checker):
-    """True when the checking job's model set overlaps the set of any job it
-    checks, or when the checking job's, the source's or (for the tie-break)
-    the cross-check's models were never recorded, since independence cannot
-    then be shown. The source repair and the proof-of-concept jobs count only
-    when they ran."""
+def model_independence(state, checker):
+    """Why the checking job is not independent of the jobs it judges, or
+    None when it is: ("unrecorded", job) when the checking job's or a
+    required judged job's models were never recorded, so independence cannot
+    be shown, or ("overlap", job) when the checking job's model set shares a
+    model with that judged job's."""
     mine = model_set(state, checker)
     if mine is None:
-        return True
+        return ("unrecorded", checker)
+    poc = state.trusted.get("poc")
+    poc_selected = isinstance(poc, dict) and bool(poc.get("selected"))
     for job in CHECKED_JOBS[checker]:
         theirs = model_set(state, job)
         if theirs is None:
-            if job in OPTIONAL_JOBS:
+            if job == "source_repair" or (job in POC_JOBS and not poc_selected):
                 continue
-            return True
+            return ("unrecorded", job)
         if mine & theirs:
-            return True
-    return False
+            return ("overlap", job)
+    return None
+
+
+def refuse_for_models(state, cc, checker, cause):
+    """Records why checker's entries are not applied: incomplete reason
+    cross_check_same_model with cross_check.same_model for an overlap, or
+    cross_check_model_unrecorded with cross_check.model_unrecorded for a
+    model never recorded. status reads either flag and adds no
+    cross_check_missing for the same cause. The log names only the job."""
+    kind, job = cause
+    if kind == "overlap":
+        cc["same_model"] = True
+        state.incomplete("cross_check_same_model")
+        print("merge-records: the %s's models overlap those of the %s job, so its entries are not applied" % (checker, job))
+    else:
+        cc["model_unrecorded"] = True
+        state.incomplete("cross_check_model_unrecorded")
+        print("merge-records: the %s job's model was never recorded, so the %s's entries are not applied" % (job, checker))
 
 
 def cmd_apply_cross_check(state, args):
@@ -1329,13 +1358,12 @@ def cmd_apply_cross_check(state, args):
     if not isinstance(cc, dict) or not isinstance(cc.get("selected"), list):
         raise Refused("no cross-check selection in trusted-meta.json")
     selected = set(cc["selected"])
-    if same_model_as_checked(state, "cross-check"):
-        # Not applied: a check on the source's own model is not independent.
-        # status reads same_model and adds no cross_check_missing for it.
-        cc["same_model"] = True
-        state.incomplete("cross_check_same_model")
+    cause = model_independence(state, "cross-check")
+    if cause is not None:
+        # Not applied: a check that shares a model with a job it judges, or
+        # whose independence cannot be shown, is not independent (D24).
+        refuse_for_models(state, cc, "cross-check", cause)
         write_json(args.out, {"disputes": []})
-        print("merge-records: the cross-check ran on the source job's model, so its entries are not applied")
         return
     raw = read_entries(state, "cross-check", args.entries, args.trace)
     valid = {}
@@ -1399,10 +1427,11 @@ def cmd_apply_tie_break(state, args):
     cc = state.trusted.get("cross_check")
     if not isinstance(cc, dict) or not cc.get("applied"):
         raise Refused("apply-cross-check has not run")
-    if same_model_as_checked(state, "tie-break"):
-        # Not applied: the disputes stay pending and status removes them.
-        state.incomplete("cross_check_same_model")
-        print("merge-records: the tie-break ran on the source job's model, so its entries are not applied")
+    cause = model_independence(state, "tie-break")
+    if cause is not None:
+        # Not applied, as for the cross-check (D24): the disputes stay
+        # pending and status removes them.
+        refuse_for_models(state, cc, "tie-break", cause)
         return
     try:
         data = read_bytes(args.inputs, MAX_STATE_BYTES)
@@ -1462,9 +1491,10 @@ def cmd_status(state, args):
         if not cc.get("applied"):
             for fp in cc.get("selected", []):
                 add_unique(cc["not_cross_checked"], fp)
-            # A cross-check refused for its model already carries
-            # cross_check_same_model; it is not also counted as missing.
-            if cc.get("selected") and not cc.get("same_model"):
+            # A cross-check refused for its models already carries
+            # cross_check_same_model or cross_check_model_unrecorded; it is
+            # not also counted as missing.
+            if cc.get("selected") and not cc.get("same_model") and not cc.get("model_unrecorded"):
                 state.incomplete("cross_check_missing")
         for fp in list(cc.get("pending") or []):
             original = state.record(fp)

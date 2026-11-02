@@ -164,6 +164,10 @@ class ContentTest(RenderTest):
         self.assertIn("*   Dispute rate: 1 of 4 records cross-checked (25%)", body)
         self.assertIn("*   Tie-breaks: original 1, replacement 0, neither 0", body)
 
+    def test_an_unrecorded_model_is_named_as_a_reason(self):
+        self.seed([], final_meta(incomplete_reasons=["cross_check_model_unrecorded"]))
+        self.assertIn("cross_check_model_unrecorded", self.line(self.render(), "**Status: incomplete"))
+
     def test_a_cross_check_on_the_source_model_is_named_as_a_reason(self):
         self.seed([], final_meta(incomplete_reasons=["cross_check_same_model"]))
         body = self.render()

@@ -244,7 +244,8 @@ class MergeTest(unittest.TestCase):
         path = os.path.join(self.state, "trusted-meta.json")
         trusted = self.load("trusted-meta.json") if os.path.exists(path) else {}
         models = trusted.setdefault("job_models", {})
-        for job, model in (("source", "claude-opus-5-5"), ("cross-check", "claude-fable-5-1"),
+        for job, model in (("source", "claude-opus-5-5"), ("poc-write", "claude-opus-5-5"),
+                           ("poc-decide", "claude-opus-5-5"), ("cross-check", "claude-fable-5-1"),
                            ("tie-break", "claude-sonnet-5-5")):
             models.setdefault(job, model)
         self.write(path, trusted)
@@ -949,11 +950,76 @@ class SameModelTest(MergeTest):
         self.assert_applied(*self.run_cross_check(("source", "claude-opus-5-5", None),
                                                   ("cross-check", "claude-fable-5-1", None)))
 
+    def assert_unrecorded(self, applied, meta):
+        self.assertFalse(applied)
+        self.assertIn("cross_check_model_unrecorded", meta["incomplete_reasons"])
+        self.assertNotIn("cross_check_same_model", meta["incomplete_reasons"])
+        self.assertTrue(meta["cross_check"]["model_unrecorded"])
+        with open(os.path.join(self.tmp, "tie-break-inputs.json"), encoding="utf-8") as handle:
+            self.assertEqual(json.load(handle), {"disputes": []})
+
     def test_an_unrecorded_source_model_is_refused(self):
-        self.assert_refused(*self.run_cross_check(("cross-check", "claude-fable-5-1", None)))
+        self.assert_unrecorded(*self.run_cross_check(("cross-check", "claude-fable-5-1", None)))
 
     def test_an_unrecorded_cross_check_model_is_refused(self):
-        self.assert_refused(*self.run_cross_check(("source", "claude-opus-5-5", None)))
+        self.assert_unrecorded(*self.run_cross_check(("source", "claude-opus-5-5", None)))
+
+    def test_an_unrecorded_model_is_not_also_counted_as_missing(self):
+        self.assert_unrecorded(*self.run_cross_check(("cross-check", "claude-fable-5-1", None)))
+        self.run_merge("status")
+        reasons = self.load("trusted-meta.json")["incomplete_reasons"]
+        self.assertIn("cross_check_model_unrecorded", reasons)
+        self.assertNotIn("cross_check_missing", reasons)
+
+    def select_poc_items(self):
+        trusted = self.load("trusted-meta.json")
+        trusted["poc"] = {"selected": ["m-1"], "not_tried": [], "not_rechecked": [], "confirmed": []}
+        self.write(os.path.join(self.state, "trusted-meta.json"), trusted)
+
+    def cross_check_with_selection(self, *counts):
+        record = confirmed("m-1")
+        self.seed([record], [unit("m-1", fps=["m-1"], unresolved=[])])
+        for job, pinned, fallback in counts:
+            self.count_job(job, pinned, fallback)
+        self.select_poc_items()
+        moved = confirmed("m-1")
+        moved["trace"][0]["line"] = 77
+        self.subagent("checker-1", {"decision": "replace", "fingerprint": "m-1", "reason": "Line moved.", "record": moved})
+        inputs = os.path.join(self.tmp, "tie-break-inputs.json")
+        self.run_merge("select-cross-check", "--out", os.path.join(self.tmp, "list.json"))
+        result = self.run_merge("apply-cross-check", "--entries", self.out, "--trace", self.trace_file(), "--out", inputs)
+        return self.record("m-1")["trace"][0]["line"] == 77, self.load("trusted-meta.json"), result.stdout
+
+    def test_with_items_selected_an_unrecorded_poc_job_is_refused(self):
+        applied, meta, out = self.cross_check_with_selection(("source", "claude-opus-5-5", None),
+                                                              ("poc-write", "claude-opus-5-5", None),
+                                                              ("cross-check", "claude-fable-5-1", None))
+        self.assert_unrecorded(applied, meta)
+        self.assertIn("the poc-decide job's model was never recorded", out)
+
+    def test_with_items_selected_and_every_poc_job_recorded_the_check_applies(self):
+        applied, meta, _ = self.cross_check_with_selection(("source", "claude-opus-5-5", None),
+                                                            ("poc-write", "claude-opus-5-5", None),
+                                                            ("poc-decide", "claude-opus-5-5", None),
+                                                            ("cross-check", "claude-fable-5-1", None))
+        self.assert_applied(applied, meta)
+
+    def test_an_unrecorded_source_repair_never_refuses(self):
+        applied, meta, _ = self.cross_check_with_selection(("source", "claude-opus-5-5", None),
+                                                            ("poc-write", "claude-opus-5-5", None),
+                                                            ("poc-decide", "claude-opus-5-5", None),
+                                                            ("cross-check", "claude-fable-5-1", None))
+        self.assertNotIn("source_repair", meta.get("job_models", {}))
+        self.assert_applied(applied, meta)
+
+    def test_an_overlap_names_the_judged_job(self):
+        _applied, meta, out = self.cross_check_with_selection(("source", "claude-opus-5-5", None),
+                                                               ("poc-write", "claude-opus-5-5", None),
+                                                               ("poc-decide", "claude-fable-5-1", None),
+                                                               ("cross-check", "claude-fable-5-1", None))
+        self.assertIn("cross_check_same_model", meta["incomplete_reasons"])
+        self.assertTrue(meta["cross_check"]["same_model"])
+        self.assertIn("overlap those of the poc-decide job", out)
 
     def test_the_same_pinned_model_is_refused(self):
         self.assert_refused(*self.run_cross_check(("source", "claude-opus-5-5", None),
