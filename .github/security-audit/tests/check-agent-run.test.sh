@@ -490,6 +490,26 @@ for j in cross-check tie-break; do
   assert_eq "1" "$(rc "$j" "$tmp/t.json")" "a state file write fails as $j"
 done
 
+# The allowlist is read only for a trace holding a fallback event: with the
+# file gone, a trace with no event still passes, and one with an event fails
+# with a reason line rather than a stack.
+COPY="$tmp/copy/.github"
+mkdir -p "$COPY/claude-review/tools"
+cp -R "$(dirname "$C")" "$COPY/security-audit"
+cp -R "$(dirname "$C")/../claude-review/tools/review" "$COPY/claude-review/tools/review"
+rm "$COPY/security-audit/refusal-fallback-models.txt"
+copy_run () { bash "$COPY/security-audit/check-agent-run.sh" "${1:-poc-write}" "$tmp/t.json" "$TOOLS" "$OUT" "$FP" "$M" 2>&1; }
+copy_rc () { copy_run "$@" >/dev/null; echo $?; }
+trace "$tmp/t.json" "${CLEAN[@]}" "$(result "$M")"
+assert_eq "0" "$(copy_rc source)" "a trace with no fallback event passes without the allowlist file"
+fb_trace "$FB" "$(fb_event "$FB")"
+assert_eq "1" "$(copy_rc)" "a fallback event without the allowlist file fails"
+out=$(copy_run)
+assert_contains "$out" "check-agent-run: the refusal fallback allowlist is missing, empty or malformed" "and says why"
+case "$out" in *"at Object"*|*"ENOENT"*|*"node:"*) echo "FAIL: a missing allowlist printed a stack" >&2; exit 1;; esac
+printf 'not a model\n' > "$COPY/security-audit/refusal-fallback-models.txt"
+assert_eq "1" "$(copy_rc)" "a malformed allowlist file fails a fallback run"
+
 # The fingerprint: the checkout and the watched parts of ~/.claude.
 assert_eq "0" "$(rc source "$tmp/clean.json")" "unchanged state passes"
 echo "b" >> "$WS/tracked.txt"

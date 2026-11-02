@@ -532,15 +532,26 @@ if (used && attributed === 0) {
 // model_refusal_fallback names it as fallback_model, and it is on the fixed
 // allowlist in refusal-fallback-models.txt. Nothing else in the event is
 // read or printed.
+// The allowlist is read only when the trace holds such an event; a missing
+// or malformed allowlist then refuses the fallback with a reason line.
 const MODEL_NAME = /^claude-[a-z0-9-]+$/;
-const allowlist = fs.readFileSync(fallbackFile, 'utf8').split('\n').map((l) => l.trim()).filter(Boolean);
-if (allowlist.length === 0 || !allowlist.every((l) => MODEL_NAME.test(l))) {
-  say('the refusal fallback allowlist is empty or malformed, so a fallback cannot be judged');
-  process.exit(1);
+const events = msgs.filter((m) => isObj(m) && m.type === 'system' && m.subtype === 'model_refusal_fallback');
+let allowlist = [];
+if (events.length > 0) {
+  try {
+    allowlist = fs.readFileSync(fallbackFile, 'utf8').split('\n').map((l) => l.trim()).filter(Boolean);
+  } catch (err) {
+    allowlist = [];
+  }
+  if (allowlist.length === 0 || !allowlist.every((l) => MODEL_NAME.test(l))) {
+    allowlist = [];
+    bad += 1;
+    say('the refusal fallback allowlist is missing, empty or malformed, so no refusal fallback can be accepted');
+  }
 }
 const fallbacks = new Set();
-for (const m of msgs) {
-  if (!isObj(m) || m.type !== 'system' || m.subtype !== 'model_refusal_fallback') continue;
+for (const m of events) {
+  if (allowlist.length === 0) break;
   if (typeof m.fallback_model !== 'string' || !allowlist.includes(m.fallback_model)) {
     bad += 1;
     say('a model_refusal_fallback event names a model that is not on the refusal fallback allowlist');
