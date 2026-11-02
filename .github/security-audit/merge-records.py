@@ -93,7 +93,8 @@
 #                        tie_break_ pair marks a tie-break refused for the
 #                        same causes; refused_by_classifier and
 #                        tie_break_refused_by_classifier count the requests
-#                        of that job refused with no fallback; apply-tie-break
+#                        of that job refused with no fallback, set even when
+#                        that check is refused for its models; apply-tie-break
 #                        refuses inputs whose sha256 is not inputs_sha256,
 #                        or whose disputes are not objects whose original
 #                        and replacement carry the dispute's fingerprint
@@ -1502,6 +1503,14 @@ def cmd_apply_cross_check(state, args):
     if not isinstance(cc, dict) or not isinstance(cc.get("selected"), list):
         raise Refused("no cross-check selection in trusted-meta.json")
     selected = set(cc["selected"])
+    # A refused request leaves an unknown part of the selection unchecked;
+    # every other entry is applied, and the run is marked incomplete. It is
+    # recorded before the model check, so a check refused for its models
+    # still shows it.
+    refusals = refusal_count(state, "cross-check")
+    if refusals:
+        cc["refused_by_classifier"] = refusals
+        state.incomplete("cross_check_refused_by_classifier")
     cause = model_independence(state, "cross-check")
     if cause is not None:
         # Not applied: a check that shares a model with a job it judges, or
@@ -1510,12 +1519,6 @@ def cmd_apply_cross_check(state, args):
         write_json(args.out, {"disputes": []})
         return
     raw = read_entries(state, "cross-check", args.entries, args.trace)
-    # A refused request leaves an unknown part of the selection unchecked;
-    # every other entry is applied, and the run is marked incomplete.
-    refusals = refusal_count(state, "cross-check")
-    if refusals:
-        cc["refused_by_classifier"] = refusals
-        state.incomplete("cross_check_refused_by_classifier")
     valid = {}
     for agent_id, entry in raw.items():
         if entry_ok(cross_entry_valid, entry, selected):
@@ -1577,6 +1580,10 @@ def cmd_apply_tie_break(state, args):
     cc = state.trusted.get("cross_check")
     if not isinstance(cc, dict) or not cc.get("applied"):
         raise Refused("apply-cross-check has not run")
+    refusals = refusal_count(state, "tie-break")
+    if refusals:
+        cc["tie_break_refused_by_classifier"] = refusals
+        state.incomplete("tie_break_refused_by_classifier")
     cause = model_independence(state, "tie-break")
     if cause is not None:
         # Not applied, as for the cross-check (D24): the disputes stay
@@ -1603,10 +1610,6 @@ def cmd_apply_tie_break(state, args):
                       key=lambda d: js_order(d["fingerprint"]))
     eligible = {d["fingerprint"] for d in disputes[:TIE_BREAK_SLOTS]}
     raw = read_entries(state, "tie-break", args.entries, args.trace)
-    refusals = refusal_count(state, "tie-break")
-    if refusals:
-        cc["tie_break_refused_by_classifier"] = refusals
-        state.incomplete("tie_break_refused_by_classifier")
     valid = {}
     for agent_id, entry in raw.items():
         if entry_ok(tie_entry_valid, entry, eligible):

@@ -1025,6 +1025,22 @@ class RefusalWithoutFallbackTest(MergeTest):
         self.run_merge("count", "--job", "source", "--cap", "30", "--trace", self.trace_file())
         self.assertNotIn("classifier_refusals", self.load("trusted-meta.json"))
 
+    def test_a_refusal_is_shown_when_the_check_is_also_refused_for_its_models(self):
+        # The cross-check is pinned to the source's model, so D24 refuses it;
+        # the classifier refusal is still counted and named.
+        self.seed([confirmed("r-1")], [unit("r-1", fps=["r-1"], unresolved=[])])
+        self.messages.append(self.no_fallback_event())
+        trace = self.trace_file()
+        self.run_merge("count", "--job", "cross-check", "--cap", "30", "--trace", trace, "--model", "claude-opus-5-5")
+        self.run_merge("select-cross-check", "--out", os.path.join(self.tmp, "list.json"))
+        self.pin_models()
+        self.run_merge("apply-cross-check", "--entries", self.out, "--trace", trace,
+                       "--out", os.path.join(self.tmp, "tie-break-inputs.json"))
+        meta = self.load("trusted-meta.json")
+        self.assertIn("cross_check_same_model", meta["incomplete_reasons"])
+        self.assertIn("cross_check_refused_by_classifier", meta["incomplete_reasons"])
+        self.assertEqual(meta["cross_check"]["refused_by_classifier"], 1)
+
     def test_a_refused_tie_break_is_marked_incomplete(self):
         self.seed([confirmed("t-1")], [unit("t-1", fps=["t-1"], unresolved=[])])
         self.subagent("c-1", {"decision": "replace", "fingerprint": "t-1", "reason": "Another cause.",
