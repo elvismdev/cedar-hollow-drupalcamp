@@ -1606,7 +1606,7 @@ jobs:
         env:
           TRACE: ${{ steps.agent-tie-break.outputs.execution_file }}
           MODEL: ${{ steps.args-tie-break.outputs.CLAUDE_CODE_SUBAGENT_MODEL }}
-        run: bash .github/security-audit/check-agent-run.sh cross-check "$TRACE" "$AGENT_TOOLS" "$AUDIT_OUTPUT_DIR" "$RUNNER_TEMP/fingerprint-tie-break" "$MODEL"
+        run: bash .github/security-audit/check-agent-run.sh tie-break "$TRACE" "$AGENT_TOOLS" "$AUDIT_OUTPUT_DIR" "$RUNNER_TEMP/fingerprint-tie-break" "$MODEL"
 
       - name: Outcome (tie-break agent)
         id: outcome-tie-break

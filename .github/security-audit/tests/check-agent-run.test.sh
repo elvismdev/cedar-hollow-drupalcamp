@@ -474,6 +474,22 @@ case "$(run poc-write "$tmp/t.json")" in *"ran on the refusal fallback"*) echo "
 fb_trace "$FB" "$(fb_event "$FB")" "$(top Bash '{"command":"id"}')"
 assert_eq "1" "$(rc poc-write "$tmp/t.json")" "every other rule still applies on a fallback run"
 
+# tie-break runs with exactly the cross-check rules: a subagent reading another
+# declared subagent's directory fails in both, and a clean later-job trace
+# passes in both.
+for j in cross-check tie-break; do
+  trace "$tmp/t.json" "$INIT" "$(agent tc1 "agent-id: tb-1 judge")" "$(agent tc2 "agent-id: tb-2 judge")" \
+    "$(sub tc1 Write "{\"file_path\":\"$OUT/agents/tb-1/scratch/entry.json\",\"content\":\"{}\"}")" \
+    "$(sub tc2 Write "{\"file_path\":\"$OUT/agents/tb-2/scratch/entry.json\",\"content\":\"{}\"}")" "$(result "$M")"
+  assert_eq "0" "$(rc "$j" "$tmp/t.json")" "a clean judging trace passes as $j"
+  trace "$tmp/t.json" "$INIT" "$(agent tc1 "agent-id: tb-1 judge")" "$(agent tc2 "agent-id: tb-2 judge")" \
+    "$(sub tc1 Write "{\"file_path\":\"$OUT/agents/tb-1/scratch/entry.json\",\"content\":\"{}\"}")" \
+    "$(sub tc2 Read "{\"file_path\":\"$OUT/agents/tb-1/scratch/entry.json\"}")" "$(result "$M")"
+  assert_eq "1" "$(rc "$j" "$tmp/t.json")" "a judge reading another judge's entry fails as $j"
+  trace "$tmp/t.json" "$INIT" "$(top Write "{\"file_path\":\"$OUT/findings.json\",\"content\":\"[]\"}")" "$(result "$M")"
+  assert_eq "1" "$(rc "$j" "$tmp/t.json")" "a state file write fails as $j"
+done
+
 # The fingerprint: the checkout and the watched parts of ~/.claude.
 assert_eq "0" "$(rc source "$tmp/clean.json")" "unchanged state passes"
 echo "b" >> "$WS/tracked.txt"

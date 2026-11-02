@@ -110,7 +110,9 @@
 #   check-agent-run.sh --fingerprint <out-file>
 #   check-agent-run.sh <job> <execution-file> <allowed-tools> <output-root> \
 #                      <fingerprint-file> <model> [helper-model]
-#     <job>            source, poc-write, poc-decide or cross-check
+#     <job>            source, poc-write, poc-decide, cross-check or tie-break
+#                      (tie-break has exactly the cross-check rules; it names
+#                      the step in the log)
 #     <allowed-tools>  comma-separated, as check-trace-tools.sh --tools takes
 #   GITHUB_WORKSPACE (the checkout), HOME, and optionally AUDIT_INPUT_DIR.
 set -euo pipefail
@@ -182,7 +184,7 @@ fi
 [ "$#" -eq 6 ] || [ "$#" -eq 7 ] || usage
 job="$1" trace="$2" allowed="$3" out_root="$4" fp_file="$5" model="$6" helper="${7:-}"
 case "$job" in
-  source|poc-write|poc-decide|cross-check) ;;
+  source|poc-write|poc-decide|cross-check|tie-break) ;;
   *) echo "check-agent-run: unknown job" >&2; exit 2 ;;
 esac
 case "$out_root" in /*) ;; *) echo "check-agent-run: the output root must be absolute" >&2; exit 2 ;; esac
@@ -501,7 +503,7 @@ for (const call of calls) {
     let why = null;
     if (job === 'poc-write') {
       why = isolationRefusal(c.name, readTargets(c), (t) => id === null || agentOf(t) !== id, true);
-    } else if (job === 'poc-decide' || job === 'cross-check') {
+    } else if (job === 'poc-decide' || job === 'cross-check' || job === 'tie-break') {
       const others = [...declared].filter((d) => d !== id);
       why = isolationRefusal(c.name, readTargets(c),
         (t) => others.includes(agentOf(t)) || (id === null && declared.has(agentOf(t))), others.length > 0 || id === null);
