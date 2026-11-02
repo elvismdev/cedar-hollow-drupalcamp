@@ -1038,6 +1038,16 @@ class SameModelTest(MergeTest):
         self.run_merge("apply-cross-check", "--entries", self.out, "--trace", self.trace_file(), "--out", inputs)
         self.assert_refused(self.record("m-1")["trace"][0]["line"] == 77, self.load("trusted-meta.json"))
 
+    def test_each_count_sets_or_removes_the_jobs_helper(self):
+        self.seed([confirmed("m-1")], [unit("m-1", fps=["m-1"], unresolved=[])])
+        self.messages.append({"type": "assistant", "message": {"model": "claude-fable-5-1", "content": []}})
+        self.run_merge("count", "--job", "cross-check", "--cap", "30", "--trace", self.trace_file(),
+                       "--model", "claude-fable-5-1", "--helper", "claude-opus-5-5")
+        self.assertEqual(self.load("trusted-meta.json")["job_helpers"], {"cross-check": "claude-opus-5-5"})
+        self.run_merge("count", "--job", "cross-check", "--cap", "30", "--trace", self.trace_file(),
+                       "--model", "claude-fable-5-1")
+        self.assertNotIn("cross-check", self.load("trusted-meta.json").get("job_helpers", {}))
+
     def test_the_same_pinned_model_is_refused(self):
         self.assert_refused(*self.run_cross_check(("source", "claude-opus-5-5", None),
                                                   ("cross-check", "claude-opus-5-5", None)))

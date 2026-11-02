@@ -106,9 +106,10 @@
 #                        interrupted poc-write subagent or a script under its
 #                        agents/<id>/, and any decision on that item
 #   job_models           {job: pinned model} for every counted job
-#   job_helpers          {job: helper model} for every job counted with
-#                        --helper; a job's model set is its pinned model, its
-#                        helper and every refusal fallback recorded for it
+#   job_helpers          {job: helper model} for every job whose latest count
+#                        passed --helper; a count without it removes the
+#                        job's entry. A job's model set is its pinned model,
+#                        its helper and every refusal fallback recorded for it
 #   refusal_fallback     [{job, pinned_model, fallback_model}] for each job
 #                        whose trace holds a system model_refusal_fallback
 #                        message in its top-level array (written by Claude
@@ -799,8 +800,13 @@ def cmd_count(state, args):
     used = subagent_count(messages)
     bindings, _ = subagent_bindings(messages)
     state.trusted.setdefault(JOB_MODELS, {})[args.job] = args.model
+    # Each count replaces the job's helper as it replaces its pinned model, so
+    # a recount without --helper leaves no helper from an earlier count.
+    helpers = state.trusted.setdefault(JOB_HELPERS, {})
     if args.helper is not None:
-        state.trusted.setdefault(JOB_HELPERS, {})[args.job] = args.helper
+        helpers[args.job] = args.helper
+    else:
+        helpers.pop(args.job, None)
     fallbacks = state.trusted.setdefault(REFUSAL_FALLBACK, [])
     for fallback in refusal_fallbacks(messages, args.model, args.helper):
         key = {"job": args.job, "pinned_model": args.model, "fallback_model": fallback}
