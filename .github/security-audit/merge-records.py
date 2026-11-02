@@ -120,14 +120,16 @@
 #                        use; recorded by count, which takes the pinned model
 #                        as --model
 # and, in trusted-meta.json only, run_id and source_run_status.
-# Incomplete reasons it sets: cross_check_same_model (the cross-check's or
-# the tie-break's model set overlaps that of a job it judges: source,
-# source_repair, poc-write or poc-decide, and for the tie-break also the
-# cross-check; its entries were not applied, D24), cross_check_model_unrecorded
-# (the checking job's model, or a required judged job's, was never recorded,
-# so independence cannot be shown and its entries were not applied: the
-# source always and, for the tie-break, the cross-check; source_repair,
-# poc-write and poc-decide never, since an uncounted one handed on nothing),
+# Incomplete reasons it sets: cross_check_same_model (the cross-check's
+# model set overlaps that of a job it judges: source, source_repair,
+# poc-write or poc-decide; its entries were not applied, D24),
+# cross_check_model_unrecorded (the cross-check's model, or the source's, was
+# never recorded, so independence cannot be shown and its entries were not
+# applied; source_repair, poc-write and poc-decide are never required, since
+# an uncounted one handed on nothing), tie_break_same_model and
+# tie_break_model_unrecorded (the same two causes for the tie-break, which
+# also judges the cross-check and requires its model; its answers were not
+# applied and status removes its disputes as tie_break_refused),
 # cap_exceeded:<job>, cross_check_cap,
 # cross_check_missing (a selected record with no valid cross-check entry, or
 # a cross-check that never applied), cross_check_dispute, cross_check_not_run
@@ -1355,23 +1357,23 @@ def model_independence(state, checker):
 
 
 def refuse_for_models(state, cc, checker, cause):
-    """Records why checker's entries are not applied: incomplete reason
-    cross_check_same_model for an overlap, or cross_check_model_unrecorded
-    for a model never recorded, with the matching flag under cross_check:
-    same_model or model_unrecorded for the cross-check, which status reads to
-    add no cross_check_missing for the same cause, and tie_break_same_model
-    or tie_break_model_unrecorded for the tie-break, so a refused tie-break
-    never marks the applied cross-check as refused. The log names only the
-    job."""
+    """Records why checker's entries are not applied, as both a flag under
+    cross_check and the incomplete reason of the same name: same_model for an
+    overlap or model_unrecorded for a model never recorded, prefixed
+    cross_check_ in the reason for the cross-check and tie_break_ in both for
+    the tie-break. status reads the cross-check's flags to add no
+    cross_check_missing for the same cause, and the tie-break's to remove its
+    disputes as tie_break_refused. The log names only the job."""
     kind, job = cause
-    prefix = "tie_break_" if checker == "tie-break" else ""
+    flag = "tie_break_" if checker == "tie-break" else ""
+    reason = "tie_break_" if checker == "tie-break" else "cross_check_"
     if kind == "overlap":
-        cc[prefix + "same_model"] = True
-        state.incomplete("cross_check_same_model")
+        cc[flag + "same_model"] = True
+        state.incomplete(reason + "same_model")
         print("merge-records: the %s's models overlap those of the %s job, so its entries are not applied" % (checker, job))
     else:
-        cc[prefix + "model_unrecorded"] = True
-        state.incomplete("cross_check_model_unrecorded")
+        cc[flag + "model_unrecorded"] = True
+        state.incomplete(reason + "model_unrecorded")
         print("merge-records: the %s job's model was never recorded, so the %s's entries are not applied" % (job, checker))
 
 
@@ -1518,11 +1520,15 @@ def cmd_status(state, args):
             # not also counted as missing.
             if cc.get("selected") and not cc.get("same_model") and not cc.get("model_unrecorded"):
                 state.incomplete("cross_check_missing")
+        # Disputes still pending had no tie-break answer applied: the
+        # tie-break was refused for its models, or it never ran.
+        refused = cc.get("tie_break_same_model") or cc.get("tie_break_model_unrecorded")
+        because = "tie_break_refused" if refused else "tie_break_not_run"
         for fp in list(cc.get("pending") or []):
             original = state.record(fp)
             if original is not None:
                 remove_disputed(state, {"fingerprint": fp, "original": original, "replacement": None,
-                                        "cross_check_reason": None}, "tie_break_not_run", None)
+                                        "cross_check_reason": None}, because, None)
         cc["pending"] = []
         checked = cc.get("cross_checked", 0)
         state.trusted["dispute_rate"] = {

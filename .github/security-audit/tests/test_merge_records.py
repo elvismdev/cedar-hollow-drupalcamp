@@ -898,13 +898,13 @@ class SameModelTest(MergeTest):
     def test_a_tie_break_on_the_cross_checks_fallback_model_is_not_applied(self):
         applied, meta = self.tie_break_after("claude-opus-4-8", "claude-opus-4-8")
         self.assertFalse(applied)
-        self.assertIn("cross_check_same_model", meta["incomplete_reasons"])
+        self.assertIn("tie_break_same_model", meta["incomplete_reasons"])
         self.assertEqual(meta["cross_check"]["tie_breaks"], [])
 
     def test_a_refused_tie_break_flags_itself_not_the_cross_check(self):
         for name, tie_fallback, count_tie_break, flag, reason in (
-                ("overlap", "claude-opus-4-8", True, "tie_break_same_model", "cross_check_same_model"),
-                ("unrecorded", None, False, "tie_break_model_unrecorded", "cross_check_model_unrecorded")):
+                ("overlap", "claude-opus-4-8", True, "tie_break_same_model", "tie_break_same_model"),
+                ("unrecorded", None, False, "tie_break_model_unrecorded", "tie_break_model_unrecorded")):
             with self.subTest(name):
                 self.tearDown()
                 self.setUp()
@@ -918,6 +918,9 @@ class SameModelTest(MergeTest):
                 reasons = self.load("trusted-meta.json")["incomplete_reasons"]
                 self.assertIn(reason, reasons)
                 self.assertNotIn("cross_check_missing", reasons)
+                self.assertNotIn("cross_check_same_model", reasons)
+                self.assertNotIn("cross_check_model_unrecorded", reasons)
+                self.assertEqual([d["removed_because"] for d in self.load("disputed.json")], ["tie_break_refused"])
 
     def test_a_tie_break_off_the_cross_checks_models_is_applied(self):
         applied, meta = self.tie_break_after("claude-opus-4-8", None)
@@ -1110,9 +1113,25 @@ class SameModelTest(MergeTest):
         self.subagent("tie-1", {"fingerprint": "m-2", "answer": "replacement", "reason": "Read the source."})
         self.run_merge("apply-tie-break", "--inputs", inputs, "--entries", self.out, "--trace", self.trace_file())
         self.assertEqual(self.record("m-2")["root_cause"], "Missing access check")
-        self.assertIn("cross_check_same_model", self.load("trusted-meta.json")["incomplete_reasons"])
+        self.assertIn("tie_break_same_model", self.load("trusted-meta.json")["incomplete_reasons"])
         self.run_merge("status")
         self.assertIsNone(self.record("m-2"))
+        self.assertEqual([d["removed_because"] for d in self.load("disputed.json")], ["tie_break_refused"])
+
+    def test_a_tie_break_that_never_ran_is_not_called_refused(self):
+        record = confirmed("m-4")
+        self.seed([record], [unit("m-4", fps=["m-4"], unresolved=[])])
+        self.count_job("source", "claude-opus-5-5")
+        self.count_job("cross-check", "claude-fable-5-1")
+        self.subagent("checker-1", {"decision": "replace", "fingerprint": "m-4", "reason": "Another cause.",
+                                    "record": confirmed("m-4", root_cause="Another cause")})
+        inputs = os.path.join(self.tmp, "tie-break-inputs.json")
+        self.run_merge("select-cross-check", "--out", os.path.join(self.tmp, "list.json"))
+        self.run_merge("apply-cross-check", "--entries", self.out, "--trace", self.trace_file(), "--out", inputs)
+        self.run_merge("status")
+        reasons = self.load("trusted-meta.json")["incomplete_reasons"]
+        self.assertNotIn("tie_break_same_model", reasons)
+        self.assertNotIn("tie_break_model_unrecorded", reasons)
         self.assertEqual([d["removed_because"] for d in self.load("disputed.json")], ["tie_break_not_run"])
 
     def test_a_tie_break_on_its_own_model_is_applied(self):
