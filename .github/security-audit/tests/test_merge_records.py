@@ -836,13 +836,15 @@ class SameModelTest(MergeTest):
     from those of every job whose results they judge. A job's models are its
     pinned model and every refusal fallback recorded for it."""
 
-    def count_job(self, job, pinned, fallback=None):
+    def count_job(self, job, pinned, fallback=None, helper=None):
         ran_on = fallback or pinned
         self.messages.append({"type": "assistant", "message": {"model": ran_on, "content": []}})
         if fallback:
             self.messages.append({"type": "system", "subtype": "model_refusal_fallback", "fallback_model": fallback,
                                   "api_refusal_category": "x", "api_refusal_explanation": None})
-        self.run_merge("count", "--job", job, "--cap", "60", "--trace", self.trace_file(), "--model", pinned)
+        helper_args = ["--helper", helper] if helper else []
+        self.run_merge("count", "--job", job, "--cap", "60", "--trace", self.trace_file(), "--model", pinned,
+                       *helper_args)
 
     def run_cross_check(self, *counts):
         record = confirmed("m-1")
@@ -995,10 +997,12 @@ class SameModelTest(MergeTest):
         self.write(os.path.join(self.state, "trusted-meta.json"), trusted)
 
     def cross_check_with_selection(self, *counts):
+        """Counts each (job, pinned, fallback[, helper]) and runs the
+        cross-check with items selected for the proof-of-concept jobs."""
         record = confirmed("m-1")
         self.seed([record], [unit("m-1", fps=["m-1"], unresolved=[])])
-        for job, pinned, fallback in counts:
-            self.count_job(job, pinned, fallback)
+        for job, pinned, fallback, *helper in counts:
+            self.count_job(job, pinned, fallback, *helper)
         self.select_poc_items()
         moved = confirmed("m-1")
         moved["trace"][0]["line"] = 77
@@ -1042,20 +1046,12 @@ class SameModelTest(MergeTest):
         self.assertIn("overlap those of the poc-decide job", out)
 
     def test_a_helper_equal_to_a_judged_jobs_model_is_refused(self):
-        record = confirmed("m-1")
-        self.seed([record], [unit("m-1", fps=["m-1"], unresolved=[])])
-        self.count_job("source", "claude-opus-5-5", None)
-        self.messages.append({"type": "assistant", "message": {"model": "claude-fable-5-1", "content": []}})
-        self.run_merge("count", "--job", "cross-check", "--cap", "30", "--trace", self.trace_file(),
-                       "--model", "claude-fable-5-1", "--helper", "claude-opus-5-5")
-        self.assertEqual(self.load("trusted-meta.json")["job_helpers"], {"cross-check": "claude-opus-5-5"})
-        moved = confirmed("m-1")
-        moved["trace"][0]["line"] = 77
-        self.subagent("checker-1", {"decision": "replace", "fingerprint": "m-1", "reason": "Line moved.", "record": moved})
-        inputs = os.path.join(self.tmp, "tie-break-inputs.json")
-        self.run_merge("select-cross-check", "--out", os.path.join(self.tmp, "list.json"))
-        self.run_merge("apply-cross-check", "--entries", self.out, "--trace", self.trace_file(), "--out", inputs)
-        self.assert_refused(self.record("m-1")["trace"][0]["line"] == 77, self.load("trusted-meta.json"))
+        applied, meta, out = self.cross_check_with_selection(
+            ("source", "claude-opus-5-5", None),
+            ("cross-check", "claude-fable-5-1", None, "claude-opus-5-5"))
+        self.assertEqual(meta["job_helpers"], {"cross-check": "claude-opus-5-5"})
+        self.assert_refused(applied, meta)
+        self.assertIn("overlap those of the source job", out)
 
     def test_each_count_sets_or_removes_the_jobs_helper(self):
         self.seed([confirmed("m-1")], [unit("m-1", fps=["m-1"], unresolved=[])])
