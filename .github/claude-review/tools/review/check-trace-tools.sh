@@ -68,19 +68,16 @@
 #     inside $GITHUB_WORKSPACE. When the path is inside $REVIEW_HEAD_DIR or
 #     $REVIEW_INPUT_DIR, whose .git is a pointer file with no token and which
 #     holds only a diff, any glob that passes the character allowlist is
-#     accepted. The rule: after Claude Code's split on commas (a part holding
-#     a brace group is kept whole) each part must end in a literal file
-#     extension or a brace group of extensions (*.php, *.{php,module},
-#     src/**/*.ts). Its last segment may instead be a brace group of plain
-#     names before that extension (**/{a,b}.php), or a brace group of literal
-#     file names that each end in an extension ({REVIEW.md,AGENTS.md},
-#     src/{a.php,b.yml}); a brace group anywhere else, or one holding a
-#     wildcard, is refused. Every brace expansion must pass the same rule, so
-#     each ends in a file extension. No path segment of a part or expansion,
-#     read as a glob pattern, may match .git in any letter case (.git, .git*,
-#     *.git, *.GIT) or end in .git ({a,b}.git); a segment of only ** is
-#     recursion and is judged by the segments after it, and a literal name
-#     such as .gitignore passes.
+#     accepted. The rule: ripgrep's last matching glob wins, so a glob
+#     reopens .git exactly when its last path segment matches the name .git.
+#     After Claude Code's split on commas (a part holding a brace group is kept
+#     whole), every part and every brace expansion must have no .. segment, no
+#     leading !, a last segment that is neither empty nor **, and no path
+#     segment that, read as a glob pattern, can match .git in any letter case
+#     (.git, .git*, *.git, *, *.*) or ends in .git ({a,b}.git); a segment of
+#     only ** before the last is recursion and passes, and a literal name such
+#     as .gitignore passes. So *gitignore*, {.gitignore,composer.json},
+#     src/{a,b} and **/*.php pass, and *, **, src/** and *.{git,php} do not.
 #
 # A Glob or Grep with no path searches the working directory and is allowed. A
 # Read with no file_path, and any of these fields present but empty, is
@@ -119,10 +116,11 @@
 #                        directory above it (an added root can be), takes any
 #                        glob: the character allowlist gains !, so negated
 #                        globs and brace lists of folders pass, and the
-#                        extension-shaped rule is skipped. A glob with a ..
+#                        .git rule above is skipped. A glob with a ..
 #                        segment is still refused. With no path, or with the
-#                        workspace's top level as the path, the search reaches
-#                        .git/config and the extension-shaped rule applies.
+#                        workspace's top level or a directory above it as the
+#                        path, the search reaches .git/config and the .git
+#                        rule applies.
 #                        A path under .git is refused by the path rule first.
 #
 # Their input fields, from the same schemas:
@@ -305,24 +303,27 @@ def resolve(p, base):
         return None
     return posixpath.normpath(p if p.startswith('/') else posixpath.join(base, p))
 
-# A part ends in a file extension or a brace group of extensions. Its last
-# segment may instead be a brace group of plain names before that extension
-# (**/{a,b}.php), or a brace group of literal file names that each end in an
-# extension ({REVIEW.md,AGENTS.md}, src/{a.php,b.yml}); a brace group anywhere
-# else is refused.
-_EXT = r'\.([A-Za-z0-9]+|\{[A-Za-z0-9]+(,[A-Za-z0-9]+)*\})'
-_NAME_EXT = r'[A-Za-z0-9_.-]*[A-Za-z0-9_-]\.[A-Za-z0-9]+'
-EXTENSION_GLOB = re.compile(r'[^{},]*' + _EXT
-                            + r'|([^{},]*/)?\{[A-Za-z0-9_-]+(,[A-Za-z0-9_-]+)*\}' + _EXT
-                            + r'|([^{},]*/)?\{' + _NAME_EXT + r'(,' + _NAME_EXT + r')*\}')
-
-def grep_glob_allowed(value):
+# ripgrep's last matching glob wins, so a Grep glob overrides Claude Code's
+# own !.git exclusion for a directory named .git exactly when the glob's last
+# path segment matches that name; a middle segment, or a last segment that
+# matches only files below .git (*.php), does not reopen it. A glob ending in a
+# ** segment matches every name, .git included.
+def grep_glob_allowed(value, exps):
+    """True when no part or expansion of a Grep glob searched from the
+    workspace's top level can reopen its .git."""
     if not glob_ok(value):
         return False
     # Claude Code splits on whitespace, which glob_ok has already refused, then
     # on commas unless a part holds a brace group.
     parts = [value] if '{' in value and '}' in value else [t for t in value.split(',') if t]
-    return bool(parts) and all(EXTENSION_GLOB.fullmatch(t) and not git_segment(t) for t in parts)
+    if not parts:
+        return False
+    for t in parts + exps:
+        segs = t.split('/')
+        if ('..' in segs or t.startswith('!') or segs[-1] in ('', '**')
+                or git_segment(t)):
+            return False
+    return True
 
 
 def git_segment(value):
@@ -448,25 +449,24 @@ def refusal(call):
             if SUBFOLDER_GLOB_CHARS.fullmatch(g) is None:
                 return ('character outside the allowlist', 'glob')
             if '..' in re.split(r'[/{},!]', g):
-                return ('Grep glob is not extension-shaped', 'glob')
+                return ('Grep glob holds a .. segment', 'glob')
             exps = expansions(g)
             if exps is None:
                 return ('braces cannot be expanded', 'glob')
             if any('..' in re.split(r'[/{},!]', e) for e in exps):
-                return ('Grep glob is not extension-shaped', 'glob')
+                return ('Grep glob holds a .. segment', 'glob')
         else:
             if not glob_ok(g):
                 return ('character outside the allowlist', 'glob')
             if '..' in re.split(r'[/{},]', g):
-                return ('Grep glob is not extension-shaped', 'glob')
+                return ('Grep glob holds a .. segment', 'glob')
             exps = expansions(g)
             if exps is None:
                 return ('braces cannot be expanded', 'glob')
             if any('..' in re.split(r'[/{},]', e) for e in exps):
-                return ('Grep glob is not extension-shaped', 'glob')
-            if not away_from_workspace(args.get('path')) and not (
-                    grep_glob_allowed(g) and all(grep_glob_allowed(e) for e in exps)):
-                return ('Grep glob is not extension-shaped', 'glob')
+                return ('Grep glob holds a .. segment', 'glob')
+            if not away_from_workspace(args.get('path')) and not grep_glob_allowed(g, exps):
+                return ('Grep glob can reach .git', 'glob')
     path = args.get('path')
     if path is None:
         base = ws

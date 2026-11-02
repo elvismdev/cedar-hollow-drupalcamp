@@ -116,8 +116,10 @@ ok_path Read '{"file_path":"/rt/head/web/modules/custom/cedar_hollow_core/cedar_
 ok_path Read '{"file_path":"/w/repo/node_modules/@scope/pkg+x/a-b.js"}' "@, + and - are allowed"
 
 # A Grep glob overrides Claude Code's own exclusion of .git in ripgrep, because
-# a later glob wins. Only a glob that ends in a file extension is allowed, after
-# the same split on commas that Claude Code applies.
+# a later glob wins, when its last segment matches the name .git. After the same
+# split on commas that Claude Code applies, a glob passes when no part or
+# expansion has a .., a leading !, an empty or ** last segment, or a segment
+# that can match .git.
 no_path Grep '{"pattern":"x","glob":"**"}' "a Grep glob of ** is refused"
 no_path Grep '{"pattern":"x","glob":"*"}' "a Grep glob of * is refused"
 no_path Grep '{"pattern":"x","glob":"**,*.php"}' "a comma-joined ** is refused"
@@ -133,15 +135,14 @@ no_path Grep '{"pattern":"x","glob":"!*.php"}' "a ! outside the allowlist is ref
 ok_path Grep '{"pattern":"x","glob":"**/{a,b}.php"}' "a brace group of names before the extension passes after **/"
 ok_path Grep '{"pattern":"x","glob":"{a,b}.php"}' "a brace group of names before the extension passes on its own"
 ok_path Grep '{"pattern":"x","glob":"src/**/*.{php,module}"}' "a brace group of extensions passes after a directory"
-no_path Grep '{"pattern":"x","glob":"**/{a,*}.php"}' "a wildcard in the names brace group is refused"
+ok_path Grep '{"pattern":"x","glob":"**/{a,*}.php"}' "a wildcard in a names brace group before an extension passes"
 no_path Grep '{"pattern":"x","glob":"**/{..,a}.php"}' "a .. in the names brace group is refused"
-no_path Grep '{"pattern":"x","glob":"{a,b}/x.php"}' "a brace group in a directory segment is refused"
-no_path Grep '{"pattern":"x","glob":"**/{a,b}"}' "a brace group of names with no extension is refused"
+ok_path Grep '{"pattern":"x","glob":"{a,b}/x.php"}' "a brace group in a directory segment passes"
+ok_path Grep '{"pattern":"x","glob":"**/{a,b}"}' "a brace group of names with no extension passes"
 
-# A brace group of literal file names, each with an extension, passes as the
-# last segment. A path segment that, read as a glob, can match .git is
-# refused (.git*, *.git, {a,b}.git, *.{git,sample}), while a literal name such
-# as .gitignore passes. Both with no options and with the audit's: the
+# A brace group of literal names passes. A path segment that, read as a glob,
+# can match .git is refused (.git*, *.git, {a,b}.git, *.{git,sample}), while a
+# literal name such as .gitignore passes. Both with no options and with the audit's: the
 # two Grep globs below are real calls from audit run 41347206214.
 glob_rc () { # glob [option...]: exit status of a Grep with that glob and no path
   printf '[%s]' "$(call Grep "{\"pattern\":\"x\",\"glob\":\"$1\"}")" > "$tmp/g.json"; shift
@@ -151,19 +152,19 @@ AUDIT_OPTS=(--tools "Read,Glob,Grep,Write,Edit,Agent,Task,SubagentHandback" --ro
 for opts in none audit; do
   if [ "$opts" = audit ]; then O=("${AUDIT_OPTS[@]}"); else O=(); fi
   for g in '{REVIEW.md,AGENTS.md,CLAUDE.md}' '*.{yml,yaml,sh,htaccess,gitignore,json,php,md}' \
-           'src/{a.php,b.yml}' '*.gitignore' '.gitattributes' '**/*.gitkeep'; do
+           'src/{a.php,b.yml}' '*.gitignore' '.gitattributes' '**/*.gitkeep' \
+           '{REVIEW,AGENTS.md}' 'src/{a,b}' '{a.md,*.md}' '{a.md,b/c.md}' '{.htaccess,a.md}'; do
     assert_eq "0" "$(glob_rc "$g" "${O[@]}")" "the Grep glob $g passes ($opts options)"
   done
   for g in '.git/config' '**/.git/**' '{.git,x}/config' '.GIT/config' '{.git/x.php,a.php}' 'x/.git/y.md' \
-           '**/.Git/hooks/*.sample' 'a.php,.git/x.md' '{REVIEW,AGENTS.md}' 'src/{a,b}' '{a.md,*.md}' '{a.md,../b.md}' \
-           '{a.md,b/c.md}' '{.htaccess,a.md}' \
+           '**/.Git/hooks/*.sample' 'a.php,.git/x.md' '{a.md,../b.md}' \
            '.git*/hooks/pre-commit.sample' '**/.git*/**/*.pack' '*.git' '**/*.git' '*.GIT' '{a,b}.git' \
            '{x.git,y.md}' '*.{git,sample}' '*.git,*.sample' '*.git,*.pack,*.idx' 'src/*.Git'; do
     assert_eq "1" "$(glob_rc "$g" "${O[@]}")" "the Grep glob $g is still refused ($opts options)"
   done
 done
 
-# The extension-shaped rule protects the workspace's .git/config, so it applies
+# The .git rule protects the workspace's .git/config, so it applies
 # only when the search root can reach the workspace: no path, or a path inside
 # it. The head's .git is a pointer file and the input directory holds a diff, so
 # any glob that passes the character allowlist is fine there.
@@ -173,6 +174,28 @@ ok_path Grep '{"pattern":"x","path":"/rt/review-input","glob":"*"}' "a Grep glob
 no_path Grep '{"pattern":"x","glob":"**"}' "a Grep glob of ** with no path is refused"
 no_path Grep '{"pattern":"x","path":"/w/repo","glob":"**"}' "a Grep glob of ** in the workspace is refused"
 no_path Grep '{"pattern":"x","path":"/rt/head","glob":"../**"}' "a .. glob in the head is refused"
+
+# The two Grep globs the extension rule refused in audit run 41396278548 pass,
+# and globs that can reopen .git, or climb or negate, stay refused: with no
+# options and with the audit's, with no path and with the workspace as path.
+grep_rc () { # path-or-empty glob [option...]
+  local input
+  if [ -n "$1" ]; then input="{\"pattern\":\"x\",\"path\":\"$1\",\"glob\":\"$2\"}"
+  else input="{\"pattern\":\"x\",\"glob\":\"$2\"}"; fi
+  printf '[%s]' "$(call Grep "$input")" > "$tmp/x.json"; shift 2
+  rc "$tmp/x.json" "$@"
+}
+for opts in none audit; do
+  if [ "$opts" = audit ]; then O=("${AUDIT_OPTS[@]}"); else O=(); fi
+  assert_eq "0" "$(grep_rc '' '*gitignore*' "${O[@]}")" "*gitignore* with no path passes ($opts options)"
+  assert_eq "0" "$(grep_rc /w/repo '{.gitignore,composer.json}' "${O[@]}")" "{.gitignore,composer.json} at the workspace passes ($opts options)"
+  for p in '' /w/repo; do
+    for g in '**' 'src/**' '{a,**}' '*' '*.git' '.git*/x' '{.git,a}' '*.{git,php}' '!x' '../x' 'a/../*' \
+             'a,**' 'src/' '*.*' '{a,b}/**'; do
+      assert_eq "1" "$(grep_rc "$p" "$g" "${O[@]}")" "the Grep glob $g is refused (path ${p:-none}, $opts options)"
+    done
+  done
+done
 
 # Closed input fields. Each tool's input may hold only the fields of its own
 # schema in Claude Code 2.1.309. Claude Code reads aliases and stray fields
@@ -231,15 +254,16 @@ label_is Glob '{"pattern":"../../*"}' "path outside the allowed roots (field pat
 label_is Read '{"file_path":"/w/repo/.git/config"}' "path under .git (field file_path)" "label: under .git"
 label_is Read '{"file_path":"~/x"}' "path starts with ~ (field file_path)" "label: starts with ~"
 label_is Glob '{"pattern":"/w/repo/*.php"}' "Glob pattern is absolute (field pattern)" "label: absolute"
-label_is Grep '{"pattern":"x","glob":"**"}' "Grep glob is not extension-shaped (field glob)" "label: not extension-shaped"
-label_is Grep '{"pattern":"x","glob":"**"}' "Grep glob is not extension-shaped (field glob)" "label: no path, glob **"
-label_is Grep '{"pattern":"x","path":"/w/repo","glob":"**"}' "Grep glob is not extension-shaped (field glob)" "label: workspace path, glob **"
-label_is Grep '{"pattern":"x","path":"/rt/head","glob":"../**"}' "Grep glob is not extension-shaped (field glob)" "label: head path, .. glob"
+label_is Grep '{"pattern":"x","glob":"*"}' "Grep glob can reach .git (field glob)" "label: can reach .git"
+label_is Grep '{"pattern":"x","glob":"**"}' "Grep glob can reach .git (field glob)" "label: no path, glob **"
+label_is Grep '{"pattern":"x","path":"/w/repo","glob":"**"}' "Grep glob can reach .git (field glob)" "label: workspace path, glob **"
+label_is Grep '{"pattern":"x","path":"/rt/head","glob":"../**"}' "Grep glob holds a .. segment (field glob)" "label: head path, .. glob"
+label_is Grep '{"pattern":"x","glob":"../x"}' "Grep glob holds a .. segment (field glob)" "label: no path, .. glob"
 label_is Read '{"file_path":""}' "empty field (field file_path)" "label: empty field"
 label_is Grep '{"pattern":"x","path":""}' "empty field (field path)" "label: empty field, path"
 # Several broken rules: the first checked wins (field set, then glob, then path).
 label_is Grep '{"pattern":"x","glob":"**","path":"/proc","zzkey":1}' "unknown field" "first rule wins: field set"
-label_is Grep '{"pattern":"x","glob":"**","path":"/proc"}' "Grep glob is not extension-shaped (field glob)" "first rule wins: glob before path"
+label_is Grep '{"pattern":"x","glob":"**","path":"/proc"}' "Grep glob can reach .git (field glob)" "first rule wins: glob before path"
 
 # No value, and no unknown key's name, reaches the log.
 canary="Zq$(od -An -N8 -tx1 /dev/urandom | tr -d ' \n')"
@@ -248,7 +272,7 @@ for input in \
   "Read {\"file_path\":\"/w/repo/$canary \"}" \
   "Read {\"file_path\":\"$canary\",\"$canary\":1}" \
   "Grep {\"pattern\":\"$canary\",\"path\":\"/proc/$canary\"}" \
-  "Grep {\"pattern\":\"$canary\",\"glob\":\"$canary\"}" \
+  "Grep {\"pattern\":\"$canary\",\"glob\":\"$canary/**\"}" \
   "Grep {\"pattern\":\"$canary\",\"file_path\":\"/proc/$canary\"}" \
   "Glob {\"pattern\":\"/$canary/*\"}" \
   "Glob {\"pattern\":\"$canary/../../*\",\"path\":\"/proc/$canary\"}"; do
@@ -326,7 +350,7 @@ assert_eq "1" "$(rc "$tmp/o.json" --root /w/repo/web)" "an added root inside the
 
 # --grep-any-glob-in-subfolders: a Grep whose path is a folder inside the roots,
 # other than the workspace's top level, takes any glob. Without the option, or
-# with no path or the top level as the path, the extension-shaped rule holds.
+# with no path or the top level as the path, the .git rule holds.
 G=(--tools "Read,Glob,Grep" --root /mnt/a/out --grep-any-glob-in-subfolders)
 grep_glob () { # path-json-or-empty glob expected-rc message [options...]
   local input
@@ -349,7 +373,9 @@ grep_glob '"web"' '!../x' 1 "a negated .. glob from a subfolder still fails" "${
 grep_glob '"web"' '* *' 1 "a space in the glob still fails" "${G[@]}"
 # A path above the checkout, inside an added root, reaches .git/config too.
 W=(--tools "Read,Glob,Grep" --root /w --grep-any-glob-in-subfolders)
-grep_glob '"/w"' '**/.git/config' 1 "a Grep rooted above the checkout in an added root keeps the extension rule" "${W[@]}"
+grep_glob '"/w"' '**/.git/config' 1 "a Grep rooted above the checkout in an added root keeps the .git rule" "${W[@]}"
+grep_glob '"/w"' 'repo/**' 1 "and a glob ending in ** from above the checkout is refused" "${W[@]}"
+grep_glob '"/w/repo/.."' '**' 1 "as is ** from above the checkout reached with .." "${W[@]}"
 grep_glob '"/w/repo/.."' '**/.git/config' 1 "and so does one that climbs there with .." "${W[@]}"
 grep_glob '"/w/repo/web"' '!**/node_modules/**' 0 "a real subfolder under the same options still passes" "${W[@]}"
 grep_glob '"web/modules/custom"' '!**/node_modules/**' 1 "without the option the negated glob fails as before"
