@@ -504,7 +504,7 @@ trace "$tmp/t.json" "${CLEAN[@]}" "$(result "$M")"
 assert_eq "0" "$(copy_rc source)" "a trace with no fallback event passes without the allowlist file"
 fb_trace "$FB" "$(fb_event "$FB")"
 assert_eq "1" "$(copy_rc)" "a fallback event without the allowlist file fails"
-out=$(copy_run)
+out=$(copy_run || true)
 assert_contains "$out" "check-agent-run: the refusal fallback allowlist is missing, empty or malformed" "and says why"
 case "$out" in *"at Object"*|*"ENOENT"*|*"node:"*) echo "FAIL: a missing allowlist printed a stack" >&2; exit 1;; esac
 printf 'not a model\n' > "$COPY/security-audit/refusal-fallback-models.txt"
