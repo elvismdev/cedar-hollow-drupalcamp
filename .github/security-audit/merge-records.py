@@ -106,6 +106,9 @@
 #                        interrupted poc-write subagent or a script under its
 #                        agents/<id>/, and any decision on that item
 #   job_models           {job: pinned model} for every counted job
+#   job_helpers          {job: helper model} for every job counted with
+#                        --helper; a job's model set is its pinned model, its
+#                        helper and every refusal fallback recorded for it
 #   refusal_fallback     [{job, pinned_model, fallback_model}] for each job
 #                        whose trace holds a system model_refusal_fallback
 #                        message in its top-level array (written by Claude
@@ -163,9 +166,11 @@ FINGERPRINT = _shared.FINGERPRINT
 Refused = _shared.Refused
 MODEL_NAME, refusal_fallback_models = _shared.MODEL_NAME, _shared.refusal_fallback_models
 REFUSAL_FALLBACK = _shared.REFUSAL_FALLBACK
-# trusted-meta.json key: each counted job's pinned model, so its effective
-# model can be decided whether or not it fell back.
+# trusted-meta.json keys: each counted job's pinned model and, when count was
+# given one, its helper model, which with its refusal fallbacks make up the
+# job's model set (D24).
 JOB_MODELS = "job_models"
+JOB_HELPERS = "job_helpers"
 parse_strict, read_bytes, read_json = _shared.parse_strict, _shared.read_bytes, _shared.read_json
 
 MAX_STATE_BYTES = 5 * 1024 * 1024
@@ -439,7 +444,7 @@ class State:
                 isinstance(v, dict) and set(v) == {"invocations", "cap"}
                 and non_negative_int(v["invocations"]) and non_negative_int(v["cap"]) for v in usage.values()):
             raise Refused(TRUSTED_META + " usage is not a map of non-negative invocations and caps")
-        for key in ("poc", "cross_check", "dispute_rate", JOB_MODELS):
+        for key in ("poc", "cross_check", "dispute_rate", JOB_MODELS, JOB_HELPERS):
             if key in trusted and not isinstance(trusted[key], dict):
                 raise Refused(TRUSTED_META + " %s is not an object" % key)
         for key in ("merge_discarded", "prior_run_paths", "interrupted", REFUSAL_FALLBACK):
@@ -794,6 +799,8 @@ def cmd_count(state, args):
     used = subagent_count(messages)
     bindings, _ = subagent_bindings(messages)
     state.trusted.setdefault(JOB_MODELS, {})[args.job] = args.model
+    if args.helper is not None:
+        state.trusted.setdefault(JOB_HELPERS, {})[args.job] = args.helper
     fallbacks = state.trusted.setdefault(REFUSAL_FALLBACK, [])
     for fallback in refusal_fallbacks(messages, args.model, args.helper):
         key = {"job": args.job, "pinned_model": args.model, "fallback_model": fallback}
@@ -1293,14 +1300,18 @@ def cross_entry_valid(entry, selected):
 
 
 def model_set(state, job):
-    """The models a counted job ran on: its pinned model and every refusal
-    fallback recorded for it; None when the job's pinned model was never
-    recorded."""
+    """The models a counted job ran on: its pinned model, the helper model it
+    was counted with, if any, and every refusal fallback recorded for it;
+    None when the job's pinned model was never recorded."""
     pinned = state.trusted.get(JOB_MODELS, {}).get(job)
     if not isinstance(pinned, str):
         return None
-    return {pinned} | {r["fallback_model"] for r in state.trusted.get(REFUSAL_FALLBACK, [])
-                       if isinstance(r, dict) and r.get("job") == job and isinstance(r.get("fallback_model"), str)}
+    models = {pinned}
+    helper = state.trusted.get(JOB_HELPERS, {}).get(job)
+    if isinstance(helper, str):
+        models.add(helper)
+    return models | {r["fallback_model"] for r in state.trusted.get(REFUSAL_FALLBACK, [])
+                     if isinstance(r, dict) and r.get("job") == job and isinstance(r.get("fallback_model"), str)}
 
 
 # The jobs whose results each checking job judges (D24): the cross-check
