@@ -16,6 +16,10 @@
   ],
   "names-pinned": [],
   "model-not-a-string": [],
-  "other-subtype": []
+  "other-subtype": [],
+  "names-helper": []
+ },
+ "helpers": {
+  "names-helper": "claude-opus-4-8"
  }
 }

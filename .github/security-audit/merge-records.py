@@ -8,7 +8,7 @@
 # outcomes) is enforced here in code and not by an agent.
 #
 # Usage: merge-records.py --state <dir> <subcommand> [options]
-#   count --job <job> --cap <n> --trace <execution-file> --model <pinned model>
+#   count --job <job> --cap <n> --trace <execution-file> --model <pinned model> [--helper <model>]
 #   select-poc --out <select.json> [--prior <prior findings.json>]...
 #   apply-decide --manifest <poc-manifest.json> --records <dir> --scripts <dir> --entries <out-dir> --trace <execution-file>
 #   fail-poc --select <select.json> --job <job>
@@ -643,8 +643,8 @@ def interrupted_ids(state, job):
             if isinstance(r, dict) and r.get("job") == job and isinstance(r.get("agent_id"), str)}
 
 
-def refusal_fallbacks(messages, pinned):
-    """The allowlisted models, other than the pinned one, that a top-level
+def refusal_fallbacks(messages, pinned, helper=None):
+    """The allowlisted models, other than the pinned one and the helper, that a
     system model_refusal_fallback message names as fallback_model and that
     the trace shows in use (an assistant message's model or a result's
     modelUsage), read as check-agent-run.sh reads them. The allowlist is read
@@ -660,7 +660,7 @@ def refusal_fallbacks(messages, pinned):
         return []
     named = {m["fallback_model"] for m in events
              if isinstance(m.get("fallback_model"), str) and m["fallback_model"] in allowed
-             and m["fallback_model"] != pinned}
+             and m["fallback_model"] not in (pinned, helper)}
     used = set()
     for m in messages:
         if not isinstance(m, dict):
@@ -776,12 +776,14 @@ def cmd_count(state, args):
         raise Refused("the cap must not be negative")
     if not MODEL_NAME.fullmatch(args.model):
         raise Refused("the pinned model is not a model name")
+    if args.helper is not None and not MODEL_NAME.fullmatch(args.helper):
+        raise Refused("the helper model is not a model name")
     messages = read_trace(args.trace)
     used = subagent_count(messages)
     bindings, _ = subagent_bindings(messages)
     state.trusted.setdefault(JOB_MODELS, {})[args.job] = args.model
     fallbacks = state.trusted.setdefault(REFUSAL_FALLBACK, [])
-    for fallback in refusal_fallbacks(messages, args.model):
+    for fallback in refusal_fallbacks(messages, args.model, args.helper):
         key = {"job": args.job, "pinned_model": args.model, "fallback_model": fallback}
         if key not in fallbacks:
             fallbacks.append(key)
@@ -1503,6 +1505,7 @@ def main(argv):
     p.add_argument("--cap", required=True, type=int)
     p.add_argument("--trace", required=True)
     p.add_argument("--model", required=True)
+    p.add_argument("--helper")
     p = sub.add_parser("select-poc")
     p.add_argument("--out", required=True)
     p.add_argument("--prior", action="append", default=[])
