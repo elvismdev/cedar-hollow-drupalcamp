@@ -108,10 +108,10 @@
 #                        interrupted poc-write subagent or a script under its
 #                        agents/<id>/, and any decision on that item
 #   job_models           {job: pinned model} for every counted job
-#   job_helpers          {job: helper model} for every job whose latest count
-#                        passed --helper; a count without it removes the
-#                        job's entry. A job's model set is its pinned model,
-#                        its helper and every refusal fallback recorded for it
+#   job_helpers          {job: [helper model]}: every helper a job was
+#                        counted with, never removed by a later count. A
+#                        job's model set is its pinned model, its helpers and
+#                        every refusal fallback recorded for it
 #   refusal_fallback     [{job, pinned_model, fallback_model}] for each job
 #                        whose trace holds a system model_refusal_fallback
 #                        message in its top-level array (written by Claude
@@ -802,13 +802,13 @@ def cmd_count(state, args):
     used = subagent_count(messages)
     bindings, _ = subagent_bindings(messages)
     state.trusted.setdefault(JOB_MODELS, {})[args.job] = args.model
-    # Each count replaces the job's helper as it replaces its pinned model, so
-    # a recount without --helper leaves no helper from an earlier count.
-    helpers = state.trusted.setdefault(JOB_HELPERS, {})
+    # Helpers accumulate like refusal fallbacks: a job that ran on a helper
+    # in any of its counts keeps that model in its model set, so a recount
+    # without --helper cannot drop it.
     if args.helper is not None:
-        helpers[args.job] = args.helper
-    else:
-        helpers.pop(args.job, None)
+        helpers = state.trusted.setdefault(JOB_HELPERS, {}).setdefault(args.job, [])
+        if args.helper not in helpers:
+            helpers.append(args.helper)
     fallbacks = state.trusted.setdefault(REFUSAL_FALLBACK, [])
     for fallback in refusal_fallbacks(messages, args.model, args.helper):
         key = {"job": args.job, "pinned_model": args.model, "fallback_model": fallback}
@@ -1308,16 +1308,16 @@ def cross_entry_valid(entry, selected):
 
 
 def model_set(state, job):
-    """The models a counted job ran on: its pinned model, the helper model it
-    was counted with, if any, and every refusal fallback recorded for it;
+    """The models a counted job ran on: its pinned model, every helper model
+    it was counted with and every refusal fallback recorded for it;
     None when the job's pinned model was never recorded."""
     pinned = state.trusted.get(JOB_MODELS, {}).get(job)
     if not isinstance(pinned, str):
         return None
     models = {pinned}
-    helper = state.trusted.get(JOB_HELPERS, {}).get(job)
-    if isinstance(helper, str):
-        models.add(helper)
+    helpers = state.trusted.get(JOB_HELPERS, {}).get(job)
+    if isinstance(helpers, list):
+        models |= {h for h in helpers if isinstance(h, str)}
     return models | {r["fallback_model"] for r in state.trusted.get(REFUSAL_FALLBACK, [])
                      if isinstance(r, dict) and r.get("job") == job and isinstance(r.get("fallback_model"), str)}
 
