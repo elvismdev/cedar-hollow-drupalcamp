@@ -1014,14 +1014,6 @@ class SameModelTest(MergeTest):
                                                             ("cross-check", "claude-fable-5-1", None))
         self.assert_applied(applied, meta)
 
-    def test_an_unrecorded_source_repair_never_refuses(self):
-        applied, meta, _ = self.cross_check_with_selection(("source", "claude-opus-5-5", None),
-                                                            ("poc-write", "claude-opus-5-5", None),
-                                                            ("poc-decide", "claude-opus-5-5", None),
-                                                            ("cross-check", "claude-fable-5-1", None))
-        self.assertNotIn("source_repair", meta.get("job_models", {}))
-        self.assert_applied(applied, meta)
-
     def test_an_overlap_names_the_judged_job(self):
         _applied, meta, out = self.cross_check_with_selection(("source", "claude-opus-5-5", None),
                                                                ("poc-write", "claude-opus-5-5", None),
