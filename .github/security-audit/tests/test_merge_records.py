@@ -989,7 +989,7 @@ class RefusalWithoutFallbackTest(MergeTest):
         self.assertNotEqual(self.moved_lines()["r-2"], 77)
         self.assertIn("subagent refused by the safety classifier", self.discarded())
         self.assertEqual(meta["cross_check"]["refused_by_classifier"], 1)
-        self.assertIn("cross_check_refused", meta["incomplete_reasons"])
+        self.assertIn("cross_check_refused_by_classifier", meta["incomplete_reasons"])
         self.assertNotIn("LEAKEXPLAIN52", json.dumps(meta))
 
     def test_a_main_loop_refusal_marks_the_check_incomplete_and_keeps_written_entries(self):
@@ -997,7 +997,7 @@ class RefusalWithoutFallbackTest(MergeTest):
         self.assertEqual(meta["classifier_refusals"],
                          [{"job": "cross-check", "where": "main", "index": 4, "category": "cyber"}])
         self.assertEqual(self.moved_lines(), {"r-1": 77, "r-2": 77})
-        self.assertIn("cross_check_refused", meta["incomplete_reasons"])
+        self.assertIn("cross_check_refused_by_classifier", meta["incomplete_reasons"])
         self.run_merge("status")
         self.assertEqual(self.load("run-metadata.json")["classifier_refusals"], meta["classifier_refusals"])
 
@@ -1015,7 +1015,7 @@ class RefusalWithoutFallbackTest(MergeTest):
         meta = self.judge()
         self.assertEqual(meta["classifier_refusals"], [])
         self.assertNotIn("refused_by_classifier", meta["cross_check"])
-        self.assertNotIn("cross_check_refused", meta["incomplete_reasons"])
+        self.assertNotIn("cross_check_refused_by_classifier", meta["incomplete_reasons"])
 
     def test_a_job_with_the_fallback_on_records_no_refusal(self):
         self.seed([], [])

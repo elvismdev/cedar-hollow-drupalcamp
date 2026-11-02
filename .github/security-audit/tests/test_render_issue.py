@@ -190,7 +190,7 @@ class ContentTest(RenderTest):
         self.assertNotIn("Tie-break not applied", self.render())
 
     def test_a_classifier_refusal_is_a_fixed_line_with_its_count(self):
-        meta = final_meta(incomplete_reasons=["cross_check_refused", "tie_break_refused_by_classifier"])
+        meta = final_meta(incomplete_reasons=["cross_check_refused_by_classifier", "tie_break_refused_by_classifier"])
         meta["cross_check"].update(refused_by_classifier=2, tie_break_refused_by_classifier=1)
         self.seed([], meta)
         body = self.render()

@@ -157,10 +157,10 @@
 # cap_exceeded:<job>, cross_check_cap,
 # cross_check_missing (a selected record with no valid cross-check entry, or
 # a cross-check that never applied), cross_check_dispute, cross_check_not_run,
-# cross_check_refused and tie_break_refused_by_classifier (that job's request
-# was refused with no fallback, so an unknown part of what it judges went
-# unchecked; its other entries are applied),
-# and source_run_not_finished (status found run_status still in_progress).
+# cross_check_refused_by_classifier and tie_break_refused_by_classifier (that
+# job's request was refused with no fallback, so an unknown part of what it
+# judges went unchecked; its other entries are applied), and
+# source_run_not_finished (status found run_status still in_progress).
 #
 # Run ids are the GitHub run id, read from run-metadata.json when
 # trusted-meta.json is created and stored there as a number.
@@ -1515,7 +1515,7 @@ def cmd_apply_cross_check(state, args):
     refusals = refusal_count(state, "cross-check")
     if refusals:
         cc["refused_by_classifier"] = refusals
-        state.incomplete("cross_check_refused")
+        state.incomplete("cross_check_refused_by_classifier")
     valid = {}
     for agent_id, entry in raw.items():
         if entry_ok(cross_entry_valid, entry, selected):
