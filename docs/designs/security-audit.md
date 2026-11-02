@@ -354,7 +354,7 @@ Every agent job (source, poc-write, poc-decide, cross-check) follows these rules
         *   anything other than the top-level agent writing `findings.json`, the ledger or `run-metadata.json`;
         *   in poc-write only, a subagent reading another agent's `agents/<id>/`;
         *   a change to the checkout (`git status` and `HEAD`), to `~/.claude/settings.json` apart from `enableAllProjectMcpServers` (the one key claude-code-action writes during the step), to `~/.claude/CLAUDE.md`, or to the `~/.claude/agents`, `commands` and `hooks` trees, compared with a fingerprint taken before the step and kept under `$RUNNER_TEMP`;
-        *   a model in `modelUsage` other than the pinned one, or an allowlisted helper. A model on `.github/security-audit/refusal-fallback-models.txt` is accepted only when a top-level `model_refusal_fallback` system message in the trace names it, and the issue then says which job ran on it.
+        *   a model in `modelUsage` other than the pinned one, or an allowlisted helper. A model on `.github/security-audit/refusal-fallback-models.txt` is accepted only when a `model_refusal_fallback` system message in the trace's top-level array, written by Claude Code, names it, and the issue then says which job ran on it. The message's `parent_tool_use_id` is not checked, since the fallback holds for the rest of the session.
 
         If subagents were used but the trace holds none of their tool calls, the check fails. **A failed run check stops the job:** nothing is handed off and the job fails.
     2.  **Outcome** (`agent-outcome.sh`). It receives the agent step's outcome, its start and end times, its timeout and its expected output files, and gives one cause:
@@ -526,6 +526,7 @@ Subagents write only into their own `agents/<agent_id>/scratch/`. Top-level agen
     *   `if: always() && needs.prepare.outputs.go == 'true' && github.ref == 'refs/heads/main' && needs.source.result == 'success'`;
     *   `claude-agents`, `permissions: {contents: read}`, `timeout-minutes: 75`.
 *   **Inputs.** `audit-poc` if poc-decide succeeded with `validators=pass`, otherwise `audit-source`; plus `poc-scripts` and the run records when they exist.
+*   **Independent models (D24).** `count` records each job's pinned model and any refusal fallback it ran on. A cross-check whose models overlap those of a job it judges (source, its repair, poc-write and poc-decide, each when it ran) applies nothing. The same holds for a tie-break whose models overlap those jobs' or the cross-check's. Either one applies nothing as well when its own models, the source's or, for the tie-break, the cross-check's were never recorded. In each case the run is marked incomplete with `cross_check_same_model`, and not also `cross_check_missing`.
 *   **First trusted steps.** If poc-decide did not succeed, `merge-records.py fail-poc` appends the blocker `poc phase failed: <job>` to every selected item, which stays a lead and stays selectable next run. Then `select-cross-check` runs.
 *   **Step 1, the cross-check.**
     *   Agent step `timeout-minutes: 45`, `--max-turns 150`, model `claude-fable-5-1`, cap 30 subagents.
@@ -969,7 +970,7 @@ Stage 2 lands as pull requests in this order: item 12's CI wiring with the first
 
 *   **Type / Scope**: Post-agent checks and their test. The trace is parsed in Node, in the style of the review practice's `findings-from-trace.mjs`, which already reads the action's execution file.
 *   **Proposed Changes**:
-    *   **Usage**: `check-agent-run.sh <job> <execution-file> <allowed-tools> <output-root> <fingerprint-file> <model> [helper-model]`. `<job>` selects the job-specific rules; only `poc-write` applies the isolation rule.
+    *   **Usage**: `check-agent-run.sh <job> <execution-file> <allowed-tools> <output-root> <fingerprint-file> <model> [helper-model]`. `<job>` is `source`, `source_repair`, `poc-write`, `poc-decide`, `cross-check` or `tie-break`, and selects the job-specific rules; `source_repair` has the source's rules and `tie-break` the cross-check's; only `poc-write` applies the isolation rule.
     *   **`check-agent-run.sh --fingerprint <out-file>`** writes the fingerprint before the step, into `$RUNNER_TEMP`: `git status --porcelain=v1 -uall`, `git rev-parse HEAD`, `~/.claude/settings.json` without its `enableAllProjectMcpServers` key, a missing file hashing as an empty one (read with `jq`), and the review practice's `find ... -print0 | sort -z | xargs -0 -r sha256sum | sha256sum` one-liner over `~/.claude/CLAUDE.md` and the `agents`, `commands` and `hooks` trees, skipping paths that do not exist.
     *   **It implements** the run check in Technical Plan section 2.
     *   **Tests**, with fixture traces:
