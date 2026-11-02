@@ -5,13 +5,17 @@
 # ripgrep (in the folder the path opens, with '.' as the target) and by its raw
 # path (in the checkout, with the path as written as the target), for these
 # paths: none, the checkout, a subfolder, src/.., <checkout>/.. and the parent
-# as an added root, and folders linked to the checkout and to its parent, in
-# two layouts: plain, and with the checkout's parent reached through a
-# symlink. It fails if any accepted call returns the token either way, if a glob ripgrep
-# cannot parse holds no nested brace group, if no refused glob returns the
-# token in either spawn mode, which would mean the search could not have found
-# it, and if the check accepts a call that leaked by its raw path. ripgrep is
-# required: without it the test fails.
+# as an added root, folders linked to the checkout and to its parent, the
+# parent as an added root by its real path and spelled through a link, links
+# from the head and the input directory to the checkout and its parent, and
+# paths not in normal form (.//src, ///<checkout>, <checkout>/.,
+# <checkout>//src) beside ./src and src/, in two layouts: plain, and with the
+# checkout's parent reached through a symlink. It fails if any accepted call
+# returns the token either way, if a glob ripgrep cannot parse holds no nested
+# brace group, if no refused glob returns the token in either spawn mode,
+# which would mean the search could not have found it, and if the check does
+# not refuse a call that leaked by its raw path with the label that names why.
+# ripgrep is required: without it the test fails.
 #
 # The spawn and the argument order were read from the Claude Code 2.1.309
 # binary, the version claude-code-action ae68417 installs, and match 2.1.316.
@@ -89,7 +93,9 @@ for f in FOLDER:
 for a, b in itertools.combinations(FOLDER, 2):
     globs.add('{%s,%s}' % (a, b))
     globs.add('%s,%s' % (a, b))
-# The globs of the calls that leaked by their raw path (see REGRESSIONS).
+# The globs of the three calls that leaked by their raw path: src/.. with
+# src/**, <checkout>/.. with */repo/** from the parent as a root, and a
+# folder linked to the checkout with src/**.
 globs |= {'src/**', '*/%s/**' % os.path.basename(ws)}
 globs = sorted(g for g in globs if g)
 
@@ -160,15 +166,36 @@ if nested_braces('{a,b}/{c,d}') or not nested_braces('{a,{b,c}}'):
     sys.exit('FAIL: the nested brace test misjudges its own examples')
 
 # The path variants: no path, the checkout, a subfolder, a .. that resolves to
-# the checkout, the parent reached with .. and as itself (an added root), and
-# folders linked to the checkout and to its parent.
+# the checkout, the parent reached with .. and as itself (an added root),
+# folders linked to the checkout and to its parent, the parent as a root by its
+# real path and spelled through a link, links from the head and the input
+# directory to the checkout and its parent, and paths not in normal form.
 os.symlink('..', os.path.join(ws, 'src', 'link'))
 os.symlink('../..', os.path.join(ws, 'src', 'uplink'))
+real_up = os.path.realpath(up)
+link_up = os.path.join(tmp, 'link-up')
+os.symlink(up, link_up)
+head, inp = os.path.join(tmp, 'head'), os.path.join(tmp, 'input')
+os.makedirs(head)
+os.makedirs(inp)
+os.symlink(ws, os.path.join(head, 'wslink'))
+os.symlink(ws, os.path.join(inp, 'wslink'))
+os.symlink(up, os.path.join(head, 'uplink'))
+os.environ['REVIEW_HEAD_DIR'] = head
+os.environ['REVIEW_INPUT_DIR'] = inp
 TOP = [[], AUDIT]
 UP = [['--root', up], AUDIT + ['--root', up]]
+def rooted(r):
+    return [['--root', r], AUDIT + ['--root', r]]
 VARIANTS = [('no path', '', TOP), ('workspace', ws, TOP), ('subfolder', 'src', TOP),
             ('src/..', 'src/..', TOP), ('<ws>/..', ws + '/..', UP), ('parent', up, UP),
-            ('link to checkout', 'src/link', TOP), ('link to parent', 'src/uplink', TOP)]
+            ('link to checkout', 'src/link', TOP), ('link to parent', 'src/uplink', TOP),
+            ('real parent root', real_up, rooted(real_up)), ('linked parent root', link_up, rooted(link_up)),
+            ('head link to ws', os.path.join(head, 'wslink'), TOP),
+            ('input link to ws', os.path.join(inp, 'wslink'), TOP),
+            ('head link to up', os.path.join(head, 'uplink'), TOP),
+            ('.//src', './/src', TOP), ('///<ws>', '//' + ws, TOP), ('<ws>/.', ws + '/.', TOP),
+            ('<ws>//src', ws + '//src', TOP), ('./src', './src', TOP), ('src/', 'src/', TOP)]
 MODES = ('fd', 'raw')
 print('globs %d' % len(globs))
 
@@ -215,7 +242,7 @@ if failures:
 # through refused ones in both spawn modes, or a clean result proves nothing.
 if '*.php' not in ok['no path'] or '/x.php' not in ''.join(leaks('*.php', '', 'raw')[2]):
     sys.exit('FAIL: the accepted glob *.php found no ordinary file')
-for name, path, _ in (VARIANTS[0], VARIANTS[5]):
+for name, path, _ in (VARIANTS[0], VARIANTS[5], VARIANTS[8], VARIANTS[9]):
     for mode in MODES:
         refused = [g for g in globs if g not in ok[name]]
         reached = [g for (g, _p, _m), r in run_all([(g, path, mode) for g in refused]) if r[1]]
@@ -226,14 +253,15 @@ for name, path, _ in (VARIANTS[0], VARIANTS[5]):
 # The calls the whole-glob rule accepted that returned the token by their raw
 # path: the check must refuse each, and in the plain layout each must still
 # leak raw.
-REGRESSIONS = [('src/..', 'src/**', []), (ws + '/..', '*/%s/**' % os.path.basename(ws), ['--root', up]),
-               ('src/link', 'src/**', [])]
-for path, g, options in REGRESSIONS:
+REGRESSIONS = [('src/..', 'src/**', [], 'Grep path holds a .. segment (field path)'),
+               (ws + '/..', '*/%s/**' % os.path.basename(ws), ['--root', up], 'Grep path holds a .. segment (field path)'),
+               ('src/link', 'src/**', [], 'Grep path passes through a symlink (field path)')]
+for path, g, options, label in REGRESSIONS:
     calls = [{'type': 'tool_use', 'id': 'r', 'name': 'Grep', 'input': {'pattern': 'x', 'path': path, 'glob': g}}]
     trace = os.path.join(tmp, 'regression.json')
     json.dump(calls, open(trace, 'w'))
     r = subprocess.run(['bash', check, trace] + options, capture_output=True, text=True)
-    if r.returncode != 1 or 'Grep call 1:' not in r.stderr:
+    if r.returncode != 1 or 'Grep call 1: ' + label not in r.stderr:
         sys.exit('FAIL: the check accepted the regression call path %s glob %s: %s' % (path, g, r.stderr[-300:]))
     # They were measured in the plain layout; behind a symlinked parent
     # ripgrep matches the absolute path and some no longer reach .git.
