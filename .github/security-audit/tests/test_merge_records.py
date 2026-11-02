@@ -912,6 +912,103 @@ class CompactionTest(MergeTest):
         self.assertIn("cross_check_same_model", self.load("trusted-meta.json")["incomplete_reasons"])
 
 
+class RefusalWithoutFallbackTest(MergeTest):
+    """The cross-check and tie-break run with the refusal fallback off: count
+    records each refused request with no fallback, a refused subagent's entry
+    is never merged, the other entries are applied, and the run is marked
+    incomplete."""
+
+    def no_fallback_event(self, category="cyber"):
+        return {"type": "system", "subtype": "model_refusal_no_fallback", "original_model": "claude-fable-5-1",
+                "request_id": "req_1", "api_refusal_category": category,
+                "api_refusal_explanation": "LEAKEXPLAIN52", "content": ""}
+
+    def refused_response(self, category="cyber"):
+        """The last subagent call's refused response."""
+        return {"type": "assistant", "parent_tool_use_id": "toolu_%d" % self.calls,
+                "message": {"stop_reason": "refusal", "content": [],
+                            "stop_details": {"type": "refusal", "category": category, "explanation": "LEAKEXPLAIN52"}}}
+
+    def moved(self, fp):
+        record = confirmed(fp)
+        record["trace"][0]["line"] = 77
+        return {"decision": "replace", "fingerprint": fp, "reason": "Line moved.", "record": record}
+
+    def judge(self, *extra, refuse_second=False, job="cross-check"):
+        """Two selected records, an entry from each of two subagents, and the
+        extra messages; counts the trace as job and applies the cross-check."""
+        self.seed([confirmed("r-1"), confirmed("r-2")], [unit("r-1", fps=["r-1"], unresolved=[]),
+                                                         unit("r-2", fps=["r-2"], unresolved=[])])
+        self.subagent("c-1", self.moved("r-1"))
+        self.subagent("c-2", self.moved("r-2"))
+        if refuse_second:
+            self.messages.append(self.refused_response())
+        self.messages.extend(extra)
+        trace = self.trace_file()
+        self.run_merge("count", "--job", job, "--cap", "30", "--trace", trace, "--model", "claude-fable-5-1")
+        self.run_merge("select-cross-check", "--out", os.path.join(self.tmp, "list.json"))
+        self.pin_models()
+        self.run_merge("apply-cross-check", "--entries", self.out, "--trace", trace,
+                       "--out", os.path.join(self.tmp, "tie-break-inputs.json"))
+        return self.load("trusted-meta.json")
+
+    def moved_lines(self):
+        return {fp: self.record(fp)["trace"][0]["line"] for fp in ("r-1", "r-2")}
+
+    def test_a_refused_subagent_is_left_out_and_the_rest_applied(self):
+        meta = self.judge(refuse_second=True)
+        self.assertEqual(meta["classifier_refusals"],
+                         [{"job": "cross-check", "where": "subagent", "agent_id": "c-2", "category": "cyber"}])
+        self.assertEqual(self.moved_lines()["r-1"], 77)
+        self.assertNotEqual(self.moved_lines()["r-2"], 77)
+        self.assertIn("subagent refused by the safety classifier", self.discarded())
+        self.assertEqual(meta["cross_check"]["refused_by_classifier"], 1)
+        self.assertIn("cross_check_refused", meta["incomplete_reasons"])
+        self.assertNotIn("LEAKEXPLAIN52", json.dumps(meta))
+
+    def test_a_main_loop_refusal_marks_the_check_incomplete_and_keeps_written_entries(self):
+        meta = self.judge(self.no_fallback_event())
+        self.assertEqual(meta["classifier_refusals"], [{"job": "cross-check", "where": "main", "category": "cyber"}])
+        self.assertEqual(self.moved_lines(), {"r-1": 77, "r-2": 77})
+        self.assertIn("cross_check_refused", meta["incomplete_reasons"])
+        self.run_merge("status")
+        self.assertEqual(self.load("run-metadata.json")["classifier_refusals"], meta["classifier_refusals"])
+
+    def test_a_category_off_the_pattern_is_not_kept(self):
+        meta = self.judge(self.no_fallback_event("Not A Category!"))
+        self.assertEqual(meta["classifier_refusals"], [{"job": "cross-check", "where": "main", "category": None}])
+
+    def test_no_refusal_records_nothing(self):
+        meta = self.judge()
+        self.assertEqual(meta["classifier_refusals"], [])
+        self.assertNotIn("refused_by_classifier", meta["cross_check"])
+        self.assertNotIn("cross_check_refused", meta["incomplete_reasons"])
+
+    def test_a_job_with_the_fallback_on_records_no_refusal(self):
+        self.seed([], [])
+        self.subagent("w-1", "{}")
+        self.messages.append(self.refused_response())
+        self.messages.append(self.no_fallback_event())
+        self.run_merge("count", "--job", "source", "--cap", "30", "--trace", self.trace_file())
+        self.assertNotIn("classifier_refusals", self.load("trusted-meta.json"))
+
+    def test_a_refused_tie_break_is_marked_incomplete(self):
+        self.seed([confirmed("t-1")], [unit("t-1", fps=["t-1"], unresolved=[])])
+        self.subagent("c-1", {"decision": "replace", "fingerprint": "t-1", "reason": "Another cause.",
+                              "record": confirmed("t-1", root_cause="Another cause")})
+        self.assertEqual(len(self.cross_check()), 1)
+        self.subagent("t-a", {"fingerprint": "t-1", "answer": "replacement", "reason": "Read the source."})
+        self.messages.append(self.refused_response())
+        trace = self.trace_file()
+        self.run_merge("count", "--job", "tie-break", "--cap", "3", "--trace", trace, "--model", "claude-sonnet-5-5")
+        self.run_merge("apply-tie-break", "--inputs", os.path.join(self.tmp, "tie-break-inputs.json"),
+                       "--entries", self.out, "--trace", trace)
+        meta = self.load("trusted-meta.json")
+        self.assertEqual(meta["cross_check"]["tie_break_refused_by_classifier"], 1)
+        self.assertIn("tie_break_refused_by_classifier", meta["incomplete_reasons"])
+        self.assertEqual(meta["cross_check"]["tie_breaks"], [])
+
+
 class SameModelTest(MergeTest):
     """D24: the cross-check and the tie-break must run on models different
     from those of every job whose results they judge. A job's models are its

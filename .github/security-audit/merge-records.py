@@ -84,13 +84,16 @@
 #                        disputes, cross_checked, tie_breaks, removed,
 #                        applied, pending, inputs_sha256, same_model,
 #                        model_unrecorded, tie_break_same_model,
-#                        tie_break_model_unrecorded}; same_model and
+#                        tie_break_model_unrecorded, refused_by_classifier,
+#                        tie_break_refused_by_classifier}; same_model and
 #                        model_unrecorded mark a cross-check refused because
 #                        its models overlap a judged job's or a required
 #                        model was never recorded, so status adds no
 #                        cross_check_missing for that cause, and the
 #                        tie_break_ pair marks a tie-break refused for the
-#                        same causes; apply-tie-break
+#                        same causes; refused_by_classifier and
+#                        tie_break_refused_by_classifier count the requests
+#                        of that job refused with no fallback; apply-tie-break
 #                        refuses inputs whose sha256 is not inputs_sha256,
 #                        or whose disputes are not objects whose original
 #                        and replacement carry the dispute's fingerprint
@@ -128,6 +131,17 @@
 #                        only in a result's modelUsage, with no assistant
 #                        message from it, that is not the pinned model, the
 #                        helper or a named refusal fallback; recorded by count
+#   classifier_refusals  [{job, where, agent_id, category}] for each request
+#                        of the cross-check or tie-break, which run with the
+#                        refusal fallback off, refused with no fallback:
+#                        where "main" for the main loop's
+#                        model_refusal_no_fallback system message (no
+#                        agent_id), "subagent" for an assistant message
+#                        attributed to a subagent call whose stop_reason is
+#                        "refusal"; category only when it matches
+#                        ^[a-z_]{1,32}$, else null; recorded by count. A
+#                        refused subagent's entry is never merged
+#                        (label "subagent refused by the safety classifier")
 # and, in trusted-meta.json only, run_id and source_run_status.
 # Incomplete reasons it sets: cross_check_same_model (the cross-check's
 # model set overlaps that of a job it judges: source, source_repair,
@@ -141,7 +155,10 @@
 # applied and status removes its disputes as tie_break_refused),
 # cap_exceeded:<job>, cross_check_cap,
 # cross_check_missing (a selected record with no valid cross-check entry, or
-# a cross-check that never applied), cross_check_dispute, cross_check_not_run
+# a cross-check that never applied), cross_check_dispute, cross_check_not_run,
+# cross_check_refused and tie_break_refused_by_classifier (that job's request
+# was refused with no fallback, so an unknown part of what it judges went
+# unchecked; its other entries are applied),
 # and source_run_not_finished (status found run_status still in_progress).
 #
 # Run ids are the GitHub run id, read from run-metadata.json when
@@ -181,6 +198,11 @@ Refused = _shared.Refused
 MODEL_NAME, refusal_fallback_models = _shared.MODEL_NAME, _shared.refusal_fallback_models
 REFUSAL_FALLBACK = _shared.REFUSAL_FALLBACK
 COMPACTION, compaction_models = _shared.COMPACTION, _shared.compaction_models
+# trusted-meta.json key: each refused request with no fallback that count
+# found in a judging job, which runs with Claude Code's refusal fallback off.
+CLASSIFIER_REFUSALS = "classifier_refusals"
+JUDGING_JOBS = ("cross-check", "tie-break")
+REFUSAL_CATEGORY = re.compile(r"^[a-z_]{1,32}$")
 # trusted-meta.json keys: each counted job's pinned model and, when count was
 # given one, its helper model, which with its refusal fallbacks make up the
 # job's model set (D24).
@@ -430,7 +452,7 @@ def record_valid(record):
 # does not hold), so their copies there, which the source and repair agents
 # can write, are never read.
 MIRRORED_KEYS = ("usage", "poc", "cross_check", "merge_discarded", "incomplete_reasons", "dispute_rate",
-                 "prior_run_paths", "interrupted", REFUSAL_FALLBACK, COMPACTION)
+                 "prior_run_paths", "interrupted", REFUSAL_FALLBACK, COMPACTION, CLASSIFIER_REFUSALS)
 
 
 def non_negative_int(value):
@@ -462,7 +484,8 @@ class State:
         for key in ("poc", "cross_check", "dispute_rate", JOB_MODELS, JOB_HELPERS):
             if key in trusted and not isinstance(trusted[key], dict):
                 raise Refused(TRUSTED_META + " %s is not an object" % key)
-        for key in ("merge_discarded", "prior_run_paths", "interrupted", REFUSAL_FALLBACK, COMPACTION):
+        for key in ("merge_discarded", "prior_run_paths", "interrupted", REFUSAL_FALLBACK, COMPACTION,
+                    CLASSIFIER_REFUSALS):
             if not isinstance(trusted.get(key, []), list):
                 raise Refused(TRUSTED_META + " %s is not a list" % key)
         reasons = trusted.get("incomplete_reasons")
@@ -666,6 +689,41 @@ def interrupted_calls(messages, bindings):
     return found
 
 
+def refusals_without_fallback(messages, bindings):
+    """Each refused request with no fallback, read as check-agent-run.sh reads
+    them for a judging job: a model_refusal_no_fallback system message in the
+    top-level array is the main loop's ({where: main}); an assistant message
+    attributed to a subagent call whose stop_reason is "refusal" is that
+    subagent's ({where: subagent, agent_id}), once per call. The category is
+    kept only when it matches ^[a-z_]{1,32}$; the explanation never is."""
+    def category(value):
+        return value if isinstance(value, str) and REFUSAL_CATEGORY.fullmatch(value) else None
+    found, seen = [], set()
+    for m in messages:
+        if not isinstance(m, dict):
+            continue
+        if m.get("type") == "system" and m.get("subtype") == "model_refusal_no_fallback":
+            found.append({"where": "main", "category": category(m.get("api_refusal_category"))})
+        parent = m.get("parent_tool_use_id")
+        body = m.get("message")
+        if (m.get("type") == "assistant" and isinstance(parent, str) and parent in bindings and parent not in seen
+                and isinstance(body, dict) and body.get("stop_reason") == "refusal"):
+            seen.add(parent)
+            details = body.get("stop_details") if isinstance(body.get("stop_details"), dict) else {}
+            found.append({"where": "subagent", "agent_id": bindings[parent], "category": category(details.get("category"))})
+    return found
+
+
+def refused_ids(state, job):
+    """The agent ids of the subagents count recorded as refused in job."""
+    return {r["agent_id"] for r in state.trusted.get(CLASSIFIER_REFUSALS, [])
+            if isinstance(r, dict) and r.get("job") == job and isinstance(r.get("agent_id"), str)}
+
+
+def refusal_count(state, job):
+    return sum(1 for r in state.trusted.get(CLASSIFIER_REFUSALS, []) if isinstance(r, dict) and r.get("job") == job)
+
+
 def interrupted_ids(state, job):
     """The agent ids count recorded as interrupted in job, read back from
     trusted-meta.json rather than from any trace."""
@@ -761,6 +819,7 @@ def read_entries(state, job, entries, trace_path):
     for agent_id in sorted(reused):
         state.discard(job, agent_id, "agent id declared by more than one subagent call")
     interrupted = interrupted_ids(state, job)
+    refused_by_classifier = refused_ids(state, job)
     paths = {entry_path(entries, agent_id): agent_id for agent_id in set(bindings.values())}
     last, refused = {}, {}
     for message in messages:
@@ -786,6 +845,9 @@ def read_entries(state, job, entries, trace_path):
     for agent_id in sorted(set(bindings.values())):
         if agent_id in interrupted:
             state.discard(job, agent_id, "subagent interrupted by the safety classifier")
+            continue
+        if agent_id in refused_by_classifier:
+            state.discard(job, agent_id, "subagent refused by the safety classifier")
             continue
         if agent_id in refused:
             state.discard(job, agent_id, refused[agent_id])
@@ -858,6 +920,12 @@ def cmd_count(state, args):
         key = {"job": args.job, "pinned_model": args.model, "fallback_model": fallback}
         if key not in fallbacks:
             fallbacks.append(key)
+    if args.job in JUDGING_JOBS:
+        refusals = state.trusted.setdefault(CLASSIFIER_REFUSALS, [])
+        for refusal in refusals_without_fallback(messages, bindings):
+            entry = dict(refusal, job=args.job)
+            if entry not in refusals:
+                refusals.append(entry)
     compacted = state.trusted.setdefault(COMPACTION, [])
     for model in compactions(messages, args.model, args.helper, fell_back):
         key = {"job": args.job, "pinned_model": args.model, "compaction_model": model}
@@ -1439,6 +1507,12 @@ def cmd_apply_cross_check(state, args):
         write_json(args.out, {"disputes": []})
         return
     raw = read_entries(state, "cross-check", args.entries, args.trace)
+    # A refused request leaves an unknown part of the selection unchecked;
+    # every other entry is applied, and the run is marked incomplete.
+    refusals = refusal_count(state, "cross-check")
+    if refusals:
+        cc["refused_by_classifier"] = refusals
+        state.incomplete("cross_check_refused")
     valid = {}
     for agent_id, entry in raw.items():
         if entry_ok(cross_entry_valid, entry, selected):
@@ -1526,6 +1600,10 @@ def cmd_apply_tie_break(state, args):
                       key=lambda d: js_order(d["fingerprint"]))
     eligible = {d["fingerprint"] for d in disputes[:TIE_BREAK_SLOTS]}
     raw = read_entries(state, "tie-break", args.entries, args.trace)
+    refusals = refusal_count(state, "tie-break")
+    if refusals:
+        cc["tie_break_refused_by_classifier"] = refusals
+        state.incomplete("tie_break_refused_by_classifier")
     valid = {}
     for agent_id, entry in raw.items():
         if entry_ok(tie_entry_valid, entry, eligible):
