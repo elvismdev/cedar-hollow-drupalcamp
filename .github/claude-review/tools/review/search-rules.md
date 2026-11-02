@@ -9,10 +9,12 @@ fails the whole review if one breaks these rules, so keep to them:
 - A Grep `glob` uses only letters, digits and `. _ / @ + - * { } ,`. Never use
   `!`, `?`, `[`, `]` or a space, so never write a negated glob such as
   `!**/node_modules/**`; narrow the search with `path` instead.
-- A Grep with no `path`, or with a `path` in your working directory, takes a
-  `glob` only when no part of it can match the name `.git`: the part after
-  its last `/` must not be `*`, `**`, `*.*` or match `.git` (such as `.git*`
-  or `*.git`), and no other part may match `.git` either. So `*.php`,
-  `*gitignore*`, `{.gitignore,composer.json}` and `src/{a,b}/*.yml` work,
-  and `*`, `**` and `src/**` do not. To search every file in one folder, put
-  the folder in `path` and leave `glob` out.
+- A Grep with no `path`, or with a `path` in your working directory, takes
+  folder and brace globs (`src/**/*.php`, `{web/modules/*.php,tests/*.php}`,
+  `*gitignore*`, `{.gitignore,composer.json}`), but a glob is refused when any
+  segment of it, or of a comma or brace alternative, can match `.git`
+  (`.git`, `.git*`, `*.git`, `*`, `*.*`), when it ends in `**`, holds `..`,
+  or starts with `!`. So `*`, `**` and `src/**` are refused. Name the folder
+  instead of a bare `*` segment: `web/modules/*.php`, not `*/x.php`. To
+  search every file in one folder, put the folder in `path` and leave `glob`
+  out.
