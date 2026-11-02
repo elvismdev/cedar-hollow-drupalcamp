@@ -474,6 +474,14 @@ case "$(run poc-write "$tmp/t.json")" in *"ran on the refusal fallback"*) echo "
 fb_trace "$FB" "$(fb_event "$FB")" "$(top Bash '{"command":"id"}')"
 assert_eq "1" "$(rc poc-write "$tmp/t.json")" "every other rule still applies on a fallback run"
 
+# source_repair runs with exactly the source rules: the clean source trace,
+# with its state-file writes, passes in both, and a refused call fails in both.
+for j in source source_repair; do
+  assert_eq "0" "$(rc "$j" "$tmp/clean.json")" "the clean source trace passes as $j"
+  trace "$tmp/t.json" "${CLEAN[@]}" "$(top Bash '{"command":"id"}')" "$(result "$M")"
+  assert_eq "1" "$(rc "$j" "$tmp/t.json")" "a Bash call fails as $j"
+done
+
 # tie-break runs with exactly the cross-check rules: a subagent reading another
 # declared subagent's directory fails in both, and a clean later-job trace
 # passes in both.

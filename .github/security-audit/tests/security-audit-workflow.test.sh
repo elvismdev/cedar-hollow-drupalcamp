@@ -305,14 +305,14 @@ if "SubagentHandback" in (wf.get("env") or {}).get("REPAIR_TOOLS", ""):
     err("REPAIR_TOOLS must not accept SubagentHandback: the repair step starts no subagent")
 
 # ---------------------------------------------------------------- run check job names
-# Each run check names its own step: repair runs under source's rules, and the
-# tie-break under its own name with the cross-check's rules.
-RUN_CHECK_JOB = {"check-source": "source", "check-repair": "source", "check-poc-write": "poc-write",
+# Each run check names its own step: the repair as source_repair with the
+# source's rules, and the tie-break as tie-break with the cross-check's.
+RUN_CHECK_JOB = {"check-source": "source", "check-repair": "source_repair", "check-poc-write": "poc-write",
                  "check-poc-decide": "poc-decide", "check-cross-check": "cross-check", "check-tie-break": "tie-break"}
 for name, job in jobs.items():
     for st in (job or {}).get("steps") or []:
         if st.get("id") in RUN_CHECK_JOB:
-            m = re.search(r"check-agent-run\.sh ([a-z-]+) ", st.get("run") or "")
+            m = re.search(r"check-agent-run\.sh ([a-z_-]+) ", st.get("run") or "")
             if not m or m.group(1) != RUN_CHECK_JOB[st["id"]]:
                 err("%s %s must run check-agent-run.sh as %s" % (name, st["id"], RUN_CHECK_JOB[st["id"]]))
 
@@ -593,7 +593,7 @@ SCRIPTS = {
     SA + "/sqlite-config.sh": (["usage: sqlite-config.sh <out-dir>"], lambda a: len(a) == 1),
     SA + "/check-agent-run.sh": (list(check_usage),
                                  lambda a: (a[:1] == ["--fingerprint"] and len(a) == 2)
-                                 or (len(a) in (6, 7) and a[0] in ("source", "poc-write", "poc-decide", "cross-check", "tie-break"))),
+                                 or (len(a) in (6, 7) and a[0] in ("source", "source_repair", "poc-write", "poc-decide", "cross-check", "tie-break"))),
     SA + "/agent-outcome.sh": (["usage: agent-outcome.sh <execution-file> <step-outcome> <started-epoch> <ended-epoch> <timeout-minutes> <expected-file>..."],
                                lambda a: len(a) >= 5),
     SA + "/check-key-pair.sh": (["usage: check-key-pair.sh <identity-env-name> <own.pub> <other.pub>"], lambda a: len(a) == 3),
@@ -805,5 +805,7 @@ mutate "the repair seal without its plan guard" "(\"steps.agent-repair.outputs.e
 mutate "a failed trace sealed with no trace" "(\"steps.check-source.outcome == 'failure' && steps.agent-source.outputs.execution_file != '' && \", \"steps.check-source.outcome == 'failure' && \", 1)"
 
 mutate "the tie-break checked as the cross-check" '("check-agent-run.sh tie-break \"$TRACE\"", "check-agent-run.sh cross-check \"$TRACE\"", 1)'
+
+mutate "the repair checked as the source" '("check-agent-run.sh source_repair \"$TRACE\"", "check-agent-run.sh source \"$TRACE\"", 1)'
 
 pass "security-audit workflow structure"
