@@ -82,8 +82,12 @@
 #   - Every model in a result's modelUsage, and on every assistant message
 #     except Claude Code's own <synthetic> ones, is the pinned model, the
 #     allowlisted helper, or a refusal fallback: a model on the fixed list in
-#     refusal-fallback-models.txt that a top-level system message of subtype
-#     model_refusal_fallback names as its fallback_model. Such an event naming
+#     refusal-fallback-models.txt that a system message of subtype
+#     model_refusal_fallback, an element of the trace's top-level array that
+#     Claude Code writes, names as its fallback_model. Its parent_tool_use_id
+#     is not checked, since the fallback latches for the whole session, so an
+#     event a subagent's request set off covers the main agent too. An event
+#     nested inside another message does not count. Such an event naming
 #     any model off that list fails; the run prints the job and the fallback
 #     model used, and nothing else from the event.
 #   - A foreground subagent hands its report back with SubagentHandback, which
@@ -529,8 +533,10 @@ if (used && attributed === 0) {
 }
 
 // Models. A model other than the pinned one or the helper is accepted only
-// as Claude Code's refusal fallback: a top-level system message of subtype
-// model_refusal_fallback names it as fallback_model, and it is on the fixed
+// as Claude Code's refusal fallback: a system message of subtype
+// model_refusal_fallback in the trace's top-level array, written by Claude
+// Code (its parent_tool_use_id is not checked: the fallback latches for the
+// whole session), names it as fallback_model, and it is on the fixed
 // allowlist in refusal-fallback-models.txt. Nothing else in the event is
 // read or printed.
 // The allowlist is read only when the trace holds such an event; a missing

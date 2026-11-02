@@ -102,8 +102,9 @@
 #                        agents/<id>/, and any decision on that item
 #   job_models           {job: pinned model} for every counted job
 #   refusal_fallback     [{job, pinned_model, fallback_model}] for each job
-#                        whose trace holds a top-level system
-#                        model_refusal_fallback message naming a model on
+#                        whose trace holds a system model_refusal_fallback
+#                        message in its top-level array (written by Claude
+#                        Code; parent_tool_use_id not checked) naming a model on
 #                        refusal-fallback-models.txt that the trace shows in
 #                        use; recorded by count, which takes the pinned model
 #                        as --model
@@ -645,7 +646,9 @@ def interrupted_ids(state, job):
 
 def refusal_fallbacks(messages, pinned, helper=None):
     """The allowlisted models, other than the pinned one and the helper, that a
-    system model_refusal_fallback message names as fallback_model and that
+    system model_refusal_fallback message in the trace's top-level array
+    (written by Claude Code; its parent_tool_use_id is not checked, since the
+    fallback latches for the whole session) names as fallback_model and that
     the trace shows in use (an assistant message's model or a result's
     modelUsage), read as check-agent-run.sh reads them. The allowlist is read
     only when such a message exists; when it cannot be read, nothing is

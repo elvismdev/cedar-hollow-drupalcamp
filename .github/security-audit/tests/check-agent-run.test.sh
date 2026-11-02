@@ -423,8 +423,9 @@ trace "$tmp/jd.json" "$INIT" "$(top Glob "{\"pattern\":\"**/*\",\"path\":\"$JOB_
 assert_eq "1" "$(bash "$C" source "$tmp/jd.json" "$TOOLS" "$OUT" "$FP" "$M" >/dev/null 2>&1; echo $?)" \
   "a Glob of another job folder is not made a root by this one"
 
-# A refusal fallback: another model is accepted only when a top-level system
-# model_refusal_fallback message names it and it is on the allowlist.
+# A refusal fallback: another model is accepted only when a system
+# model_refusal_fallback message in the trace's top-level array names it and
+# it is on the allowlist.
 FB=claude-opus-4-8
 fb_event () { printf '{"type":"system","subtype":"model_refusal_fallback","fallback_model":"%s","api_refusal_category":"LEAKCATEGORY91","api_refusal_explanation":null}' "$1"; }
 as_model () { # model message: the message with its model replaced
