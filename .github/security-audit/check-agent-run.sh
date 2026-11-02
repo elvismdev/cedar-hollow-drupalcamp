@@ -80,8 +80,12 @@
 #     expansions). The expander is check-trace-tools.sh's own,
 #     expand-braces.cjs, so both checks judge the same expansions.
 #   - Every model in a result's modelUsage, and on every assistant message
-#     except Claude Code's own <synthetic> ones, is the pinned model or the
-#     allowlisted helper.
+#     except Claude Code's own <synthetic> ones, is the pinned model, the
+#     allowlisted helper, or a refusal fallback: a model on the fixed list in
+#     refusal-fallback-models.txt that a top-level system message of subtype
+#     model_refusal_fallback names as its fallback_model. Such an event naming
+#     any model off that list fails; the run prints the job and the fallback
+#     model used, and nothing else from the event.
 #   - A foreground subagent hands its report back with SubagentHandback, which
 #     check-trace-tools.sh accepts only with exactly a string message and only
 #     when the allowed tools name it; it counts as a call attributed to that
@@ -205,11 +209,11 @@ if ! bash "$CTT" "$trace" --tools "$allowed" "${roots[@]}" --write-root "$out_ro
 fi
 
 if ! node - "$trace" "$job" "$out_root" "$GITHUB_WORKSPACE" "$model" "$helper" \
-  "$HERE/../claude-review/tools/review/expand-braces.cjs" "$HERE/async-launch.txt" "$HERE/classifier-interruption.txt" <<'JS'
+  "$HERE/../claude-review/tools/review/expand-braces.cjs" "$HERE/async-launch.txt" "$HERE/classifier-interruption.txt" "$HERE/refusal-fallback-models.txt" <<'JS'
 const fs = require('fs');
 const path = require('path').posix;
 
-const [trace, job, outArg, wsArg, model, helper, expander, launchFile, interruptionFile] = process.argv.slice(2);
+const [trace, job, outArg, wsArg, model, helper, expander, launchFile, interruptionFile, fallbackFile] = process.argv.slice(2);
 const say = (line) => console.error(`check-agent-run: ${line}`);
 
 let msgs;
@@ -521,20 +525,49 @@ if (used && attributed === 0) {
   say('subagents were used but the trace holds none of their tool calls, so what they did cannot be checked');
 }
 
-// Models.
+// Models. A model other than the pinned one or the helper is accepted only
+// as Claude Code's refusal fallback: a top-level system message of subtype
+// model_refusal_fallback names it as fallback_model, and it is on the fixed
+// allowlist in refusal-fallback-models.txt. Nothing else in the event is
+// read or printed.
+const MODEL_NAME = /^claude-[a-z0-9-]+$/;
+const allowlist = fs.readFileSync(fallbackFile, 'utf8').split('\n').map((l) => l.trim()).filter(Boolean);
+if (allowlist.length === 0 || !allowlist.every((l) => MODEL_NAME.test(l))) {
+  say('the refusal fallback allowlist is empty or malformed, so a fallback cannot be judged');
+  process.exit(1);
+}
+const fallbacks = new Set();
+for (const m of msgs) {
+  if (!isObj(m) || m.type !== 'system' || m.subtype !== 'model_refusal_fallback') continue;
+  if (typeof m.fallback_model !== 'string' || !allowlist.includes(m.fallback_model)) {
+    bad += 1;
+    say('a model_refusal_fallback event names a model that is not on the refusal fallback allowlist');
+  } else {
+    fallbacks.add(m.fallback_model);
+  }
+}
+const accepted = (k) => MODELS.has(k) || fallbacks.has(k);
 let unexpected = 0;
+const usedFallbacks = new Set();
 for (const m of msgs) {
   if (!isObj(m)) continue;
   if (m.type === 'result' && isObj(m.modelUsage)) {
-    for (const k of Object.keys(m.modelUsage)) if (!MODELS.has(k)) unexpected += 1;
+    for (const k of Object.keys(m.modelUsage)) {
+      if (!accepted(k)) unexpected += 1;
+      else if (!MODELS.has(k)) usedFallbacks.add(k);
+    }
   }
   if (m.type === 'assistant' && isObj(m.message) && typeof m.message.model === 'string'
-      && m.message.model !== '<synthetic>' && !MODELS.has(m.message.model)) unexpected += 1;
+      && m.message.model !== '<synthetic>') {
+    if (!accepted(m.message.model)) unexpected += 1;
+    else if (!MODELS.has(m.message.model)) usedFallbacks.add(m.message.model);
+  }
 }
 if (unexpected > 0) {
   bad += 1;
-  say(`${unexpected} model use(s) other than the pinned model or the allowlisted helper`);
+  say(`${unexpected} model use(s) other than the pinned model, the allowlisted helper or a recorded refusal fallback`);
 }
+for (const f of [...usedFallbacks].sort()) console.log(`check-agent-run: the ${job} step ran on the refusal fallback model ${f}`);
 
 if (bad > 0) process.exit(1);
 console.log(`check-agent-run: ${subagents.size} subagent call(s), ${attributed} subagent tool call(s), the ${job} rules pass`);
