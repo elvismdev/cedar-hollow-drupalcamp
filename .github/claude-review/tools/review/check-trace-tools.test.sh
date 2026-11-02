@@ -197,6 +197,12 @@ for opts in none audit; do
   done
 done
 
+# A middle segment that can match .git is refused as defence in depth, though
+# only the last segment reopens .git: the folder is named instead.
+no_path Grep '{"pattern":"x","glob":"*/x.php"}' "a bare * middle segment is refused"
+no_path Grep '{"pattern":"x","glob":"src/.gi*/x.php"}' "a middle segment matching .git is refused"
+ok_path Grep '{"pattern":"x","glob":"web/modules/*.php"}' "a named folder before a wildcard passes"
+
 # Closed input fields. Each tool's input may hold only the fields of its own
 # schema in Claude Code 2.1.309. Claude Code reads aliases and stray fields
 # (Grep reads file_path as path when path is absent), so any other key is

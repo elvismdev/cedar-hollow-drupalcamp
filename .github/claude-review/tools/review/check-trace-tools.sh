@@ -76,7 +76,9 @@
 #     segment that, read as a glob pattern, can match .git in any letter case
 #     (.git, .git*, *.git, *, *.*) or ends in .git ({a,b}.git); a segment of
 #     only ** before the last is recursion and passes, and a literal name such
-#     as .gitignore passes. So *gitignore*, {.gitignore,composer.json},
+#     as .gitignore passes. Only the last segment can reopen .git; a middle
+#     one is refused as defence in depth, so */x.php is refused and the
+#     folder must be named (web/modules/*.php). So *gitignore*, {.gitignore,composer.json},
 #     src/{a,b} and **/*.php pass, and *, **, src/** and *.{git,php} do not.
 #
 # A Glob or Grep with no path searches the working directory and is allowed. A
@@ -307,7 +309,9 @@ def resolve(p, base):
 # own !.git exclusion for a directory named .git exactly when the glob's last
 # path segment matches that name; a middle segment, or a last segment that
 # matches only files below .git (*.php), does not reopen it. A glob ending in a
-# ** segment matches every name, .git included.
+# ** segment matches every name, .git included. A middle segment that can
+# match .git (*/x.php, .git*/x) is refused too, as defence in depth: no
+# segment of an accepted glob can name .git.
 def grep_glob_allowed(value, exps):
     """True when no part or expansion of a Grep glob searched from the
     workspace's top level can reopen its .git."""
