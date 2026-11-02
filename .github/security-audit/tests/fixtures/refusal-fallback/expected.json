@@ -26,7 +26,11 @@
   "compaction-in-tool-result": [],
   "compaction-and-fallback": [
    "claude-opus-4-8"
-  ]
+  ],
+  "no-fallback-main": [],
+  "no-fallback-subagent": [],
+  "no-fallback-off-pattern": [],
+  "no-fallback-in-poc-write": []
  },
  "helpers": {
   "names-helper": "claude-opus-4-8"
@@ -49,6 +53,45 @@
   "names-helper": [],
   "names-pinned": [],
   "no-event": [],
+  "off-allowlist": [],
+  "other-subtype": [],
+  "two-events": [],
+  "no-fallback-main": [],
+  "no-fallback-subagent": [],
+  "no-fallback-off-pattern": [],
+  "no-fallback-in-poc-write": []
+ },
+ "jobs": {
+  "no-fallback-main": "cross-check",
+  "no-fallback-subagent": "tie-break",
+  "no-fallback-off-pattern": "cross-check"
+ },
+ "refusals": {
+  "accepted": [],
+  "compaction-accepted": [],
+  "compaction-and-fallback": [],
+  "compaction-assistant": [],
+  "compaction-in-tool-result": [],
+  "compaction-manual": [],
+  "compaction-no-event": [],
+  "compaction-off-allowlist": [],
+  "event-after-messages": [],
+  "event-unused": [],
+  "in-tool-result": [],
+  "model-not-a-string": [],
+  "names-helper": [],
+  "names-pinned": [],
+  "no-event": [],
+  "no-fallback-in-poc-write": [],
+  "no-fallback-main": [
+   "main:cyber"
+  ],
+  "no-fallback-off-pattern": [
+   "main:not given"
+  ],
+  "no-fallback-subagent": [
+   "subagent:c-1:cyber"
+  ],
   "off-allowlist": [],
   "other-subtype": [],
   "two-events": []
