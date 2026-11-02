@@ -5,8 +5,9 @@
 # ripgrep (in the folder the path opens, with '.' as the target) and by its raw
 # path (in the checkout, with the path as written as the target), for these
 # paths: none, the checkout, a subfolder, src/.., <checkout>/.. and the parent
-# as an added root, and folders linked to the checkout and to its parent. It
-# fails if any accepted call returns the token either way, if a glob ripgrep
+# as an added root, and folders linked to the checkout and to its parent, in
+# two layouts: plain, and with the checkout's parent reached through a
+# symlink. It fails if any accepted call returns the token either way, if a glob ripgrep
 # cannot parse holds no nested brace group, if no refused glob returns the
 # token in either spawn mode, which would mean the search could not have found
 # it, and if the check accepts a call that leaked by its raw path. ripgrep is
@@ -26,22 +27,34 @@ tmp=$(realpath "$(mktemp -d)"); trap 'rm -rf "$tmp"' EXIT
 echo "ripgrep: $(rg --version | head -n 1)"
 
 # The scratch checkout: a token in .git/config and in a file under .git that
-# has an extension, and ordinary files that hold another token.
-up="$tmp/up"
-ws="$up/repo"
-mkdir -p "$up"
-git init -q "$ws"
-token="Gt$(od -An -N12 -tx1 /dev/urandom | tr -d ' \n')"
-plain="Pt$(od -An -N12 -tx1 /dev/urandom | tr -d ' \n')"
-git -C "$ws" config canary.token "$token"
-mkdir -p "$ws/.git/info" "$ws/src/a" "$ws/a"
-printf '%s\n' "$token" > "$ws/.git/info/x.php"
-printf '%s\n' "$token" > "$ws/.git/info/a"
-for f in x.php .gitignore composer.json README.md src/x.php src/a/x.php a/x.php a/b.yml; do
-  printf '%s\n' "$plain" > "$ws/$f"
-done
+# has an extension, and ordinary files that hold another token. In the
+# "linked" layout the checkout's parent folder is reached through a symlink,
+# as on a runner whose workspace sits behind one.
+layout () { # plain|linked
+  local dir="$tmp/$1" up ws token plain
+  mkdir -p "$dir"
+  if [ "$1" = linked ]; then
+    mkdir -p "$dir/realup"; ln -s "$dir/realup" "$dir/up"
+  else
+    mkdir -p "$dir/up"
+  fi
+  up="$dir/up"
+  ws="$up/repo"
+  git init -q "$ws"
+  token="Gt$(od -An -N12 -tx1 /dev/urandom | tr -d ' \n')"
+  plain="Pt$(od -An -N12 -tx1 /dev/urandom | tr -d ' \n')"
+  git -C "$ws" config canary.token "$token"
+  mkdir -p "$ws/.git/info" "$ws/src/a" "$ws/a"
+  printf '%s\n' "$token" > "$ws/.git/info/x.php"
+  printf '%s\n' "$token" > "$ws/.git/info/a"
+  for f in x.php .gitignore composer.json README.md src/x.php src/a/x.php a/x.php a/b.yml; do
+    printf '%s\n' "$plain" > "$ws/$f"
+  done
+  echo "layout: $1"
+  GITHUB_WORKSPACE="$ws" python3 -I "$tmp/canary.py" "$C" "$SUITE" "$ws" "$token" "$plain" "$dir" "$up"
+}
 
-GITHUB_WORKSPACE="$ws" python3 -I - "$C" "$SUITE" "$ws" "$token" "$plain" "$tmp" "$up" <<'PY'
+cat > "$tmp/canary.py" <<'PY'
 import itertools, json, os, re, subprocess, sys
 from concurrent.futures import ThreadPoolExecutor
 
@@ -211,7 +224,8 @@ for name, path, _ in (VARIANTS[0], VARIANTS[5]):
         print('refused with path %s (%s): %d returned the .git token, e.g. %s' % (name, mode, len(reached), ' '.join(reached[:5])))
 
 # The calls the whole-glob rule accepted that returned the token by their raw
-# path: the check must refuse each, and each must still leak raw.
+# path: the check must refuse each, and in the plain layout each must still
+# leak raw.
 REGRESSIONS = [('src/..', 'src/**', []), (ws + '/..', '*/%s/**' % os.path.basename(ws), ['--root', up]),
                ('src/link', 'src/**', [])]
 for path, g, options in REGRESSIONS:
@@ -221,10 +235,18 @@ for path, g, options in REGRESSIONS:
     r = subprocess.run(['bash', check, trace] + options, capture_output=True, text=True)
     if r.returncode != 1 or 'Grep call 1:' not in r.stderr:
         sys.exit('FAIL: the check accepted the regression call path %s glob %s: %s' % (path, g, r.stderr[-300:]))
+    # They were measured in the plain layout; behind a symlinked parent
+    # ripgrep matches the absolute path and some no longer reach .git.
+    if os.path.realpath(ws) != ws:
+        print('regression call path %s glob %s: refused by the check' % (path, g))
+        continue
     if not leaks(g, path, 'raw')[1]:
         sys.exit('FAIL: the regression call path %s glob %s no longer returns the token raw, so it proves nothing' % (path, g))
     print('regression call path %s glob %s: refused by the check, returns the token raw' % (path, g))
 PY
-status=$?
+status=0
+for l in plain linked; do
+  layout "$l" || status=1
+done
 [ "$status" -eq 0 ] && echo "ok: check-trace-tools-ripgrep.test.sh"
 exit "$status"

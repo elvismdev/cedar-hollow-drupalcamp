@@ -271,6 +271,15 @@ assert_contains "$(lgrep web 'web/**')" "rc=0" "and a subfolder Grep"
 assert_contains "$(lgrep "$lws/web" '*.php')" "rc=0" "and an absolute subfolder Grep"
 assert_contains "$(lgrep "$(dirname "$lws")" '*.php' --root "$(dirname "$lws")")" "rc=0" "and a Grep at an added root behind the link"
 assert_contains "$(lgrep web/link 'web/**')" "Grep path passes through a symlink (field path)" "a symlink inside that workspace is still refused"
+# There, ripgrep run in the workspace with its spelled path as the target
+# matches a glob against the absolute path, so */*/** returned
+# .git/info/x.php with ripgrep 13.0.0; such a glob is judged against .git's
+# absolute paths too.
+for g in '*/*/**' '**/*/*' '*/**/*'; do
+  assert_contains "$(lgrep "$lws" "$g")" "Grep glob can reach .git (field glob)" "$g at a workspace behind a symlinked parent is refused"
+done
+assert_contains "$(lgrep "$lws" '*/x.php')" "rc=0" "*/x.php at a workspace behind a symlinked parent still passes"
+assert_contains "$(sym_grep "$sws" '*/*/**')" "rc=0" "*/*/** at a workspace with no symlinked parent still passes"
 # A symlinked folder is not a subfolder for --grep-any-glob-in-subfolders: the
 # link to the checkout with * returned .git/info/x.php, searched as Claude Code
 # 2.1.309 spawns ripgrep (in the opened folder) and by its raw path.

@@ -370,6 +370,13 @@ def git_targets(path):
     against for a Grep with this path: .git, and from a root above the
     workspace also .git's path from that root."""
     targets = {'.git'}
+    # With the workspace behind a symlink, ripgrep's working directory (its
+    # real path) differs from the target as spelled, so a glob is matched
+    # against the target's absolute path: .git's absolute paths, spelled and
+    # real, are targets too.
+    real_ws = os.path.realpath(ws)
+    if real_ws != ws:
+        targets |= {posixpath.join(w, '.git').lstrip('/') for w in (ws, real_ws)}
     exps = expansions(path) if isinstance(path, str) else None
     for e in exps or []:
         root = resolve(e, ws)
