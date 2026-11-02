@@ -231,6 +231,33 @@ for opts in none audit; do
   done
 done
 
+# ripgrep matches a glob against the path as written, and follows a symlinked
+# folder, so where the glob rule applies a Grep path that holds a .. segment or
+# passes through a symlink is refused: web/.. with web/** and a link to the
+# checkout with web/** each returned .git/info/x.php with ripgrep 13.0.0. This
+# needs a real folder, since the symlink is looked up on disk.
+sws="$(realpath "$tmp")/sym/repo"
+mkdir -p "$sws/web"
+ln -s .. "$sws/web/link"
+sym_grep () { # path glob [option...]: the check's output for one Grep in the scratch checkout
+  printf '[%s]' "$(call Grep "{\"pattern\":\"x\",\"path\":\"$1\",\"glob\":\"$2\"}")" > "$tmp/s.json"; shift 2
+  GITHUB_WORKSPACE="$sws" bash "$C" "$tmp/s.json" "$@" 2>&1; echo "rc=$?"
+}
+out=$(sym_grep web/.. 'web/**')
+assert_contains "$out" "Grep call 1: Grep path holds a .. segment (field path)" "web/.. with web/** is refused"
+assert_contains "$out" "rc=1" "and fails"
+out=$(sym_grep "$sws/.." '*/repo/**' --root "$(dirname "$sws")")
+assert_contains "$out" "Grep call 1: Grep path holds a .. segment (field path)" "<workspace>/.. with */repo/** from an added root is refused"
+assert_contains "$out" "rc=1" "and fails"
+out=$(sym_grep web/link 'web/**')
+assert_contains "$out" "Grep call 1: Grep path passes through a symlink (field path)" "a symlinked folder with web/** is refused"
+assert_contains "$out" "rc=1" "and fails"
+out=$(sym_grep "$sws/web/link/web" '*.php')
+assert_contains "$out" "Grep call 1: Grep path passes through a symlink (field path)" "a path through a symlinked folder is refused"
+assert_contains "$(sym_grep web 'web/**')" "rc=0" "an ordinary subfolder with web/** still passes"
+assert_contains "$(sym_grep "$sws/web" '*.php')" "rc=0" "an ordinary absolute subfolder still passes"
+assert_contains "$(sym_grep "$sws" '*.php')" "rc=0" "the workspace itself still passes"
+
 # Closed input fields. Each tool's input may hold only the fields of its own
 # schema in Claude Code 2.1.309. Claude Code reads aliases and stray fields
 # (Grep reads file_path as path when path is absent), so any other key is

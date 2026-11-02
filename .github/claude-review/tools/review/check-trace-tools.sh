@@ -393,6 +393,23 @@ def grep_glob_allowed(value, exps, path):
             return False
     return True
 
+def grep_path_refusal(path):
+    """The label for a Grep path the glob rule cannot judge, else None.
+    ripgrep matches a glob against the path as written, so web/.. with
+    web/** matches web/../.git/..., and it follows a symlinked folder, so a
+    link to the checkout or above it puts .git under a path the rule judges
+    as a subfolder. A raw .. segment is refused, and so is a path any
+    existing component of which is a symlink on disk now."""
+    if not isinstance(path, str):
+        return None
+    if '..' in path.split('/'):
+        return ('Grep path holds a .. segment', 'path')
+    for e in expansions(path) or [path]:
+        p = resolve(e, ws)
+        if p is not None and os.path.realpath(p) != p:
+            return ('Grep path passes through a symlink', 'path')
+    return None
+
 def inside(p):
     return p is not None and not under(p, git_dir) and any(under(p, r) for r in roots)
 
@@ -524,8 +541,12 @@ def refusal(call):
                 return ('braces cannot be expanded', 'glob')
             if any('..' in re.split(r'[/{},]', e) for e in exps):
                 return ('Grep glob holds a .. segment', 'glob')
-            if not away_from_workspace(args.get('path')) and not grep_glob_allowed(g, exps, args.get('path')):
-                return ('Grep glob can reach .git', 'glob')
+            if not away_from_workspace(args.get('path')):
+                r = grep_path_refusal(args.get('path'))
+                if r:
+                    return r
+                if not grep_glob_allowed(g, exps, args.get('path')):
+                    return ('Grep glob can reach .git', 'glob')
     path = args.get('path')
     if path is None:
         base = ws
