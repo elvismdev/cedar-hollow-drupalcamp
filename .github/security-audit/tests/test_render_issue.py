@@ -15,7 +15,7 @@ from test_merge_records import SA, confirmed, lead, metadata, rejected, unit
 SCRIPT = os.path.join(SA, "render-issue.py")
 SHA = "b" * 64
 SCREEN_FAILED = "Output failed or could not run the secret screen"
-TRUSTED_KEYS = ("usage", "poc", "cross_check", "merge_discarded", "incomplete_reasons", "dispute_rate", "interrupted",
+TRUSTED_KEYS = ("usage", "poc", "cross_check", "merge_discarded", "incomplete_reasons", "dispute_rate", "interrupted", "refusal_fallback",
                 "run_status", "incomplete_reason")
 OK_JOBS = {"publish": True, "canary": "none", "source": {"result": "success", "cause": "ok"},
            "cross_check": {"result": "success", "cause": "ok", "validators": "pass"}}
@@ -163,6 +163,45 @@ class ContentTest(RenderTest):
         self.assertIn("*   Subagent invocations against cap: source 12 of 60; tie-break 1 of 3", body)
         self.assertIn("*   Dispute rate: 1 of 4 records cross-checked (25%)", body)
         self.assertIn("*   Tie-breaks: original 1, replacement 0, neither 0", body)
+
+    def test_an_unrecorded_model_is_named_as_a_reason(self):
+        self.seed([], final_meta(incomplete_reasons=["cross_check_model_unrecorded"]))
+        self.assertIn("cross_check_model_unrecorded", self.line(self.render(), "**Status: incomplete"))
+
+    def test_a_cross_check_on_the_source_model_is_named_as_a_reason(self):
+        self.seed([], final_meta(incomplete_reasons=["cross_check_same_model"]))
+        body = self.render()
+        self.assertIn("cross_check_same_model", self.line(body, "**Status: incomplete"))
+
+    def test_a_refused_tie_break_is_stated_in_plain_words(self):
+        for reason, text in (
+                ("tie_break_same_model", "*   Tie-break not applied: it ran on a model shared with a job it judges, "
+                                         "so its disputed records were removed."),
+                ("tie_break_model_unrecorded", "*   Tie-break not applied: a model it needed to compare was never "
+                                               "recorded, so its disputed records were removed.")):
+            with self.subTest(reason):
+                self.seed([], final_meta(incomplete_reasons=[reason]))
+                body = self.render()
+                self.assertIn(reason, self.line(body, "**Status: incomplete"))
+                self.assertIn(text, body.splitlines())
+
+    def test_no_tie_break_line_without_a_refusal(self):
+        self.seed([], final_meta())
+        self.assertNotIn("Tie-break not applied", self.render())
+
+    def test_a_refusal_fallback_is_one_line_per_job(self):
+        self.seed([], final_meta(refusal_fallback=[
+            {"job": "poc-write", "pinned_model": "claude-opus-5-5", "fallback_model": "claude-opus-4-8"},
+            {"job": "source", "pinned_model": "claude-opus-5-5 @owner", "fallback_model": "claude-opus-4-8"},
+            {"job": "cross-check", "pinned_model": "claude-fable-5-1", "fallback_model": "http://evil.example"},
+            {"job": "Not A Label!", "pinned_model": "claude-opus-5-5", "fallback_model": "claude-opus-4-8"}]))
+        body = self.render()
+        self.assertIn("*   poc-write ran on claude-opus-4-8 after claude-opus-5-5 refused the task.", body)
+        self.assertEqual(body.count("refused the task."), 1)
+        self.assertNotIn("evil", body)
+        self.assertNotIn("@owner", body)
+        self.seed([], final_meta())
+        self.assertNotIn("refused the task", self.render())
 
     def test_interrupted_subagents_are_a_count_only(self):
         self.seed([], final_meta(interrupted=[{"job": "poc-decide", "agent_id": "decider-secret-7"},

@@ -5,8 +5,11 @@
 # this run (trusted-meta.json poc.confirmed) and the cross-check settled it
 # (cross_check.settled), and a lead only when the cross-check settled it. The
 # bookkeeping it shows (usage, the number of subagents the safety classifier
-# interrupted, never their ids, poc, cross_check, dispute_rate, tie-break
-# sides, run_status and the incomplete reasons) is read only from
+# interrupted, never their ids, each job Claude Code's refusal fallback moved
+# to another model, named only by the job and the two model names, each
+# matching ^claude-[a-z0-9-]+$, poc, cross_check, dispute_rate, tie-break
+# sides, run_status, the incomplete reasons, and a fixed line for a tie-break
+# refused for its models) is read only from
 # trusted-meta.json, which only merge-records.py writes; run-metadata.json,
 # which agents can write, supplies only source_ref, profile and scope_paths.
 # Rejected, disputed, unvalidated and unchecked records appear only as counts,
@@ -87,6 +90,7 @@ FINDINGS, LEDGER, METADATA = _shared.FINDINGS, _shared.LEDGER, _shared.METADATA
 DISPUTED, HISTORY, TRUSTED_META = _shared.DISPUTED, _shared.HISTORY, _shared.TRUSTED_META
 FINGERPRINT = _shared.FINGERPRINT
 Refused = _shared.Refused
+MODEL_NAME, REFUSAL_FALLBACK = _shared.MODEL_NAME, _shared.REFUSAL_FALLBACK
 
 MAX_STATE_BYTES = 5 * 1024 * 1024
 MAX_ARTIFACT_BYTES = 1024 * 1024
@@ -218,6 +222,16 @@ def code_block(text):
     longest = max([len(run) for run in re.findall(r"`+", text)] + [2])
     fence = "`" * (longest + 1)
     return "%s\n%s\n%s" % (fence, text.rstrip("\n"), fence)
+
+
+# Fixed text for a tie-break refused for its models (D24); its disputed
+# records were removed without an answer.
+TIE_BREAK_REFUSALS = (
+    ("tie_break_same_model", "*   Tie-break not applied: it ran on a model shared with a job it judges, "
+                             "so its disputed records were removed."),
+    ("tie_break_model_unrecorded", "*   Tie-break not applied: a model it needed to compare was never recorded, "
+                                   "so its disputed records were removed."),
+)
 
 
 def label(value, default="unknown"):
@@ -360,6 +374,14 @@ def header(run, cut_note):
     lines.append("*   Subagent invocations against cap: %s" % ("; ".join(parts) if parts else "none recorded"))
     interrupted = trusted.get("interrupted") if isinstance(trusted.get("interrupted"), list) else []
     lines.append("*   Subagents stopped by the safety classifier and left out: %d" % len(interrupted))
+    fallbacks = trusted.get(REFUSAL_FALLBACK) if isinstance(trusted.get(REFUSAL_FALLBACK), list) else []
+    for entry in fallbacks:
+        if not isinstance(entry, dict):
+            continue
+        job, pinned, fallback = entry.get("job"), entry.get("pinned_model"), entry.get("fallback_model")
+        if (isinstance(job, str) and LABEL.fullmatch(job) and isinstance(pinned, str) and MODEL_NAME.fullmatch(pinned)
+                and isinstance(fallback, str) and MODEL_NAME.fullmatch(fallback)):
+            lines.append("*   %s ran on %s after %s refused the task." % (job, fallback, pinned))
     rate = trusted.get("dispute_rate") if isinstance(trusted.get("dispute_rate"), dict) else {}
     if isinstance(rate.get("rate"), (int, float)) and not isinstance(rate.get("rate"), bool):
         lines.append("*   Dispute rate: %d of %d records cross-checked (%.0f%%)" % (
@@ -372,6 +394,10 @@ def header(run, cut_note):
             sides[entry["side"]] += 1
     lines.append("*   Tie-breaks: original %d, replacement %d, neither %d" % (
         sides["original"], sides["replacement"], sides["neither"]))
+    reasons = Run.list_of(trusted, "incomplete_reasons")
+    for reason, text in TIE_BREAK_REFUSALS:
+        if reason in reasons:
+            lines.append(text)
     if run.state_ok:
         rejected = sum(1 for r in run.findings if r.get("verdict") == "rejected")
         lines.append("*   Counts: confirmed %d, leads %d, rejected %d, disputed %d, not cross-checked %d, "

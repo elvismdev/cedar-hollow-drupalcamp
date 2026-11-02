@@ -1,0 +1,25 @@
+{
+ "pinned": "claude-opus-5-5",
+ "accepted": {
+  "accepted": [
+   "claude-opus-4-8"
+  ],
+  "event-after-messages": [
+   "claude-opus-4-8"
+  ],
+  "no-event": [],
+  "off-allowlist": [],
+  "event-unused": [],
+  "in-tool-result": [],
+  "two-events": [
+   "claude-opus-4-8"
+  ],
+  "names-pinned": [],
+  "model-not-a-string": [],
+  "other-subtype": [],
+  "names-helper": []
+ },
+ "helpers": {
+  "names-helper": "claude-opus-4-8"
+ }
+}

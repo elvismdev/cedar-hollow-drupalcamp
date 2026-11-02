@@ -423,6 +423,102 @@ trace "$tmp/jd.json" "$INIT" "$(top Glob "{\"pattern\":\"**/*\",\"path\":\"$JOB_
 assert_eq "1" "$(bash "$C" source "$tmp/jd.json" "$TOOLS" "$OUT" "$FP" "$M" >/dev/null 2>&1; echo $?)" \
   "a Glob of another job folder is not made a root by this one"
 
+# A refusal fallback: another model is accepted only when a system
+# model_refusal_fallback message in the trace's top-level array names it and
+# it is on the allowlist.
+FB=claude-opus-4-8
+fb_event () { printf '{"type":"system","subtype":"model_refusal_fallback","fallback_model":"%s","api_refusal_category":"LEAKCATEGORY91","api_refusal_explanation":null}' "$1"; }
+as_model () { # model message: the message with its model replaced
+  printf '%s' "$2" | sed "s/\"model\":\"$M\"/\"model\":\"$1\"/"
+}
+fb_trace () { # model-for-calls [message...]
+  local use="$1"; shift
+  trace "$tmp/t.json" "$INIT" "$@" "$(as_model "$use" "$(top Read "{\"file_path\":\"$WS/tracked.txt\"}")")" \
+    "$(as_model "$use" "$(agent ta2 "agent-id: h02 hunt")")" "$(as_model "$use" "$(sub ta2 Read "{\"file_path\":\"$WS/tracked.txt\"}")")" \
+    "$(result "$M" "$use")"
+}
+fb_trace "$FB" "$(fb_event "$FB")"
+assert_eq "0" "$(rc poc-write "$tmp/t.json")" "a run on the allowlisted fallback named by a top-level event passes"
+assert_contains "$(run poc-write "$tmp/t.json")" "the poc-write step ran on the refusal fallback model $FB" "and names the job and the model"
+case "$(run poc-write "$tmp/t.json")" in *LEAKCATEGORY91*) echo "FAIL: the refusal category was printed" >&2; exit 1;; esac
+fb_trace "$FB"
+assert_eq "1" "$(rc poc-write "$tmp/t.json")" "a fallback-model run with no event fails"
+assert_contains "$(run poc-write "$tmp/t.json")" "model use(s) other than the pinned model" "a fallback-model run with no event fails, on the model rule"
+fb_trace claude-other-1 "$(fb_event claude-other-1)"
+assert_eq "1" "$(rc poc-write "$tmp/t.json")" "an event naming a model off the allowlist fails"
+assert_contains "$(run poc-write "$tmp/t.json")" "names a model that is not on the refusal fallback allowlist" "an event naming a model off the allowlist fails, on the allowlist rule"
+fb_trace claude-other-1 "$(fb_event "$FB")"
+assert_eq "1" "$(rc poc-write "$tmp/t.json")" "an event naming the allowlisted model while another model ran fails"
+assert_contains "$(run poc-write "$tmp/t.json")" "model use(s) other than the pinned model" "an event naming the allowlisted model while another model ran fails, on the model rule"
+fb_trace "$FB" "$(fb_event "$FB")" "$(fb_event claude-other-1)"
+assert_eq "1" "$(rc poc-write "$tmp/t.json")" "two events, one naming a model off the allowlist, fail"
+assert_contains "$(run poc-write "$tmp/t.json")" "names a model that is not on the refusal fallback allowlist" "two events, one naming a model off the allowlist, fail, on the allowlist rule"
+fb_trace "$FB" '{"type":"system","subtype":"model_refusal_fallback","fallback_model":["claude-opus-4-8"]}'
+assert_eq "1" "$(rc poc-write "$tmp/t.json")" "an event whose fallback_model is not a string fails"
+assert_contains "$(run poc-write "$tmp/t.json")" "names a model that is not on the refusal fallback allowlist" "an event whose fallback_model is not a string fails, on the allowlist rule"
+fb_trace "$FB" '{"type":"system","subtype":"model_refusal_fallbackX","fallback_model":"claude-opus-4-8"}'
+assert_eq "1" "$(rc poc-write "$tmp/t.json")" "an event of another subtype does not count"
+assert_contains "$(run poc-write "$tmp/t.json")" "model use(s) other than the pinned model" "an event of another subtype does not count, on the model rule"
+fb_trace "$FB" "{\"type\":\"user\",\"parent_tool_use_id\":null,\"message\":{\"content\":[{\"type\":\"tool_result\",\"tool_use_id\":\"tx\",\"content\":[$(fb_event "$FB")]}]}}"
+assert_eq "1" "$(rc poc-write "$tmp/t.json")" "the event only inside a tool_result does not count"
+assert_contains "$(run poc-write "$tmp/t.json")" "model use(s) other than the pinned model" "the event only inside a tool_result does not count, on the model rule"
+fb_trace "$FB" "{\"type\":\"system\",\"subtype\":\"other\",\"parent_tool_use_id\":\"ta2\",\"note\":$(fb_event "$FB")}"
+assert_eq "1" "$(rc poc-write "$tmp/t.json")" "the event nested in another message does not count"
+assert_contains "$(run poc-write "$tmp/t.json")" "model use(s) other than the pinned model" "the event nested in another message does not count, on the model rule"
+fb_trace "$FB" "$(as_model "$FB" "$(agent ta3 "agent-id: h03 report")" | sed 's/Done: read the files and wrote the entry./subtype model_refusal_fallback fallback_model claude-opus-4-8/')" \
+  "$(as_model "$FB" "$(sub ta3 Read "{\"file_path\":\"$WS/tracked.txt\"}")")"
+assert_eq "1" "$(rc poc-write "$tmp/t.json")" "the event's words only in a subagent's report do not count"
+assert_contains "$(run poc-write "$tmp/t.json")" "model use(s) other than the pinned model" "and it fails on the model rule"
+fb_trace "$M" "$(fb_event "$FB")"
+assert_eq "0" "$(rc poc-write "$tmp/t.json")" "an event with every call still on the pinned model passes"
+case "$(run poc-write "$tmp/t.json")" in *"ran on the refusal fallback"*) echo "FAIL: an unused fallback was reported" >&2; exit 1;; esac
+fb_trace "$FB" "$(fb_event "$FB")" "$(top Bash '{"command":"id"}')"
+assert_eq "1" "$(rc poc-write "$tmp/t.json")" "every other rule still applies on a fallback run"
+
+# source_repair runs with exactly the source rules: the clean source trace,
+# with its state-file writes, passes in both, and a refused call fails in both.
+for j in source source_repair; do
+  assert_eq "0" "$(rc "$j" "$tmp/clean.json")" "the clean source trace passes as $j"
+  trace "$tmp/t.json" "${CLEAN[@]}" "$(top Bash '{"command":"id"}')" "$(result "$M")"
+  assert_eq "1" "$(rc "$j" "$tmp/t.json")" "a Bash call fails as $j"
+done
+
+# tie-break runs with exactly the cross-check rules: a subagent reading another
+# declared subagent's directory fails in both, and a clean later-job trace
+# passes in both.
+for j in cross-check tie-break; do
+  trace "$tmp/t.json" "$INIT" "$(agent tc1 "agent-id: tb-1 judge")" "$(agent tc2 "agent-id: tb-2 judge")" \
+    "$(sub tc1 Write "{\"file_path\":\"$OUT/agents/tb-1/scratch/entry.json\",\"content\":\"{}\"}")" \
+    "$(sub tc2 Write "{\"file_path\":\"$OUT/agents/tb-2/scratch/entry.json\",\"content\":\"{}\"}")" "$(result "$M")"
+  assert_eq "0" "$(rc "$j" "$tmp/t.json")" "a clean judging trace passes as $j"
+  trace "$tmp/t.json" "$INIT" "$(agent tc1 "agent-id: tb-1 judge")" "$(agent tc2 "agent-id: tb-2 judge")" \
+    "$(sub tc1 Write "{\"file_path\":\"$OUT/agents/tb-1/scratch/entry.json\",\"content\":\"{}\"}")" \
+    "$(sub tc2 Read "{\"file_path\":\"$OUT/agents/tb-1/scratch/entry.json\"}")" "$(result "$M")"
+  assert_eq "1" "$(rc "$j" "$tmp/t.json")" "a judge reading another judge's entry fails as $j"
+  trace "$tmp/t.json" "$INIT" "$(top Write "{\"file_path\":\"$OUT/findings.json\",\"content\":\"[]\"}")" "$(result "$M")"
+  assert_eq "1" "$(rc "$j" "$tmp/t.json")" "a state file write fails as $j"
+done
+
+# The allowlist is read only for a trace holding a fallback event: with the
+# file gone, a trace with no event still passes, and one with an event fails
+# with a reason line rather than a stack.
+COPY="$tmp/copy/.github"
+mkdir -p "$COPY/claude-review/tools"
+cp -R "$(dirname "$C")" "$COPY/security-audit"
+cp -R "$(dirname "$C")/../claude-review/tools/review" "$COPY/claude-review/tools/review"
+rm "$COPY/security-audit/refusal-fallback-models.txt"
+copy_run () { bash "$COPY/security-audit/check-agent-run.sh" "${1:-poc-write}" "$tmp/t.json" "$TOOLS" "$OUT" "$FP" "$M" 2>&1; }
+copy_rc () { copy_run "$@" >/dev/null; echo $?; }
+trace "$tmp/t.json" "${CLEAN[@]}" "$(result "$M")"
+assert_eq "0" "$(copy_rc source)" "a trace with no fallback event passes without the allowlist file"
+fb_trace "$FB" "$(fb_event "$FB")"
+assert_eq "1" "$(copy_rc)" "a fallback event without the allowlist file fails"
+out=$(copy_run || true)
+assert_contains "$out" "check-agent-run: the refusal fallback allowlist is missing, empty or malformed" "and says why"
+case "$out" in *"at Object"*|*"ENOENT"*|*"node:"*) echo "FAIL: a missing allowlist printed a stack" >&2; exit 1;; esac
+printf 'not a model\n' > "$COPY/security-audit/refusal-fallback-models.txt"
+assert_eq "1" "$(copy_rc)" "a malformed allowlist file fails a fallback run"
+
 # The fingerprint: the checkout and the watched parts of ~/.claude.
 assert_eq "0" "$(rc source "$tmp/clean.json")" "unchanged state passes"
 echo "b" >> "$WS/tracked.txt"

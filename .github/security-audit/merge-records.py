@@ -8,7 +8,7 @@
 # outcomes) is enforced here in code and not by an agent.
 #
 # Usage: merge-records.py --state <dir> <subcommand> [options]
-#   count --job <job> --cap <n> --trace <execution-file>
+#   count --job <job> --cap <n> --trace <execution-file> --model <pinned model> [--helper <model>]
 #   select-poc --out <select.json> [--prior <prior findings.json>]...
 #   apply-decide --manifest <poc-manifest.json> --records <dir> --scripts <dir> --entries <out-dir> --trace <execution-file>
 #   fail-poc --select <select.json> --job <job>
@@ -82,7 +82,15 @@
 #                        decided, failed}
 #   cross_check          {selected, not_cross_checked, settled, refused,
 #                        disputes, cross_checked, tie_breaks, removed,
-#                        applied, pending, inputs_sha256}; apply-tie-break
+#                        applied, pending, inputs_sha256, same_model,
+#                        model_unrecorded, tie_break_same_model,
+#                        tie_break_model_unrecorded}; same_model and
+#                        model_unrecorded mark a cross-check refused because
+#                        its models overlap a judged job's or a required
+#                        model was never recorded, so status adds no
+#                        cross_check_missing for that cause, and the
+#                        tie_break_ pair marks a tie-break refused for the
+#                        same causes; apply-tie-break
 #                        refuses inputs whose sha256 is not inputs_sha256,
 #                        or whose disputes are not objects whose original
 #                        and replacement carry the dispute's fingerprint
@@ -100,8 +108,30 @@
 #                        and apply-decide drops a manifest item naming an
 #                        interrupted poc-write subagent or a script under its
 #                        agents/<id>/, and any decision on that item
+#   job_models           {job: pinned model} for every counted job
+#   job_helpers          {job: [helper model]}: every helper a job was
+#                        counted with, never removed by a later count. A
+#                        job's model set is its pinned model, its helpers and
+#                        every refusal fallback recorded for it
+#   refusal_fallback     [{job, pinned_model, fallback_model}] for each job
+#                        whose trace holds a system model_refusal_fallback
+#                        message in its top-level array (written by Claude
+#                        Code; parent_tool_use_id not checked) naming a model on
+#                        refusal-fallback-models.txt that the trace shows in
+#                        use; recorded by count, which takes the pinned model
+#                        as --model
 # and, in trusted-meta.json only, run_id and source_run_status.
-# Incomplete reasons it sets: cap_exceeded:<job>, cross_check_cap,
+# Incomplete reasons it sets: cross_check_same_model (the cross-check's
+# model set overlaps that of a job it judges: source, source_repair,
+# poc-write or poc-decide; its entries were not applied, D24),
+# cross_check_model_unrecorded (the cross-check's model, or the source's, was
+# never recorded, so independence cannot be shown and its entries were not
+# applied; source_repair, poc-write and poc-decide are never required, since
+# an uncounted one handed on nothing), tie_break_same_model and
+# tie_break_model_unrecorded (the same two causes for the tie-break, which
+# also judges the cross-check and requires its model; its answers were not
+# applied and status removes its disputes as tie_break_refused),
+# cap_exceeded:<job>, cross_check_cap,
 # cross_check_missing (a selected record with no valid cross-check entry, or
 # a cross-check that never applied), cross_check_dispute, cross_check_not_run
 # and source_run_not_finished (status found run_status still in_progress).
@@ -140,6 +170,13 @@ FINDINGS, LEDGER, METADATA = _shared.FINDINGS, _shared.LEDGER, _shared.METADATA
 DISPUTED, HISTORY, TRUSTED_META = _shared.DISPUTED, _shared.HISTORY, _shared.TRUSTED_META
 FINGERPRINT = _shared.FINGERPRINT
 Refused = _shared.Refused
+MODEL_NAME, refusal_fallback_models = _shared.MODEL_NAME, _shared.refusal_fallback_models
+REFUSAL_FALLBACK = _shared.REFUSAL_FALLBACK
+# trusted-meta.json keys: each counted job's pinned model and, when count was
+# given one, its helper model, which with its refusal fallbacks make up the
+# job's model set (D24).
+JOB_MODELS = "job_models"
+JOB_HELPERS = "job_helpers"
 parse_strict, read_bytes, read_json = _shared.parse_strict, _shared.read_bytes, _shared.read_json
 
 MAX_STATE_BYTES = 5 * 1024 * 1024
@@ -384,7 +421,7 @@ def record_valid(record):
 # does not hold), so their copies there, which the source and repair agents
 # can write, are never read.
 MIRRORED_KEYS = ("usage", "poc", "cross_check", "merge_discarded", "incomplete_reasons", "dispute_rate",
-                 "prior_run_paths", "interrupted")
+                 "prior_run_paths", "interrupted", REFUSAL_FALLBACK)
 
 
 def non_negative_int(value):
@@ -413,10 +450,10 @@ class State:
                 isinstance(v, dict) and set(v) == {"invocations", "cap"}
                 and non_negative_int(v["invocations"]) and non_negative_int(v["cap"]) for v in usage.values()):
             raise Refused(TRUSTED_META + " usage is not a map of non-negative invocations and caps")
-        for key in ("poc", "cross_check", "dispute_rate"):
+        for key in ("poc", "cross_check", "dispute_rate", JOB_MODELS, JOB_HELPERS):
             if key in trusted and not isinstance(trusted[key], dict):
                 raise Refused(TRUSTED_META + " %s is not an object" % key)
-        for key in ("merge_discarded", "prior_run_paths", "interrupted"):
+        for key in ("merge_discarded", "prior_run_paths", "interrupted", REFUSAL_FALLBACK):
             if not isinstance(trusted.get(key, []), list):
                 raise Refused(TRUSTED_META + " %s is not a list" % key)
         reasons = trusted.get("incomplete_reasons")
@@ -627,6 +664,37 @@ def interrupted_ids(state, job):
             if isinstance(r, dict) and r.get("job") == job and isinstance(r.get("agent_id"), str)}
 
 
+def refusal_fallbacks(messages, pinned, helper=None):
+    """The allowlisted models, other than the pinned one and the helper, that a
+    system model_refusal_fallback message in the trace's top-level array
+    (written by Claude Code; its parent_tool_use_id is not checked, since the
+    fallback latches for the whole session) names as fallback_model and that
+    the trace shows in use (an assistant message's model or a result's
+    modelUsage), read as check-agent-run.sh reads them. The allowlist is read
+    only when such a message exists; when it cannot be read, nothing is
+    recorded and the run check, which reads the same file, fails the run."""
+    events = [m for m in messages
+              if isinstance(m, dict) and m.get("type") == "system" and m.get("subtype") == "model_refusal_fallback"]
+    if not events:
+        return []
+    try:
+        allowed = refusal_fallback_models()
+    except Refused:
+        return []
+    named = {m["fallback_model"] for m in events
+             if isinstance(m.get("fallback_model"), str) and m["fallback_model"] in allowed
+             and m["fallback_model"] not in (pinned, helper)}
+    used = set()
+    for m in messages:
+        if not isinstance(m, dict):
+            continue
+        if m.get("type") == "result" and isinstance(m.get("modelUsage"), dict):
+            used.update(m["modelUsage"])
+        if m.get("type") == "assistant" and isinstance(m.get("message"), dict) and isinstance(m["message"].get("model"), str):
+            used.add(m["message"]["model"])
+    return sorted(named & used)
+
+
 def subagent_count(messages):
     calls = sum(1 for m in messages for c in tool_uses(m) if c.get("name") in SUBAGENT_TOOLS)
     spawned = 0
@@ -729,9 +797,26 @@ def cmd_count(state, args):
         raise Refused("invalid job name")
     if args.cap < 0:
         raise Refused("the cap must not be negative")
+    if not MODEL_NAME.fullmatch(args.model):
+        raise Refused("the pinned model is not a model name")
+    if args.helper is not None and not MODEL_NAME.fullmatch(args.helper):
+        raise Refused("the helper model is not a model name")
     messages = read_trace(args.trace)
     used = subagent_count(messages)
     bindings, _ = subagent_bindings(messages)
+    state.trusted.setdefault(JOB_MODELS, {})[args.job] = args.model
+    # Helpers accumulate like refusal fallbacks: a job that ran on a helper
+    # in any of its counts keeps that model in its model set, so a recount
+    # without --helper cannot drop it.
+    if args.helper is not None:
+        helpers = state.trusted.setdefault(JOB_HELPERS, {}).setdefault(args.job, [])
+        if args.helper not in helpers:
+            helpers.append(args.helper)
+    fallbacks = state.trusted.setdefault(REFUSAL_FALLBACK, [])
+    for fallback in refusal_fallbacks(messages, args.model, args.helper):
+        key = {"job": args.job, "pinned_model": args.model, "fallback_model": fallback}
+        if key not in fallbacks:
+            fallbacks.append(key)
     recorded = state.trusted.setdefault("interrupted", [])
     for call_id, agent_id in interrupted_calls(messages, bindings):
         key = {"job": args.job, "agent_id": agent_id, "tool_use_id": call_id}
@@ -1225,11 +1310,86 @@ def cross_entry_valid(entry, selected):
     return False
 
 
+def model_set(state, job):
+    """The models a counted job ran on: its pinned model, every helper model
+    it was counted with and every refusal fallback recorded for it;
+    None when the job's pinned model was never recorded."""
+    pinned = state.trusted.get(JOB_MODELS, {}).get(job)
+    if not isinstance(pinned, str):
+        return None
+    models = {pinned}
+    helpers = state.trusted.get(JOB_HELPERS, {}).get(job)
+    if isinstance(helpers, list):
+        models |= {h for h in helpers if isinstance(h, str)}
+    return models | {r["fallback_model"] for r in state.trusted.get(REFUSAL_FALLBACK, [])
+                     if isinstance(r, dict) and r.get("job") == job and isinstance(r.get("fallback_model"), str)}
+
+
+# The jobs whose results each checking job judges (D24): the cross-check
+# judges the records the source, its repair and the proof-of-concept jobs
+# produced, and the tie-break settles disputes between those records and the
+# cross-check's replacements. A judged job that was never counted fails
+# closed, except the source repair and the proof-of-concept jobs: a job's
+# results reach the cross-check only through a handoff that runs after that
+# job's run check and count succeeded, so an uncounted one handed on nothing.
+CHECKED_JOBS = {"cross-check": ("source", "source_repair", "poc-write", "poc-decide"),
+                "tie-break": ("source", "source_repair", "poc-write", "poc-decide", "cross-check")}
+OPTIONAL_JOBS = ("source_repair", "poc-write", "poc-decide")
+
+
+def model_independence(state, checker):
+    """Why the checking job is not independent of the jobs it judges, or
+    None when it is: ("unrecorded", job) when the checking job's or a
+    required judged job's models were never recorded, so independence cannot
+    be shown, or ("overlap", job) when the checking job's model set shares a
+    model with that judged job's."""
+    mine = model_set(state, checker)
+    if mine is None:
+        return ("unrecorded", checker)
+    for job in CHECKED_JOBS[checker]:
+        theirs = model_set(state, job)
+        if theirs is None:
+            if job in OPTIONAL_JOBS:
+                continue
+            return ("unrecorded", job)
+        if mine & theirs:
+            return ("overlap", job)
+    return None
+
+
+def refuse_for_models(state, cc, checker, cause):
+    """Records why checker's entries are not applied, as both a flag under
+    cross_check and the incomplete reason of the same name: same_model for an
+    overlap or model_unrecorded for a model never recorded, prefixed
+    cross_check_ in the reason for the cross-check and tie_break_ in both for
+    the tie-break. status reads the cross-check's flags to add no
+    cross_check_missing for the same cause, and the tie-break's to remove its
+    disputes as tie_break_refused. The log names only the job."""
+    kind, job = cause
+    flag = "tie_break_" if checker == "tie-break" else ""
+    reason = "tie_break_" if checker == "tie-break" else "cross_check_"
+    if kind == "overlap":
+        cc[flag + "same_model"] = True
+        state.incomplete(reason + "same_model")
+        print("merge-records: the %s's models overlap those of the %s job, so its entries are not applied" % (checker, job))
+    else:
+        cc[flag + "model_unrecorded"] = True
+        state.incomplete(reason + "model_unrecorded")
+        print("merge-records: the %s job's model was never recorded, so the %s's entries are not applied" % (job, checker))
+
+
 def cmd_apply_cross_check(state, args):
     cc = state.trusted.get("cross_check")
     if not isinstance(cc, dict) or not isinstance(cc.get("selected"), list):
         raise Refused("no cross-check selection in trusted-meta.json")
     selected = set(cc["selected"])
+    cause = model_independence(state, "cross-check")
+    if cause is not None:
+        # Not applied: a check that shares a model with a job it judges, or
+        # whose independence cannot be shown, is not independent (D24).
+        refuse_for_models(state, cc, "cross-check", cause)
+        write_json(args.out, {"disputes": []})
+        return
     raw = read_entries(state, "cross-check", args.entries, args.trace)
     valid = {}
     for agent_id, entry in raw.items():
@@ -1292,6 +1452,12 @@ def cmd_apply_tie_break(state, args):
     cc = state.trusted.get("cross_check")
     if not isinstance(cc, dict) or not cc.get("applied"):
         raise Refused("apply-cross-check has not run")
+    cause = model_independence(state, "tie-break")
+    if cause is not None:
+        # Not applied, as for the cross-check (D24): the disputes stay
+        # pending and status removes them.
+        refuse_for_models(state, cc, "tie-break", cause)
+        return
     try:
         data = read_bytes(args.inputs, MAX_STATE_BYTES)
     except (OSError, Refused):
@@ -1350,13 +1516,20 @@ def cmd_status(state, args):
         if not cc.get("applied"):
             for fp in cc.get("selected", []):
                 add_unique(cc["not_cross_checked"], fp)
-            if cc.get("selected"):
+            # A cross-check refused for its models already carries
+            # cross_check_same_model or cross_check_model_unrecorded; it is
+            # not also counted as missing.
+            if cc.get("selected") and not cc.get("same_model") and not cc.get("model_unrecorded"):
                 state.incomplete("cross_check_missing")
+        # Disputes still pending had no tie-break answer applied: the
+        # tie-break was refused for its models, or it never ran.
+        refused = cc.get("tie_break_same_model") or cc.get("tie_break_model_unrecorded")
+        because = "tie_break_refused" if refused else "tie_break_not_run"
         for fp in list(cc.get("pending") or []):
             original = state.record(fp)
             if original is not None:
                 remove_disputed(state, {"fingerprint": fp, "original": original, "replacement": None,
-                                        "cross_check_reason": None}, "tie_break_not_run", None)
+                                        "cross_check_reason": None}, because, None)
         cc["pending"] = []
         checked = cc.get("cross_checked", 0)
         state.trusted["dispute_rate"] = {
@@ -1393,6 +1566,8 @@ def main(argv):
     p.add_argument("--job", required=True)
     p.add_argument("--cap", required=True, type=int)
     p.add_argument("--trace", required=True)
+    p.add_argument("--model", required=True)
+    p.add_argument("--helper")
     p = sub.add_parser("select-poc")
     p.add_argument("--out", required=True)
     p.add_argument("--prior", action="append", default=[])

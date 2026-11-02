@@ -25,6 +25,29 @@ TRUSTED_META = "trusted-meta.json"
 
 FINGERPRINT = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:/@+-]*$")
 
+# The trusted-meta.json and run-metadata.json key that records each job
+# Claude Code's refusal fallback moved to another model.
+REFUSAL_FALLBACK = "refusal_fallback"
+
+# A model name as the audit records and prints it.
+MODEL_NAME = re.compile(r"^claude-[a-z0-9-]+$")
+# The models Claude Code's refusal fallback may switch a job to, one per line;
+# check-agent-run.sh reads the same file.
+FALLBACK_MODELS_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "refusal-fallback-models.txt")
+
+
+def refusal_fallback_models():
+    """The allowlisted fallback models; refused when the file is missing,
+    empty or holds a line that is not a model name."""
+    try:
+        with open(FALLBACK_MODELS_FILE, encoding="utf-8") as handle:
+            models = [line.strip() for line in handle if line.strip()]
+    except OSError:
+        models = []
+    if not models or not all(MODEL_NAME.fullmatch(m) for m in models):
+        raise Refused("the refusal fallback allowlist is missing, empty or malformed")
+    return models
+
 
 class Refused(Exception):
     """A file or argument that cannot be used safely."""
