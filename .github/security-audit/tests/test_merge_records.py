@@ -188,8 +188,13 @@ class MergeTest(unittest.TestCase):
         self.messages = []
         return path
 
+    PINNED = "claude-opus-5-5"
+
     def run_merge(self, *args, ok=True):
-        result = subprocess.run([sys.executable, "-I", SCRIPT, "--state", self.state] + list(args),
+        args = list(args)
+        if args[:1] == ["count"] and "--model" not in args:
+            args += ["--model", self.PINNED]
+        result = subprocess.run([sys.executable, "-I", SCRIPT, "--state", self.state] + args,
                                 capture_output=True, text=True)
         if ok:
             self.assertEqual(result.returncode, 0, result.stderr)
@@ -704,6 +709,67 @@ class InterruptionTest(MergeTest):
         self.decide(manifest)
         self.assertEqual(self.load("trusted-meta.json")["poc"]["decided"], ["fp-1"])
         self.assertNotIn("manifest item from an interrupted subagent", self.discarded())
+
+
+class RefusalFallbackTest(MergeTest):
+    """count records a job that Claude Code's refusal fallback moved to an
+    allowlisted model, and only such a job."""
+
+    def fallback_trace(self, model, *events, extra=()):
+        self.messages.append({"type": "assistant", "message": {"model": model, "content": []}})
+        self.messages.extend(events)
+        self.messages.extend(extra)
+        path = self.trace_file()
+        with open(path, encoding="utf-8") as handle:
+            data = json.load(handle)
+        data[-1]["modelUsage"] = {self.PINNED: {}, model: {}}
+        self.write(path, data)
+        return path
+
+    def event(self, model):
+        return {"type": "system", "subtype": "model_refusal_fallback", "fallback_model": model,
+                "api_refusal_category": "LEAKCATEGORY91", "api_refusal_explanation": None}
+
+    def count(self, trace, job="poc-write", **kw):
+        return self.run_merge("count", "--job", job, "--cap", "12", "--trace", trace, **kw)
+
+    def test_an_allowlisted_fallback_is_recorded_and_copied_by_status(self):
+        self.seed([], [])
+        self.count(self.fallback_trace("claude-opus-4-8", self.event("claude-opus-4-8")))
+        expected = [{"job": "poc-write", "pinned_model": self.PINNED, "fallback_model": "claude-opus-4-8"}]
+        self.assertEqual(self.load("trusted-meta.json")["refusal_fallback"], expected)
+        self.run_merge("status")
+        self.assertEqual(self.load("run-metadata.json")["refusal_fallback"], expected)
+        self.assertNotIn("LEAKCATEGORY91", json.dumps(self.load("trusted-meta.json")))
+
+    def test_no_event_records_nothing(self):
+        self.seed([], [])
+        self.count(self.fallback_trace("claude-opus-4-8"))
+        self.assertEqual(self.load("trusted-meta.json")["refusal_fallback"], [])
+
+    def test_a_model_off_the_allowlist_is_not_recorded(self):
+        self.seed([], [])
+        self.count(self.fallback_trace("claude-other-1", self.event("claude-other-1")))
+        self.assertEqual(self.load("trusted-meta.json")["refusal_fallback"], [])
+
+    def test_an_event_inside_a_tool_result_is_not_read(self):
+        self.seed([], [])
+        nested = {"type": "user", "message": {"content": [
+            {"type": "tool_result", "tool_use_id": "t", "content": [self.event("claude-opus-4-8")]}]}}
+        self.count(self.fallback_trace("claude-opus-4-8", extra=[nested]))
+        self.assertEqual(self.load("trusted-meta.json")["refusal_fallback"], [])
+
+    def test_an_unused_fallback_is_not_recorded(self):
+        self.seed([], [])
+        self.messages.append(self.event("claude-opus-4-8"))
+        self.count(self.trace_file())
+        self.assertEqual(self.load("trusted-meta.json")["refusal_fallback"], [])
+
+    def test_a_malformed_pinned_model_is_refused(self):
+        self.seed([], [])
+        result = self.run_merge("count", "--job", "source", "--cap", "1", "--trace", self.trace_file(),
+                                "--model", "opus; rm", ok=False)
+        self.assertEqual(result.returncode, 1)
 
 
 class HostileEntryTest(MergeTest):

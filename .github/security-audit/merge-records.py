@@ -8,7 +8,7 @@
 # outcomes) is enforced here in code and not by an agent.
 #
 # Usage: merge-records.py --state <dir> <subcommand> [options]
-#   count --job <job> --cap <n> --trace <execution-file>
+#   count --job <job> --cap <n> --trace <execution-file> --model <pinned model>
 #   select-poc --out <select.json> [--prior <prior findings.json>]...
 #   apply-decide --manifest <poc-manifest.json> --records <dir> --scripts <dir> --entries <out-dir> --trace <execution-file>
 #   fail-poc --select <select.json> --job <job>
@@ -100,6 +100,12 @@
 #                        and apply-decide drops a manifest item naming an
 #                        interrupted poc-write subagent or a script under its
 #                        agents/<id>/, and any decision on that item
+#   refusal_fallback     [{job, pinned_model, fallback_model}] for each job
+#                        whose trace holds a top-level system
+#                        model_refusal_fallback message naming a model on
+#                        refusal-fallback-models.txt that the trace shows in
+#                        use; recorded by count, which takes the pinned model
+#                        as --model
 # and, in trusted-meta.json only, run_id and source_run_status.
 # Incomplete reasons it sets: cap_exceeded:<job>, cross_check_cap,
 # cross_check_missing (a selected record with no valid cross-check entry, or
@@ -140,6 +146,7 @@ FINDINGS, LEDGER, METADATA = _shared.FINDINGS, _shared.LEDGER, _shared.METADATA
 DISPUTED, HISTORY, TRUSTED_META = _shared.DISPUTED, _shared.HISTORY, _shared.TRUSTED_META
 FINGERPRINT = _shared.FINGERPRINT
 Refused = _shared.Refused
+MODEL_NAME, refusal_fallback_models = _shared.MODEL_NAME, _shared.refusal_fallback_models
 parse_strict, read_bytes, read_json = _shared.parse_strict, _shared.read_bytes, _shared.read_json
 
 MAX_STATE_BYTES = 5 * 1024 * 1024
@@ -384,7 +391,7 @@ def record_valid(record):
 # does not hold), so their copies there, which the source and repair agents
 # can write, are never read.
 MIRRORED_KEYS = ("usage", "poc", "cross_check", "merge_discarded", "incomplete_reasons", "dispute_rate",
-                 "prior_run_paths", "interrupted")
+                 "prior_run_paths", "interrupted", "refusal_fallback")
 
 
 def non_negative_int(value):
@@ -416,7 +423,7 @@ class State:
         for key in ("poc", "cross_check", "dispute_rate"):
             if key in trusted and not isinstance(trusted[key], dict):
                 raise Refused(TRUSTED_META + " %s is not an object" % key)
-        for key in ("merge_discarded", "prior_run_paths", "interrupted"):
+        for key in ("merge_discarded", "prior_run_paths", "interrupted", "refusal_fallback"):
             if not isinstance(trusted.get(key, []), list):
                 raise Refused(TRUSTED_META + " %s is not a list" % key)
         reasons = trusted.get("incomplete_reasons")
@@ -627,6 +634,26 @@ def interrupted_ids(state, job):
             if isinstance(r, dict) and r.get("job") == job and isinstance(r.get("agent_id"), str)}
 
 
+def refusal_fallbacks(messages):
+    """The allowlisted models that a top-level system model_refusal_fallback
+    message names as fallback_model and that the trace shows in use (an
+    assistant message's model or a result's modelUsage), read as
+    check-agent-run.sh reads them."""
+    allowed = refusal_fallback_models()
+    named = {m["fallback_model"] for m in messages
+             if isinstance(m, dict) and m.get("type") == "system" and m.get("subtype") == "model_refusal_fallback"
+             and isinstance(m.get("fallback_model"), str) and m["fallback_model"] in allowed}
+    used = set()
+    for m in messages:
+        if not isinstance(m, dict):
+            continue
+        if m.get("type") == "result" and isinstance(m.get("modelUsage"), dict):
+            used.update(m["modelUsage"])
+        if m.get("type") == "assistant" and isinstance(m.get("message"), dict) and isinstance(m["message"].get("model"), str):
+            used.add(m["message"]["model"])
+    return sorted(named & used)
+
+
 def subagent_count(messages):
     calls = sum(1 for m in messages for c in tool_uses(m) if c.get("name") in SUBAGENT_TOOLS)
     spawned = 0
@@ -732,6 +759,13 @@ def cmd_count(state, args):
     messages = read_trace(args.trace)
     used = subagent_count(messages)
     bindings, _ = subagent_bindings(messages)
+    if not MODEL_NAME.fullmatch(args.model):
+        raise Refused("the pinned model is not a model name")
+    fallbacks = state.trusted.setdefault("refusal_fallback", [])
+    for fallback in refusal_fallbacks(messages):
+        key = {"job": args.job, "pinned_model": args.model, "fallback_model": fallback}
+        if key not in fallbacks:
+            fallbacks.append(key)
     recorded = state.trusted.setdefault("interrupted", [])
     for call_id, agent_id in interrupted_calls(messages, bindings):
         key = {"job": args.job, "agent_id": agent_id, "tool_use_id": call_id}
@@ -1393,6 +1427,7 @@ def main(argv):
     p.add_argument("--job", required=True)
     p.add_argument("--cap", required=True, type=int)
     p.add_argument("--trace", required=True)
+    p.add_argument("--model", required=True)
     p = sub.add_parser("select-poc")
     p.add_argument("--out", required=True)
     p.add_argument("--prior", action="append", default=[])

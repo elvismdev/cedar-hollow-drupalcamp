@@ -614,7 +614,7 @@ for script, (usages, _) in SCRIPTS.items():
         if usage not in source_text:
             err("%s no longer has the usage line this test checks calls against: %s" % (script, usage))
 
-MERGE = {"count": ({"--job", "--cap", "--trace"}, set()), "select-poc": ({"--out"}, {"--prior"}),
+MERGE = {"count": ({"--job", "--cap", "--trace", "--model"}, set()), "select-poc": ({"--out"}, {"--prior"}),
          "apply-decide": ({"--manifest", "--records", "--scripts", "--entries", "--trace"}, set()),
          "fail-poc": ({"--select", "--job"}, set()), "select-cross-check": ({"--out"}, set()),
          "apply-cross-check": ({"--entries", "--trace", "--out"}, set()),

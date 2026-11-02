@@ -349,7 +349,8 @@ jobs:
         if: always() && steps.check-source.outcome == 'success' && steps.plan.outputs.merge == 'true'
         env:
           TRACE: ${{ steps.agent-source.outputs.execution_file }}
-        run: python3 -I .github/security-audit/merge-records.py --state "$AUDIT_OUTPUT_DIR" count --job source --cap 60 --trace "$TRACE"
+          MODEL: ${{ steps.args-source.outputs.CLAUDE_CODE_SUBAGENT_MODEL }}
+        run: python3 -I .github/security-audit/merge-records.py --state "$AUDIT_OUTPUT_DIR" count --job source --cap 60 --trace "$TRACE" --model "$MODEL"
 
       # run-validators.sh writes the validators' text only to
       # validator-errors.txt; the log shows exit codes and a count.
@@ -454,7 +455,8 @@ jobs:
         if: always() && steps.check-repair.outcome == 'success'
         env:
           TRACE: ${{ steps.agent-repair.outputs.execution_file }}
-        run: python3 -I .github/security-audit/merge-records.py --state "$AUDIT_OUTPUT_DIR" count --job source_repair --cap 0 --trace "$TRACE"
+          MODEL: ${{ steps.args-repair.outputs.CLAUDE_CODE_SUBAGENT_MODEL }}
+        run: python3 -I .github/security-audit/merge-records.py --state "$AUDIT_OUTPUT_DIR" count --job source_repair --cap 0 --trace "$TRACE" --model "$MODEL"
 
       - name: Validators (after the repair agent)
         id: validators-repair
@@ -794,7 +796,8 @@ jobs:
         if: always() && steps.check-poc-write.outcome == 'success' && steps.plan.outputs.merge == 'true'
         env:
           TRACE: ${{ steps.agent-poc-write.outputs.execution_file }}
-        run: python3 -I .github/security-audit/merge-records.py --state "$RUNNER_TEMP/state" count --job poc-write --cap 12 --trace "$TRACE"
+          MODEL: ${{ steps.args-poc-write.outputs.CLAUDE_CODE_SUBAGENT_MODEL }}
+        run: python3 -I .github/security-audit/merge-records.py --state "$RUNNER_TEMP/state" count --job poc-write --cap 12 --trace "$TRACE" --model "$MODEL"
 
       # The scripts and manifest twice: to the sandbox key for poc-run, and to
       # the agents key for poc-decide and the cross-check. On an audit run a
@@ -1260,7 +1263,8 @@ jobs:
         if: always() && steps.check-poc-decide.outcome == 'success' && steps.plan.outputs.merge == 'true'
         env:
           TRACE: ${{ steps.agent-poc-decide.outputs.execution_file }}
-        run: python3 -I .github/security-audit/merge-records.py --state "$AUDIT_OUTPUT_DIR" count --job poc-decide --cap 6 --trace "$TRACE"
+          MODEL: ${{ steps.args-poc-decide.outputs.CLAUDE_CODE_SUBAGENT_MODEL }}
+        run: python3 -I .github/security-audit/merge-records.py --state "$AUDIT_OUTPUT_DIR" count --job poc-decide --cap 6 --trace "$TRACE" --model "$MODEL"
 
       - name: Apply the decisions
         if: always() && steps.check-poc-decide.outcome == 'success' && steps.plan.outputs.merge == 'true'
@@ -1533,7 +1537,8 @@ jobs:
         if: always() && steps.check-cross-check.outcome == 'success' && steps.plan.outputs.merge == 'true'
         env:
           TRACE: ${{ steps.agent-cross-check.outputs.execution_file }}
-        run: python3 -I .github/security-audit/merge-records.py --state "$AUDIT_OUTPUT_DIR" count --job cross-check --cap 30 --trace "$TRACE"
+          MODEL: ${{ steps.args-cross-check.outputs.CLAUDE_CODE_SUBAGENT_MODEL }}
+        run: python3 -I .github/security-audit/merge-records.py --state "$AUDIT_OUTPUT_DIR" count --job cross-check --cap 30 --trace "$TRACE" --model "$MODEL"
 
       - name: Apply the cross-check
         id: apply-cross-check
@@ -1639,7 +1644,8 @@ jobs:
         if: always() && steps.check-tie-break.outcome == 'success' && steps.plan.outputs.merge == 'true'
         env:
           TRACE: ${{ steps.agent-tie-break.outputs.execution_file }}
-        run: python3 -I .github/security-audit/merge-records.py --state "$AUDIT_OUTPUT_DIR" count --job tie-break --cap 3 --trace "$TRACE"
+          MODEL: ${{ steps.args-tie-break.outputs.CLAUDE_CODE_SUBAGENT_MODEL }}
+        run: python3 -I .github/security-audit/merge-records.py --state "$AUDIT_OUTPUT_DIR" count --job tie-break --cap 3 --trace "$TRACE" --model "$MODEL"
 
       - name: Apply the tie-breaks
         if: always() && steps.check-tie-break.outcome == 'success' && steps.plan.outputs.merge == 'true'
