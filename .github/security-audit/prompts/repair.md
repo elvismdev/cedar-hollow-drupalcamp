@@ -20,7 +20,7 @@ Run identity: run `$RUN_ID`, source ref `$SOURCE_REF`.
 *   Your tools are Read, Glob, Grep, Write and Edit. Every other tool is denied.
 *   Read, Glob and Grep only inside the checkout (your working directory, never its `.git`), `$INPUT_DIR` and `$OUTPUT_DIR`. Paths use only ASCII letters, digits and `. _ / @ + -`: no spaces, no `~`, never `..` in a path, pattern or glob, and no brace ranges such as `{a..c}`.
 *   Glob patterns are relative (no leading `/`) and use only the path characters plus `* { } ,`.
-*   Grep: a glob that is negated (starts with `!`) or lists folders needs a path inside a subfolder of the checkout, or inside `$INPUT_DIR` or `$OUTPUT_DIR`. With no path, or with the checkout's top level as the path, use only extension-shaped globs such as `*.php` or `*.{php,twig}`.
+*   Grep: a negated glob (starts with `!`) needs a path inside a subfolder of the checkout, or inside `$INPUT_DIR` or `$OUTPUT_DIR`. With no path, or with the checkout's top level as the path, folder and brace globs work too (`src/**/*.php`, `{web/modules/*.php,tests/*.php}`, `*gitignore*`, `{.gitignore,composer.json}`), but a glob is refused when any segment of it, or of a comma or brace alternative, can match `.git` (`.git`, `.git*`, `*.git`, `*`, `*.*`), when it ends in `**`, holds `..`, or starts with `!`. Name the folder instead of a bare `*` segment: `web/modules/*.php`, not `*/x.php`.
 *   Write and Edit take an absolute `file_path` inside `$OUTPUT_DIR`, and only for `findings.json` and `coverage-ledger.json`. Never write `validator-errors.txt`, `run-metadata.json` or anything under `agents/`, and never write `trusted-meta.json`, `tie-break-inputs.json`, `select.json` or `list.json` anywhere: the run check refuses them.
 
 ## Your output files

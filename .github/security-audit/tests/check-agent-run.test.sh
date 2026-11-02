@@ -221,7 +221,7 @@ write_fails "agents/h01/scratch/x.json" "a Write with a relative path fails"
 write_fails "$OUT/agents/h01/../h01/scratch/x.json" "a Write with .. fails even when it stays inside"
 
 # Grep globs: any glob in a folder below the checkout's top level, the
-# extension-shaped rule with no path or at the top level.
+# .git rule with no path or at the top level.
 trace "$tmp/t.json" "${CLEAN[@]}" "$(sub ta1 Grep "{\"pattern\":\"x\",\"path\":\"$WS/web\",\"glob\":\"!**/node_modules/**\"}")" "$(result "$M")"
 assert_eq "0" "$(rc source "$tmp/t.json")" "a negated Grep glob in a checkout subfolder passes"
 trace "$tmp/t.json" "${CLEAN[@]}" "$(sub ta1 Grep '{"pattern":"x","glob":"!**/node_modules/**"}')" "$(result "$M")"
