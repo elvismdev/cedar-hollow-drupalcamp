@@ -874,7 +874,7 @@ class SameModelTest(MergeTest):
         self.assertEqual(self.load("trusted-meta.json")["job_models"],
                          {"source": "claude-opus-5-5", "cross-check": "claude-fable-5-1"})
 
-    def tie_break_after(self, cross_fallback, tie_fallback):
+    def tie_break_after(self, cross_fallback, tie_fallback, count_tie_break=True):
         """Runs source (opus-5-5), a cross-check on fable-5-1 with its fallback
         and a tie-break on sonnet-5-5 with its fallback, each counted as its
         own job, and returns whether the tie-break's answer was applied."""
@@ -887,7 +887,8 @@ class SameModelTest(MergeTest):
         inputs = os.path.join(self.tmp, "tie-break-inputs.json")
         self.run_merge("select-cross-check", "--out", os.path.join(self.tmp, "list.json"))
         self.run_merge("apply-cross-check", "--entries", self.out, "--trace", self.trace_file(), "--out", inputs)
-        self.count_job("tie-break", "claude-sonnet-5-5", tie_fallback)
+        if count_tie_break:
+            self.count_job("tie-break", "claude-sonnet-5-5", tie_fallback)
         self.subagent("tie-1", {"fingerprint": "m-9", "answer": "replacement", "reason": "Read the source."})
         self.run_merge("apply-tie-break", "--inputs", inputs, "--entries", self.out, "--trace", self.trace_file())
         return (self.record("m-9") or {}).get("root_cause") == "Another cause", self.load("trusted-meta.json")
@@ -897,6 +898,24 @@ class SameModelTest(MergeTest):
         self.assertFalse(applied)
         self.assertIn("cross_check_same_model", meta["incomplete_reasons"])
         self.assertEqual(meta["cross_check"]["tie_breaks"], [])
+
+    def test_a_refused_tie_break_flags_itself_not_the_cross_check(self):
+        for name, tie_fallback, count_tie_break, flag, reason in (
+                ("overlap", "claude-opus-4-8", True, "tie_break_same_model", "cross_check_same_model"),
+                ("unrecorded", None, False, "tie_break_model_unrecorded", "cross_check_model_unrecorded")):
+            with self.subTest(name):
+                self.tearDown()
+                self.setUp()
+                applied, meta = self.tie_break_after("claude-opus-4-8", tie_fallback, count_tie_break)
+                self.assertFalse(applied)
+                self.assertTrue(meta["cross_check"]["applied"])
+                self.assertTrue(meta["cross_check"][flag])
+                self.assertFalse(meta["cross_check"].get("same_model", False))
+                self.assertFalse(meta["cross_check"].get("model_unrecorded", False))
+                self.run_merge("status")
+                reasons = self.load("trusted-meta.json")["incomplete_reasons"]
+                self.assertIn(reason, reasons)
+                self.assertNotIn("cross_check_missing", reasons)
 
     def test_a_tie_break_off_the_cross_checks_models_is_applied(self):
         applied, meta = self.tie_break_after("claude-opus-4-8", None)

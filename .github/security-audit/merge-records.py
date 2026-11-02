@@ -83,11 +83,13 @@
 #   cross_check          {selected, not_cross_checked, settled, refused,
 #                        disputes, cross_checked, tie_breaks, removed,
 #                        applied, pending, inputs_sha256, same_model,
-#                        model_unrecorded}; same_model and
-#                        model_unrecorded mark a cross-check or tie-break
-#                        refused for its models (see the incomplete reasons
-#                        below), so status adds no cross_check_missing for
-#                        that cause; apply-tie-break
+#                        model_unrecorded, tie_break_same_model,
+#                        tie_break_model_unrecorded}; same_model and
+#                        model_unrecorded mark a cross-check refused for its
+#                        models (see the incomplete reasons below), so status
+#                        adds no cross_check_missing for that cause, and the
+#                        tie_break_ pair marks a tie-break refused for the
+#                        same causes; apply-tie-break
 #                        refuses inputs whose sha256 is not inputs_sha256,
 #                        or whose disputes are not objects whose original
 #                        and replacement carry the dispute's fingerprint
@@ -1354,17 +1356,21 @@ def model_independence(state, checker):
 
 def refuse_for_models(state, cc, checker, cause):
     """Records why checker's entries are not applied: incomplete reason
-    cross_check_same_model with cross_check.same_model for an overlap, or
-    cross_check_model_unrecorded with cross_check.model_unrecorded for a
-    model never recorded. status reads either flag and adds no
-    cross_check_missing for the same cause. The log names only the job."""
+    cross_check_same_model for an overlap, or cross_check_model_unrecorded
+    for a model never recorded, with the matching flag under cross_check:
+    same_model or model_unrecorded for the cross-check, which status reads to
+    add no cross_check_missing for the same cause, and tie_break_same_model
+    or tie_break_model_unrecorded for the tie-break, so a refused tie-break
+    never marks the applied cross-check as refused. The log names only the
+    job."""
     kind, job = cause
+    prefix = "tie_break_" if checker == "tie-break" else ""
     if kind == "overlap":
-        cc["same_model"] = True
+        cc[prefix + "same_model"] = True
         state.incomplete("cross_check_same_model")
         print("merge-records: the %s's models overlap those of the %s job, so its entries are not applied" % (checker, job))
     else:
-        cc["model_unrecorded"] = True
+        cc[prefix + "model_unrecorded"] = True
         state.incomplete("cross_check_model_unrecorded")
         print("merge-records: the %s job's model was never recorded, so the %s's entries are not applied" % (job, checker))
 
