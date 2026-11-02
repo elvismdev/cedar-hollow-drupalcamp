@@ -17,6 +17,7 @@ fails the whole review if one breaks these rules, so keep to them:
   it must not match `.git` itself or name `.git` on the way to a path inside
   it (`**/*`, `**/.git`, `.git/config`, `**/.git/**`). Each comma part and
   brace alternative is judged on its own, and `..` or a leading `!` is
-  refused, and so is a `path` that passes through a symbolic link: give the
-  folder's real path. To search every file in one folder, put the folder in
-  `path` and leave `glob` out.
+  refused, and so is a `path` that passes through a symbolic link or is not
+  in normal form (`//`, `/./`, a trailing `/.`): give a path inside the
+  checkout that does not pass through a symbolic link. To search every file
+  in one folder, put the folder in `path` and leave `glob` out.
