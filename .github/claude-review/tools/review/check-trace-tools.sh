@@ -69,17 +69,18 @@
 #     $REVIEW_INPUT_DIR, whose .git is a pointer file with no token and which
 #     holds only a diff, any glob that passes the character allowlist is
 #     accepted. The rule: ripgrep's last matching glob wins, so a glob
-#     reopens .git exactly when its last path segment matches the name .git.
-#     After Claude Code's split on commas (a part holding a brace group is kept
-#     whole), every part and every brace expansion must have no .. segment, no
-#     leading !, a last segment that is neither empty nor **, and no path
-#     segment that, read as a glob pattern, can match .git in any letter case
-#     (.git, .git*, *.git, *, *.*) or ends in .git ({a,b}.git); a segment of
-#     only ** before the last is recursion and passes, and a literal name such
-#     as .gitignore passes. Only the last segment can reopen .git; a middle
-#     one is refused as defence in depth, so */x.php is refused and the
-#     folder must be named (web/modules/*.php). So *gitignore*, {.gitignore,composer.json},
-#     src/{a,b} and **/*.php pass, and *, **, src/** and *.{git,php} do not.
+#     reopens .git when it can match the .git directory itself. After Claude
+#     Code's split on commas (a part holding a brace group is kept whole),
+#     every part and every brace expansion must have no .. segment and no
+#     leading !, and is judged whole, as ripgrep matches it: with no / (a
+#     trailing / aside) against the name .git, and with a / against .git's
+#     path, which is .git from the workspace and, from a root above it, also
+#     its path from there (repo/.git). A glob with a / that names .git on the
+#     way to a path inside it (.git/config, **/.git/**) is refused as well.
+#     Matching ignores letter case. So *gitignore*, {.gitignore,composer.json},
+#     {scripts/*,web/modules/custom/**}, */x.php and src/** pass, and *, **,
+#     **/*, .g*, */ and **/.git do not; from above the workspace repo/* and
+#     */* do not either.
 #
 # A Glob or Grep with no path searches the working directory and is allowed. A
 # Read with no file_path, and any of these fields present but empty, is
@@ -251,7 +252,7 @@ if ! jq -c '[.. | objects | select(.type? == "tool_use") | .input? | objects
 fi
 
 outside_roots=$(python3 -I - "$TRACE" "$ROOT_ARGS" "$WRITE_ROOT_ARGS" "$any_glob_in_subfolders" "$EXPANSIONS" <<'PY'
-import fnmatch, json, os, posixpath, re, sys
+import json, os, posixpath, re, sys
 
 ws = posixpath.normpath(os.environ['GITHUB_WORKSPACE'])
 git_dir = posixpath.join(ws, '.git')
@@ -306,15 +307,79 @@ def resolve(p, base):
     return posixpath.normpath(p if p.startswith('/') else posixpath.join(base, p))
 
 # ripgrep's last matching glob wins, so a Grep glob overrides Claude Code's
-# own !.git exclusion for a directory named .git exactly when the glob's last
-# path segment matches that name; a middle segment, or a last segment that
-# matches only files below .git (*.php), does not reopen it. A glob ending in a
-# ** segment matches every name, .git included. A middle segment that can
-# match .git (*/x.php, .git*/x) is refused too, as defence in depth: no
-# segment of an accepted glob can name .git.
-def grep_glob_allowed(value, exps):
-    """True when no part or expansion of a Grep glob searched from the
-    workspace's top level can reopen its .git."""
+# own !.git exclusion when it matches the .git directory itself. ripgrep
+# matches an override glob as a gitignore line: a trailing / limits it to
+# directories, a glob with no other / is matched against the file name at any
+# depth, and a glob with a / (a leading one only anchors it) is matched against
+# the path relative to ripgrep's working directory, the workspace, where * and
+# a ** inside a segment stay within one segment and a whole ** segment spans
+# any number of them. For a path outside the working directory, such as a
+# search root above the workspace, it is matched against the file name. So
+# each part and expansion is refused when it can match the name .git, or when
+# it holds a / and can match .git's path: .git, and searched from above the
+# workspace also its path from that root (repo/.git). A glob that matches only
+# paths inside .git cannot reopen it, since ripgrep never enters an excluded
+# directory, but one that names .git on the way (.git/config, **/.git/**) is
+# refused too; a segment of only * characters names every directory and is
+# judged by what follows it (*/x.php passes). Matching ignores letter case,
+# which is stricter than ripgrep.
+def _segment_matches(glob_seg, name):
+    pattern = ''.join('[^/]*' if c == '*' else re.escape(c) for c in re.sub(r'\*+', '*', glob_seg))
+    return re.fullmatch(pattern, name, re.IGNORECASE) is not None
+
+def _path_matches(gsegs, psegs):
+    """True when the glob segments can match exactly the path segments."""
+    if not gsegs:
+        return not psegs
+    if gsegs[0] == '**':
+        return (_path_matches(gsegs[1:], psegs)
+                or (bool(psegs) and _path_matches(gsegs, psegs[1:])))
+    return (bool(psegs) and _segment_matches(gsegs[0], psegs[0])
+            and _path_matches(gsegs[1:], psegs[1:]))
+
+def _names_below(gsegs, psegs, named=False):
+    """True when the glob segments can match a path below the path segments
+    (whose last is .git) with that last segment matched by a glob segment
+    that names it: one that is not only * characters, so .git/config and
+    **/.git/** count and */x.php does not."""
+    if not psegs:
+        return named and bool(gsegs)
+    if not gsegs:
+        return False
+    last = len(psegs) == 1
+    if gsegs[0] == '**':
+        return (_names_below(gsegs[1:], psegs, named)
+                or _names_below(gsegs, psegs[1:], False if last else named))
+    if not _segment_matches(gsegs[0], psegs[0]):
+        return False
+    return _names_below(gsegs[1:], psegs[1:], set(gsegs[0]) != {'*'} if last else named)
+
+def can_reach_git(glob, targets):
+    """True when one ripgrep glob can match the checkout's .git: its name, or,
+    for a glob holding a /, any of targets (paths of .git), or a path below
+    one with .git itself named."""
+    g = glob.rstrip('/')
+    if '/' not in g:
+        return g == '' or _segment_matches(g, '.git')
+    segs = [x for x in g.split('/') if x]
+    return not segs or any(_path_matches(segs, t.split('/')) or _names_below(segs, t.split('/'))
+                           for t in targets)
+
+def git_targets(path):
+    """The paths of the workspace's .git that ripgrep may match a glob
+    against for a Grep with this path: .git, and from a root above the
+    workspace also .git's path from that root."""
+    targets = {'.git'}
+    exps = expansions(path) if isinstance(path, str) else None
+    for e in exps or []:
+        root = resolve(e, ws)
+        if root is not None and root != ws and under(ws, root):
+            targets.add(posixpath.join(posixpath.relpath(ws, root), '.git'))
+    return targets
+
+def grep_glob_allowed(value, exps, path):
+    """True when no part or expansion of a Grep glob can reopen the
+    workspace's .git for a Grep with this path."""
     if not glob_ok(value):
         return False
     # Claude Code splits on whitespace, which glob_ok has already refused, then
@@ -322,21 +387,11 @@ def grep_glob_allowed(value, exps):
     parts = [value] if '{' in value and '}' in value else [t for t in value.split(',') if t]
     if not parts:
         return False
+    targets = git_targets(path)
     for t in parts + exps:
-        segs = t.split('/')
-        if ('..' in segs or t.startswith('!') or segs[-1] in ('', '**')
-                or git_segment(t)):
+        if '..' in t.split('/') or t.startswith('!') or can_reach_git(t, targets):
             return False
     return True
-
-
-def git_segment(value):
-    """True when a path segment of value, read as a glob pattern, can match
-    .git in any letter case (.git, .git*, *.git, *.GIT), or ends in .git (a.git,
-    x.git). A segment of only ** is directory recursion, judged by the
-    segments after it, and a literal name such as .gitignore passes."""
-    return any(seg != '**' and (fnmatch.fnmatchcase('.git', seg.lower()) or seg.lower().endswith('.git'))
-               for seg in value.split('/'))
 
 def inside(p):
     return p is not None and not under(p, git_dir) and any(under(p, r) for r in roots)
@@ -469,7 +524,7 @@ def refusal(call):
                 return ('braces cannot be expanded', 'glob')
             if any('..' in re.split(r'[/{},]', e) for e in exps):
                 return ('Grep glob holds a .. segment', 'glob')
-            if not away_from_workspace(args.get('path')) and not grep_glob_allowed(g, exps):
+            if not away_from_workspace(args.get('path')) and not grep_glob_allowed(g, exps, args.get('path')):
                 return ('Grep glob can reach .git', 'glob')
     path = args.get('path')
     if path is None:
