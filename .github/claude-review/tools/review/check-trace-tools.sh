@@ -600,11 +600,14 @@ def refusal(call):
             if any('..' in re.split(r'[/{},]', e) for e in exps):
                 return ('Grep glob holds a .. segment', 'glob')
             if not away_from_workspace(args.get('path')):
-                r = grep_path_refusal(args.get('path'))
-                if r:
-                    return r
                 if not grep_glob_allowed(g, exps, args.get('path')):
                     return ('Grep glob can reach .git', 'glob')
+                # A path outside every root is refused as such before the
+                # .. and symlink checks.
+                p = args.get('path')
+                r = (path_refusal('path', p, ws) if p is not None else None) or grep_path_refusal(p)
+                if r:
+                    return r
     path = args.get('path')
     if path is None:
         base = ws

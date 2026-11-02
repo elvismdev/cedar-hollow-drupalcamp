@@ -284,8 +284,10 @@ assert_contains "$(sym_grep "$sws" '*/*/**')" "rc=0" "*/*/** at a workspace with
 # link to the checkout with * returned .git/info/x.php, searched as Claude Code
 # 2.1.309 spawns ripgrep (in the opened folder) and by its raw path.
 out=$(sym_grep web/link '*' --tools Read,Glob,Grep --grep-any-glob-in-subfolders)
-assert_contains "$out" "Grep call 1: Grep path passes through a symlink (field path)" "a symlinked folder with * in subfolder mode is refused"
+assert_contains "$out" "Grep call 1: Grep glob can reach .git (field glob)" "a symlinked folder with * in subfolder mode is refused"
 assert_contains "$out" "rc=1" "and fails"
+out=$(sym_grep web/link '*.php' --tools Read,Glob,Grep --grep-any-glob-in-subfolders)
+assert_contains "$out" "Grep call 1: Grep path passes through a symlink (field path)" "a symlinked folder with *.php in subfolder mode is refused as a symlink"
 assert_contains "$(sym_grep web '*' --tools Read,Glob,Grep --grep-any-glob-in-subfolders)" "rc=0" "an ordinary subfolder with * in subfolder mode still passes"
 
 # Every containment decision is made on the spelled and on the resolved form
@@ -326,6 +328,9 @@ out=$(zcall "$zr/real/repo" Read '{"file_path":"web/gitlink/config"}')
 assert_contains "$out" "Read call 1: path under .git (field file_path)" "a Read through a link into .git is refused"
 out=$(zcall "$zr/real/repo" Read "{\"file_path\":\"$zr/rootlink/.git/config\"}" --root "$zr/rootlink")
 assert_contains "$out" "Read call 1: path under .git (field file_path)" "a Read of .git through a root linked to the checkout is refused"
+# A path in no root gets that label before the symlink check.
+out=$(zgrep "$zr/real/repo" "$zr/outlink" '*.php')
+assert_contains "$out" "Grep call 1: path outside the allowed roots (field path)" "a linked path in no root is refused as outside the roots"
 
 # Closed input fields. Each tool's input may hold only the fields of its own
 # schema in Claude Code 2.1.309. Claude Code reads aliases and stray fields
