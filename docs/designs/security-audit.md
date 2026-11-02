@@ -354,7 +354,7 @@ Every agent job (source, poc-write, poc-decide, cross-check) follows these rules
         *   anything other than the top-level agent writing `findings.json`, the ledger or `run-metadata.json`;
         *   in poc-write only, a subagent reading another agent's `agents/<id>/`;
         *   a change to the checkout (`git status` and `HEAD`), to `~/.claude/settings.json` apart from `enableAllProjectMcpServers` (the one key claude-code-action writes during the step), to `~/.claude/CLAUDE.md`, or to the `~/.claude/agents`, `commands` and `hooks` trees, compared with a fingerprint taken before the step and kept under `$RUNNER_TEMP`;
-        *   a model in `modelUsage` other than the pinned one, or an allowlisted helper.
+        *   a model in `modelUsage` other than the pinned one, or an allowlisted helper. A model on `.github/security-audit/refusal-fallback-models.txt` is accepted only when a top-level `model_refusal_fallback` system message in the trace names it, and the issue then says which job ran on it.
 
         If subagents were used but the trace holds none of their tool calls, the check fails. **A failed run check stops the job:** nothing is handed off and the job fails.
     2.  **Outcome** (`agent-outcome.sh`). It receives the agent step's outcome, its start and end times, its timeout and its expected output files, and gives one cause:
