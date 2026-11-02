@@ -142,8 +142,10 @@ ok_path Grep '{"pattern":"x","glob":"**/{a,b}"}' "a brace group of names with no
 
 # A brace group of literal names passes. A path segment that, read as a glob,
 # can match .git is refused (.git*, *.git, {a,b}.git, *.{git,sample}), while a
-# literal name such as .gitignore passes. Both with no options and with the audit's: the
-# two Grep globs below are real calls from audit run 41347206214.
+# literal name such as .gitignore passes. Both with no options and with the
+# audit's. The first two passing globs, {REVIEW.md,AGENTS.md,CLAUDE.md} and
+# *.{yml,yaml,sh,htaccess,gitignore,json,php,md}, are real calls from audit run
+# 41347206214; every other glob in these loops is synthetic.
 glob_rc () { # glob [option...]: exit status of a Grep with that glob and no path
   printf '[%s]' "$(call Grep "{\"pattern\":\"x\",\"glob\":\"$1\"}")" > "$tmp/g.json"; shift
   rc "$tmp/g.json" "$@"
@@ -175,9 +177,11 @@ no_path Grep '{"pattern":"x","glob":"**"}' "a Grep glob of ** with no path is re
 no_path Grep '{"pattern":"x","path":"/w/repo","glob":"**"}' "a Grep glob of ** in the workspace is refused"
 no_path Grep '{"pattern":"x","path":"/rt/head","glob":"../**"}' "a .. glob in the head is refused"
 
-# The two Grep globs the extension rule refused in audit run 41396278548 pass,
-# and globs that can reopen .git, or climb or negate, stay refused: with no
-# options and with the audit's, with no path and with the workspace as path.
+# *gitignore* with no path and {.gitignore,composer.json} at the workspace are
+# the two real Grep calls the extension rule refused in audit run 41396278548,
+# and they pass; the refused globs below are synthetic, and they stay refused
+# because they can reopen .git, climb or negate: with no options and with the
+# audit's, with no path and with the workspace as path.
 grep_rc () { # path-or-empty glob [option...]
   local input
   if [ -n "$1" ]; then input="{\"pattern\":\"x\",\"path\":\"$1\",\"glob\":\"$2\"}"
