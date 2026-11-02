@@ -122,9 +122,9 @@
 # source_repair, poc-write or poc-decide, and for the tie-break also the
 # cross-check; its entries were not applied, D24), cross_check_model_unrecorded
 # (the checking job's model, or a required judged job's, was never recorded,
-# so independence cannot be shown and its entries were not applied: source
-# and, for the tie-break, the cross-check always; poc-write and poc-decide
-# when items were selected for them; source_repair never),
+# so independence cannot be shown and its entries were not applied: the
+# source always and, for the tie-break, the cross-check; source_repair,
+# poc-write and poc-decide never, since an uncounted one handed on nothing),
 # cap_exceeded:<job>, cross_check_cap,
 # cross_check_missing (a selected record with no valid cross-check entry, or
 # a cross-check that never applied), cross_check_dispute, cross_check_not_run
@@ -1318,11 +1318,12 @@ def model_set(state, job):
 # judges the records the source, its repair and the proof-of-concept jobs
 # produced, and the tie-break settles disputes between those records and the
 # cross-check's replacements. A judged job that was never counted fails
-# closed, except the source repair, which runs only when the validators fail,
-# and the proof-of-concept jobs when no item was selected for them.
+# closed, except the source repair and the proof-of-concept jobs: a job's
+# results reach the cross-check only through a handoff that runs after that
+# job's run check and count succeeded, so an uncounted one handed on nothing.
 CHECKED_JOBS = {"cross-check": ("source", "source_repair", "poc-write", "poc-decide"),
                 "tie-break": ("source", "source_repair", "poc-write", "poc-decide", "cross-check")}
-POC_JOBS = ("poc-write", "poc-decide")
+OPTIONAL_JOBS = ("source_repair", "poc-write", "poc-decide")
 
 
 def model_independence(state, checker):
@@ -1334,12 +1335,10 @@ def model_independence(state, checker):
     mine = model_set(state, checker)
     if mine is None:
         return ("unrecorded", checker)
-    poc = state.trusted.get("poc")
-    poc_selected = isinstance(poc, dict) and bool(poc.get("selected"))
     for job in CHECKED_JOBS[checker]:
         theirs = model_set(state, job)
         if theirs is None:
-            if job == "source_repair" or (job in POC_JOBS and not poc_selected):
+            if job in OPTIONAL_JOBS:
                 continue
             return ("unrecorded", job)
         if mine & theirs:

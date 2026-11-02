@@ -990,12 +990,22 @@ class SameModelTest(MergeTest):
         result = self.run_merge("apply-cross-check", "--entries", self.out, "--trace", self.trace_file(), "--out", inputs)
         return self.record("m-1")["trace"][0]["line"] == 77, self.load("trusted-meta.json"), result.stdout
 
-    def test_with_items_selected_an_unrecorded_poc_job_is_refused(self):
-        applied, meta, out = self.cross_check_with_selection(("source", "claude-opus-5-5", None),
-                                                              ("poc-write", "claude-opus-5-5", None),
-                                                              ("cross-check", "claude-fable-5-1", None))
-        self.assert_unrecorded(applied, meta)
-        self.assertIn("the poc-decide job's model was never recorded", out)
+    def test_with_items_selected_and_poc_decide_never_counted_the_check_applies(self):
+        # poc-decide failed before its count, so its results fell back to
+        # poc-write's handoff and it judged nothing.
+        applied, meta, _ = self.cross_check_with_selection(("source", "claude-opus-5-5", None),
+                                                            ("poc-write", "claude-opus-5-5", None),
+                                                            ("cross-check", "claude-fable-5-1", None))
+        self.assert_applied(applied, meta)
+        self.assertNotIn("cross_check_model_unrecorded", meta["incomplete_reasons"])
+
+    def test_with_items_selected_and_no_poc_job_counted_the_check_applies(self):
+        # Both proof-of-concept jobs failed before their counts, so the
+        # cross-check judged only the source's records.
+        applied, meta, _ = self.cross_check_with_selection(("source", "claude-opus-5-5", None),
+                                                            ("cross-check", "claude-fable-5-1", None))
+        self.assert_applied(applied, meta)
+        self.assertNotIn("cross_check_model_unrecorded", meta["incomplete_reasons"])
 
     def test_with_items_selected_and_every_poc_job_recorded_the_check_applies(self):
         applied, meta, _ = self.cross_check_with_selection(("source", "claude-opus-5-5", None),
