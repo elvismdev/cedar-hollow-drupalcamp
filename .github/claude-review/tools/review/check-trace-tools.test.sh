@@ -257,6 +257,20 @@ assert_contains "$out" "Grep call 1: Grep path passes through a symlink (field p
 assert_contains "$(sym_grep web 'web/**')" "rc=0" "an ordinary subfolder with web/** still passes"
 assert_contains "$(sym_grep "$sws/web" '*.php')" "rc=0" "an ordinary absolute subfolder still passes"
 assert_contains "$(sym_grep "$sws" '*.php')" "rc=0" "the workspace itself still passes"
+# Only the components below the root that holds the path are judged, so a
+# workspace reached through a symlinked parent folder still takes ordinary
+# Greps, while a symlink inside it is still refused.
+ln -s "$(dirname "$sws")" "$(realpath "$tmp")/symparent"
+lws="$(realpath "$tmp")/symparent/repo"
+lgrep () { # path glob [option...]: as sym_grep, with the workspace behind the link
+  printf '[%s]' "$(call Grep "{\"pattern\":\"x\",\"path\":\"$1\",\"glob\":\"$2\"}")" > "$tmp/s.json"; shift 2
+  GITHUB_WORKSPACE="$lws" bash "$C" "$tmp/s.json" "$@" 2>&1; echo "rc=$?"
+}
+assert_contains "$(lgrep "$lws" '*.php')" "rc=0" "a workspace behind a symlinked parent takes a top-level Grep"
+assert_contains "$(lgrep web 'web/**')" "rc=0" "and a subfolder Grep"
+assert_contains "$(lgrep "$lws/web" '*.php')" "rc=0" "and an absolute subfolder Grep"
+assert_contains "$(lgrep "$(dirname "$lws")" '*.php' --root "$(dirname "$lws")")" "rc=0" "and a Grep at an added root behind the link"
+assert_contains "$(lgrep web/link 'web/**')" "Grep path passes through a symlink (field path)" "a symlink inside that workspace is still refused"
 # A symlinked folder is not a subfolder for --grep-any-glob-in-subfolders: the
 # link to the checkout with * returned .git/info/x.php, searched as Claude Code
 # 2.1.309 spawns ripgrep (in the opened folder) and by its raw path.

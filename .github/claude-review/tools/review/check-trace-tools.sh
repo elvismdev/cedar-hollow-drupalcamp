@@ -399,14 +399,22 @@ def grep_path_refusal(path):
     web/** matches web/../.git/..., and it follows a symlinked folder, so a
     link to the checkout or above it puts .git under a path the rule judges
     as a subfolder. A raw .. segment is refused, and so is a path any
-    existing component of which is a symlink on disk now."""
+    existing component of which, below the allowed root that holds it, is a
+    symlink on disk now. The root itself and its ancestors are not judged,
+    so a runner whose workspace sits behind a symlink still works; a path
+    in no root is judged whole."""
     if not isinstance(path, str):
         return None
     if '..' in path.split('/'):
         return ('Grep path holds a .. segment', 'path')
     for e in expansions(path) or [path]:
         p = resolve(e, ws)
-        if p is not None and os.path.realpath(p) != p:
+        if p is None:
+            continue
+        holders = [r for r in roots if under(p, r)]
+        root = max(holders, key=len) if holders else '/'
+        if os.path.realpath(p) != posixpath.normpath(
+                posixpath.join(os.path.realpath(root), posixpath.relpath(p, root))):
             return ('Grep path passes through a symlink', 'path')
     return None
 
