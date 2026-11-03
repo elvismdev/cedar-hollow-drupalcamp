@@ -143,7 +143,8 @@ done
 # quoting, or ends in or doubles a slash.
 for bad in "HOME=" "HOME=home/runner" "RUNNER_TEMP=/home/runner/work/_te'mp" "GITHUB_WORKSPACE=/home/runner/work/a b" \
            "GITHUB_WORKSPACE=/home/runner/work/../x" "RUNNER_TEMP=/" "RUNNER_TEMP=/home/runner/work/_temp/" \
-           "HOME=/home//runner" "GITHUB_WORKSPACE=/home/runner/work/ddemo/ddemo/"; do
+           "HOME=/home//runner" "GITHUB_WORKSPACE=/home/runner/work/ddemo/ddemo/" \
+           $'HOME=/home/runner\n/x' $'RUNNER_TEMP=/home/runner/work/_temp\nz' $'GITHUB_WORKSPACE=\n/w'; do
   out=$(env "${RUNNER_ENV[@]}" "$bad" bash "$R" 2>/dev/null)
   rc=$?
   assert_exit 1 "$rc" "the review line refuses $bad"
@@ -251,7 +252,8 @@ assert_eq '["Read", "Glob"] ["/a"]' "$(printf '%s' "$parsed" | python3 -I -c 'im
 # quoting, or ends in or doubles a slash (which would shift the _actions rule).
 for bad in "HOME=" "HOME=home/runner" "RUNNER_TEMP=/home/runner/work/_te'mp" "GITHUB_WORKSPACE=/home/runner/work/a b" \
            "GITHUB_WORKSPACE=/home/runner/work/../x" "RUNNER_TEMP=/" "RUNNER_TEMP=/home/runner/work/_temp/" \
-           "HOME=/home//runner" "GITHUB_WORKSPACE=/home/runner/work/ddemo/ddemo/"; do
+           "HOME=/home//runner" "GITHUB_WORKSPACE=/home/runner/work/ddemo/ddemo/" \
+           $'HOME=/home/runner\n/x' $'RUNNER_TEMP=/home/runner/work/_temp\nz' $'GITHUB_WORKSPACE=\n/w'; do
   out=$(env "${RUNNER_ENV[@]}" "$bad" bash "$R" --audit 2>/dev/null)
   rc=$?
   assert_exit 1 "$rc" "--audit refuses $bad"

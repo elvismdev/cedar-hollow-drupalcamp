@@ -58,7 +58,8 @@ dir_flag() { # env-value
 path_ok() { # value
   case "$1" in /*) ;; *) return 1 ;; esac
   [ "$1" != "/" ] || return 1
-  printf '%s' "$1" | grep -qE '^[A-Za-z0-9._/-]+$' || return 1
+  # The whole value, not each line of it: a newline is outside the set.
+  case "$1" in ''|*[!A-Za-z0-9._/-]*) return 1 ;; esac
   case "/$1/" in */../*|*/./*) return 1 ;; esac
   # A trailing or doubled slash would shift a derived path: ${RUNNER_TEMP%/*}
   # of /home/runner/work/_temp/ is _temp itself, not its parent.
