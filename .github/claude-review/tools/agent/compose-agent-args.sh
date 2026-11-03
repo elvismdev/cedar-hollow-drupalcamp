@@ -13,7 +13,9 @@
 #
 # It also puts the argument string in ONE place.
 #
-# Usage: compose-agent-args.sh            (reads AGENT_* and REVIEW_*_DIR from the environment)
+# Usage: compose-agent-args.sh            (reads AGENT_*, REVIEW_*_DIR, HOME, RUNNER_TEMP and
+#                                          GITHUB_WORKSPACE from the environment; prints
+#                                          nothing and exits 1 when a runner path is unusable)
 #        compose-agent-args.sh --audit | --audit-models <step>   (the security audit's steps, below)
 set -uo pipefail
 
@@ -50,10 +52,97 @@ dir_flag() { # env-value
   printf -- '--add-dir "%s" ' "$1"
 }
 
+# The runner's paths, written into deny rules. A path must be absolute and hold
+# only [A-Za-z0-9._/-], since every rule list is single-quoted and a path must
+# not end that quoting.
+path_ok() { # value
+  case "$1" in /*) ;; *) return 1 ;; esac
+  [ "$1" != "/" ] || return 1
+  # The whole value, not each line of it: a newline is outside the set.
+  case "$1" in ''|*[!A-Za-z0-9._/-]*) return 1 ;; esac
+  case "/$1/" in */../*|*/./*) return 1 ;; esac
+  # A trailing or doubled slash would shift a derived path: ${RUNNER_TEMP%/*}
+  # of /home/runner/work/_temp/ is _temp itself, not its parent.
+  case "$1" in */|*//*) return 1 ;; esac
+}
+
+# HOME, RUNNER_TEMP and GITHUB_WORKSPACE, each checked by path_ok; names the
+# first that fails on stderr and returns 1.
+runner_paths_ok() {
+  local v
+  for v in HOME RUNNER_TEMP GITHUB_WORKSPACE; do
+    if ! path_ok "${!v:-}"; then
+      echo "compose-agent-args: $v must be an absolute path of [A-Za-z0-9._/-] with no . or .. segment and no trailing or doubled slash" >&2
+      return 1
+    fi
+  done
+}
+
+# One rule per tool for each path. $1 is the tools, the rest the absolute
+# paths (each starting with /, so "/" plus it is the // form).
+path_rules() { # tools path...
+  local tools="$1" t p out=""
+  shift
+  for p in "$@"; do
+    for t in $tools; do out="$out,$t(/$p)"; done
+  done
+  printf '%s' "${out#,}"
+}
+
+# Each root as itself and as everything under it, one rule per tool, so a Glob
+# or Grep given the folder as its path is refused rather than left to whether
+# X/** matches X.
+root_rules() { # tools root...
+  local tools="$1" r paths=()
+  shift
+  for r in "$@"; do paths+=("$r" "$r/**"); done
+  path_rules "$tools" "${paths[@]}"
+}
+
+# The roots the reviewer and the verifiers never read: the kernel's views of
+# processes (/proc/self/environ holds the job's tokens) and devices, the
+# checkout's .git (claude-code-action writes its token into .git/config), every
+# dot-file and dot-directory in the runner's home, and the runner's actions
+# and install directories. RUNNER_TEMP is not among them: it holds the head and
+# the input directory the agent is given with --add-dir, and a deny rule beats
+# that grant.
+review_roots() {
+  REVIEW_ROOTS=(/proc /sys "$GITHUB_WORKSPACE/.git" "$HOME/.*" "${RUNNER_TEMP%/*}/_actions" "$HOME/runners" "$HOME/actions-runner")
+}
+
+review_rules() {
+  review_roots
+  root_rules "Read Glob Grep" "${REVIEW_ROOTS[@]}"
+}
+
+# A denied root that is, or holds, RUNNER_TEMP, GITHUB_WORKSPACE or an --add-dir
+# would deny the reviewer everything there, since a deny rule beats the grant:
+# a self-hosted runner installed at ~/actions-runner keeps its workspace and
+# temporary directory inside it. Names the first such variable on stderr and
+# returns 1. A root is matched as a pattern, so $HOME/.* covers every
+# dot-directory in the home; validated paths hold no other pattern character.
+review_roots_clear() {
+  local v val root
+  review_roots
+  for v in RUNNER_TEMP GITHUB_WORKSPACE REVIEW_HEAD_DIR REVIEW_INPUT_DIR; do
+    val="${!v:-}"
+    [ -n "$val" ] || continue
+    for root in "${REVIEW_ROOTS[@]}"; do
+      # shellcheck disable=SC2254
+      case "$val/" in $root/*)
+        echo "compose-agent-args: $v ($val) is inside the denied root $root, so the reviewer could not read it" >&2
+        return 1 ;;
+      esac
+    done
+  done
+}
+
+# The deny list is single-quoted, so claude-code-action keeps its rules, which
+# hold ( ) and *, in one argument.
 args() { # model turns tools
-  printf '%s %s%s%s--max-turns %s --allowedTools %s --disallowedTools %s,%s' \
+  printf "%s %s%s%s--max-turns %s --allowedTools %s --disallowedTools '%s,%s,%s'" \
     "$BASE" "$(model_flag "$1")" "$(dir_flag "${REVIEW_HEAD_DIR:-}")" \
-    "$(dir_flag "${REVIEW_INPUT_DIR:-}")" "$2" "$3" "$NO_HUMAN" "$NO_WRITE"
+    "$(dir_flag "${REVIEW_INPUT_DIR:-}")" "$2" "$3" "$NO_HUMAN" "$NO_WRITE" "$(review_rules)"
 }
 
 # ---------------------------------------------------------------------------
@@ -103,27 +192,6 @@ audit_step() { # step ; prints "job model turns subagents", fails for an unknown
   printf '%s\n' "$AUDIT_STEPS" | awk -v s="$1" '$1 == s { print $2, $3, $4, $5; found = 1 } END { exit !found }'
 }
 
-audit_path_ok() { # value
-  case "$1" in /*) ;; *) return 1 ;; esac
-  [ "$1" != "/" ] || return 1
-  printf '%s' "$1" | grep -qE '^[A-Za-z0-9._/-]+$' || return 1
-  case "/$1/" in */../*|*/./*) return 1 ;; esac
-  # A trailing or doubled slash would shift a derived path: ${RUNNER_TEMP%/*}
-  # of /home/runner/work/_temp/ is _temp itself, not its parent.
-  case "$1" in */|*//*) return 1 ;; esac
-}
-
-# One rule per tool for each denied root. $1 is the tools, the rest the
-# absolute paths (each starting with /, so "/" plus it is the // form).
-audit_rules() { # tools path...
-  local tools="$1" t p out=""
-  shift
-  for p in "$@"; do
-    for t in $tools; do out="$out,$t(/$p)"; done
-  done
-  printf '%s' "${out#,}"
-}
-
 audit_args() { # step
   local spec job model turns subagents in out allow deny work
   spec=$(audit_step "$1") || return 1
@@ -131,10 +199,6 @@ audit_args() { # step
   in="$AUDIT_ROOT/$job/in"
   out="$AUDIT_ROOT/$job/out"
   work="${RUNNER_TEMP%/*}"
-  # The roots no agent reads or writes: the kernel's views of processes and
-  # devices, the runner's temporary, actions and runner directories, and
-  # every dot-file and dot-directory in the runner's home.
-  local roots=('/proc/**' '/sys/**' "$RUNNER_TEMP/**" "$work/_actions/**" "$HOME/runners/**" "$HOME/.*" "$HOME/.*/**")
   deny="$AUDIT_DENY"
   allow="Read,Glob,Grep"
   if [ "$subagents" = yes ]; then
@@ -143,14 +207,14 @@ audit_args() { # step
     deny="$deny,Agent,Task"
   fi
   allow="$allow,Edit(/$out/**)"
-  deny="$deny,$(audit_rules "Read Glob Grep Edit" "${roots[@]}")"
-  deny="$deny,$(audit_rules "Read Glob Grep" "$GITHUB_WORKSPACE/.git/**")"
-  # Each denied directory as itself too, so a Glob or Grep given the folder
-  # as its path is refused rather than left to whether X/** matches X; and the
-  # runner's install directory on images that put it in the home.
-  deny="$deny,$(audit_rules "Read Glob Grep" /proc /sys "$RUNNER_TEMP" "$work/_actions" "$HOME/runners" \
-    "$HOME/actions-runner" "$HOME/actions-runner/**" "$GITHUB_WORKSPACE/.git")"
-  deny="$deny,$(audit_rules "Edit" "$GITHUB_WORKSPACE/**")"
+  # The roots no agent reads or writes, each as itself and everything under
+  # it: the kernel's views of processes and devices, the runner's temporary,
+  # actions and runner directories (and its install directory on images that
+  # put it in the home), and every dot-file and dot-directory in the home.
+  deny="$deny,$(root_rules "Read Glob Grep Edit" /proc /sys "$RUNNER_TEMP" "$work/_actions" "$HOME/runners" \
+    "$HOME/.*" "$HOME/actions-runner")"
+  deny="$deny,$(root_rules "Read Glob Grep" "$GITHUB_WORKSPACE/.git")"
+  deny="$deny,$(path_rules "Edit" "$GITHUB_WORKSPACE/**")"
   printf "%s --strict-mcp-config %s%s%s--max-turns %s --allowedTools '%s' --disallowedTools '%s'" \
     "$BASE" "$(model_flag "$model")" "$(dir_flag "$in")" "$(dir_flag "$out")" "$turns" "$allow" "$deny"
 }
@@ -169,12 +233,7 @@ fi
 
 if [ "${1:-}" = "--audit" ]; then
   [ "$#" -eq 1 ] || { echo "usage: compose-agent-args.sh --audit" >&2; exit 2; }
-  for v in HOME RUNNER_TEMP GITHUB_WORKSPACE; do
-    if ! audit_path_ok "${!v:-}"; then
-      echo "compose-agent-args: $v must be an absolute path of [A-Za-z0-9._/-] with no . or .. segment and no trailing or doubled slash" >&2
-      exit 1
-    fi
-  done
+  runner_paths_ok || exit 1
   lines=""
   for step in source repair poc_write poc_decide cross_check tie_break; do
     line=$(audit_args "$step") || { echo "compose-agent-args: could not compose $step" >&2; exit 1; }
@@ -186,6 +245,8 @@ if [ "${1:-}" = "--audit" ]; then
 fi
 
 [ "$#" -eq 0 ] || { echo "usage: compose-agent-args.sh [--audit | --audit-models <step>]" >&2; exit 2; }
+runner_paths_ok || exit 1
+review_roots_clear || exit 1
 
 printf 'AGENT_ARGS_REVIEW=%s\n' \
   "$(args "${AGENT_MODEL_REVIEW:-}" "${AGENT_TURNS_REVIEW:-60}" "$TOOLS_READ")"

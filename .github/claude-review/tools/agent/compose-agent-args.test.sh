@@ -4,10 +4,22 @@ ROOT="$(git rev-parse --show-toplevel)/.github/claude-review"
 . "$ROOT/tools/agent/test/assert.sh"
 R="$ROOT/tools/agent/compose-agent-args.sh"
 REQUIRED_DENY="Agent Task ListAgents ScheduleWakeup SendMessage Monitor TaskCreate CronCreate Bash Edit Write MultiEdit NotebookEdit WebFetch WebSearch Skill"
+# Rule lists hold * and are split on commas below, so no pathname expansion.
+set -f
+tmp_err=$(mktemp)
+trap 'rm -f "$tmp_err"' EXIT
+PARSE="$ROOT/tools/agent/test/helpers/parse-claude-args.py"
+# Every review and audit line is composed with the runner's paths, which the
+# deny rules are written from.
+RUNNER_ENV=(HOME=/home/runner RUNNER_TEMP=/home/runner/work/_temp GITHUB_WORKSPACE=/home/runner/work/ddemo/ddemo)
+# The review's path rules for RUNNER_ENV, written out: each root as itself and
+# everything under it, for Read, Glob and Grep.
+REVIEW_RULES="Read(//proc),Glob(//proc),Grep(//proc),Read(//proc/**),Glob(//proc/**),Grep(//proc/**),Read(//sys),Glob(//sys),Grep(//sys),Read(//sys/**),Glob(//sys/**),Grep(//sys/**),Read(//home/runner/work/ddemo/ddemo/.git),Glob(//home/runner/work/ddemo/ddemo/.git),Grep(//home/runner/work/ddemo/ddemo/.git),Read(//home/runner/work/ddemo/ddemo/.git/**),Glob(//home/runner/work/ddemo/ddemo/.git/**),Grep(//home/runner/work/ddemo/ddemo/.git/**),Read(//home/runner/.*),Glob(//home/runner/.*),Grep(//home/runner/.*),Read(//home/runner/.*/**),Glob(//home/runner/.*/**),Grep(//home/runner/.*/**),Read(//home/runner/work/_actions),Glob(//home/runner/work/_actions),Grep(//home/runner/work/_actions),Read(//home/runner/work/_actions/**),Glob(//home/runner/work/_actions/**),Grep(//home/runner/work/_actions/**),Read(//home/runner/runners),Glob(//home/runner/runners),Grep(//home/runner/runners),Read(//home/runner/runners/**),Glob(//home/runner/runners/**),Grep(//home/runner/runners/**),Read(//home/runner/actions-runner),Glob(//home/runner/actions-runner),Grep(//home/runner/actions-runner),Read(//home/runner/actions-runner/**),Glob(//home/runner/actions-runner/**),Grep(//home/runner/actions-runner/**)"
 
-# The comma-separated value that follows a flag in an args line.
+# The comma-separated value that follows a flag in an args line, without the
+# single quotes around a rule list.
 flag_value() { # line flag
-  printf '%s\n' "$1" | sed -nE "s/.* $2 ([^ ]*).*/\1/p"
+  printf '%s\n' "$1" | sed -nE "s/.* $2 '?([^ ']*)'?( .*)?\$/\1/p"
 }
 
 # Whole-token checks on the allow and deny lists. Substring matching would let
@@ -26,7 +38,7 @@ check_tool_lists() { # line ; prints a failure per line, nothing when sound
 }
 
 # Default: no model, no directories. Both tool lists are asserted exactly.
-out=$(env -u REVIEW_HEAD_DIR -u REVIEW_INPUT_DIR AGENT_TURNS_REVIEW=60 AGENT_MODEL_REVIEW='' bash "$R")
+out=$(env -u REVIEW_HEAD_DIR -u REVIEW_INPUT_DIR "${RUNNER_ENV[@]}" AGENT_TURNS_REVIEW=60 AGENT_MODEL_REVIEW='' bash "$R")
 assert_contains "$out" "AGENT_ARGS_REVIEW=--setting-sources user --max-turns 60 --allowedTools " "default review args shape"
 assert_eq "1" "$(printf '%s\n' "$out" | grep -c .)" "exactly one env line"
 case "$out" in *"--model"*) echo "FAIL: an empty model still emitted --model" >&2; exit 1 ;; esac
@@ -48,34 +60,34 @@ bad=$(check_tool_lists "x --allowedTools Read,Glob,Grep,Bash --disallowedTools $
 [ -n "$bad" ] || { echo "FAIL: an extra allowed tool passed the check" >&2; exit 1; }
 
 # A pinned model appears once.
-out=$(AGENT_MODEL_REVIEW=claude-opus-5 AGENT_TURNS_REVIEW=60 bash "$R")
+out=$(env "${RUNNER_ENV[@]}" AGENT_MODEL_REVIEW=claude-opus-5 AGENT_TURNS_REVIEW=60 bash "$R")
 assert_contains "$out" "AGENT_ARGS_REVIEW=--setting-sources user --model claude-opus-5 --max-turns 60" \
   "the pinned model lands in the args"
 assert_eq "1" "$(printf '%s' "$out" | grep -c -- '--model')" "the flag appears once"
 
 # Only the head directory.
-out=$(env -u REVIEW_INPUT_DIR REVIEW_HEAD_DIR=/tmp/head bash "$R")
+out=$(env -u REVIEW_INPUT_DIR "${RUNNER_ENV[@]}" REVIEW_HEAD_DIR=/tmp/head bash "$R")
 assert_contains "$out" '--add-dir "/tmp/head" --max-turns' "head dir only, before --max-turns"
 assert_eq "1" "$(printf '%s' "$out" | grep -o -- '--add-dir' | wc -l)" "one --add-dir"
 
 # Only the input directory.
-out=$(env -u REVIEW_HEAD_DIR REVIEW_INPUT_DIR=/tmp/input bash "$R")
+out=$(env -u REVIEW_HEAD_DIR "${RUNNER_ENV[@]}" REVIEW_INPUT_DIR=/tmp/input bash "$R")
 assert_contains "$out" '--add-dir "/tmp/input" --max-turns' "input dir only, before --max-turns"
 assert_eq "1" "$(printf '%s' "$out" | grep -o -- '--add-dir' | wc -l)" "one --add-dir"
 
 # Both, in order, each followed by a flag and never by a bare word.
-out=$(REVIEW_HEAD_DIR=/tmp/head REVIEW_INPUT_DIR=/tmp/input bash "$R")
+out=$(env "${RUNNER_ENV[@]}" REVIEW_HEAD_DIR=/tmp/head REVIEW_INPUT_DIR=/tmp/input bash "$R")
 assert_contains "$out" '--add-dir "/tmp/head" --add-dir "/tmp/input" --max-turns' "both dirs, before --max-turns"
 assert_eq "2" "$(printf '%s' "$out" | grep -o -- '--add-dir' | wc -l)" "two --add-dir"
 
 # Empty-string variables count as unset.
-out=$(REVIEW_HEAD_DIR='' REVIEW_INPUT_DIR='' bash "$R")
+out=$(env "${RUNNER_ENV[@]}" REVIEW_HEAD_DIR='' REVIEW_INPUT_DIR='' bash "$R")
 case "$out" in *"--add-dir"*) echo "FAIL: empty directories emitted --add-dir" >&2; exit 1 ;; esac
 
 # No --add-dir swallows the next flag: each is followed by exactly one quoted
 # value and then another flag.
 for setup in "REVIEW_HEAD_DIR=/a" "REVIEW_INPUT_DIR=/b" "REVIEW_HEAD_DIR=/a REVIEW_INPUT_DIR=/b"; do
-  out=$(env $setup bash "$R")
+  out=$(env "${RUNNER_ENV[@]}" $setup bash "$R")
   assert_eq "0" "$(printf '%s\n' "$out" | grep -cE -- '--add-dir "[^"]*" [^-]')" \
     "an --add-dir value is followed by a flag ($setup)"
 done
@@ -84,15 +96,95 @@ done
 assert_eq "0" "$(printf '%s\n' "$out" | grep -c 'disallowedTools [^ ]* [^-]')" \
   "the deny list is one comma-separated argument"
 
+# The path rules: the review line denies Read, Glob and Grep on the kernel's
+# process and device views, the checkout's .git (where claude-code-action
+# writes its token), the home's dot-files and dot-directories and the runner's
+# actions and install directories, and on nothing that holds the head or the
+# input directory.
+out=$(env "${RUNNER_ENV[@]}" REVIEW_HEAD_DIR=/home/runner/work/_temp/head REVIEW_INPUT_DIR=/home/runner/work/_temp/review-input bash "$R")
+assert_exit 0 $? "the review line composes with the runner's paths"
+deny=$(flag_value "$out" --disallowedTools)
+assert_eq "$(echo $REQUIRED_DENY | tr ' ' ','),$REVIEW_RULES" "$deny" "the deny list is the denied names, then exactly the review's path rules"
+assert_contains "$out" "--disallowedTools '$(echo $REQUIRED_DENY | tr ' ' ',')," "the deny list is single-quoted"
+for r in 'Read(//proc/**)' 'Grep(//proc/**)' 'Read(//home/runner/work/ddemo/ddemo/.git/**)' 'Grep(//home/runner/work/ddemo/ddemo/.git)' 'Read(//home/runner/.*/**)'; do
+  grep -qxF -- "$r" <<<"${deny//,/$'\n'}" || { echo "FAIL: the review deny list lacks the whole token $r" >&2; exit 1; }
+done
+# No rule is on RUNNER_TEMP, the head, the input directory or any directory
+# above them, since a deny rule beats the --add-dir that grants them.
+covers() { # rule path ; true when the rule's path is the path or above it
+  local p=${1#*(/}
+  p=${p%)}; p=${p%/\*\*}
+  case "$2/" in "$p"/*) return 0 ;; esac
+  return 1
+}
+for r in ${deny//,/ }; do
+  case "$r" in *"(//"*) ;; *) continue ;; esac
+  for granted in /home/runner/work/_temp /home/runner/work/_temp/head /home/runner/work/_temp/review-input; do
+    ! covers "$r" "$granted" || { echo "FAIL: $r covers $granted" >&2; exit 1; }
+  done
+done
+case "$deny" in *_temp*) echo "FAIL: a review rule names RUNNER_TEMP" >&2; exit 1 ;; esac
+# Parsed the way claude-code-action parses claude_args: the two directories,
+# the three allowed tools, and every name and rule in the deny list.
+parsed=$(python3 -I "$PARSE" "${out#*=}")
+got=$(printf '%s' "$parsed" | python3 -I -c '
+import json, sys
+p = json.load(sys.stdin)
+print("|".join(p["addDirs"]), ",".join(p["allowedTools"]), ",".join(p["disallowedTools"]))')
+assert_eq "/home/runner/work/_temp/head|/home/runner/work/_temp/review-input Read,Glob,Grep $(echo $REQUIRED_DENY | tr ' ' ','),$REVIEW_RULES" \
+  "$got" "the review line parses to its directories, Read, Glob and Grep, and the whole deny list"
+
+# The check can fail: a rule on RUNNER_TEMP's tree or above it is caught, a
+# sibling is not.
+for r in 'Read(//home/runner/work/**)' 'Grep(//home/runner/work/_temp)' 'Read(//home/runner/work/_temp/head/**)'; do
+  covers "$r" /home/runner/work/_temp/head || { echo "FAIL: the ancestor check missed $r" >&2; exit 1; }
+done
+! covers 'Read(//home/runner/work/_actions/**)' /home/runner/work/_temp/head || { echo "FAIL: the ancestor check caught a sibling" >&2; exit 1; }
+
+# Fails closed on a runner path that is unset, relative, would end the
+# quoting, or ends in or doubles a slash.
+for bad in "HOME=" "HOME=home/runner" "RUNNER_TEMP=/home/runner/work/_te'mp" "GITHUB_WORKSPACE=/home/runner/work/a b" \
+           "GITHUB_WORKSPACE=/home/runner/work/../x" "RUNNER_TEMP=/" "RUNNER_TEMP=/home/runner/work/_temp/" \
+           "HOME=/home//runner" "GITHUB_WORKSPACE=/home/runner/work/ddemo/ddemo/" \
+           $'HOME=/home/runner\n/x' $'RUNNER_TEMP=/home/runner/work/_temp\nz' $'GITHUB_WORKSPACE=\n/w'; do
+  out=$(env "${RUNNER_ENV[@]}" "$bad" bash "$R" 2>/dev/null)
+  rc=$?
+  assert_exit 1 "$rc" "the review line refuses $bad"
+  assert_eq "" "$out" "the review line prints nothing for $bad"
+done
+out=$(env -u GITHUB_WORKSPACE HOME=/home/runner RUNNER_TEMP=/home/runner/work/_temp bash "$R" 2>/dev/null)
+assert_exit 1 $? "the review line refuses an unset GITHUB_WORKSPACE"
+assert_eq "" "$out" "and prints nothing"
+
+# A denied root that is or holds a path the reviewer needs would deny it
+# everything there, since a deny rule beats the grant: a self-hosted runner
+# installed at ~/actions-runner keeps its workspace and temporary directory
+# inside it. The line is refused, naming the variable, rather than composed.
+SELF_HOSTED=(HOME=/home/runner RUNNER_TEMP=/home/runner/actions-runner/_work/_temp GITHUB_WORKSPACE=/home/runner/actions-runner/_work/ddemo/ddemo)
+for setup in "RUNNER_TEMP ${SELF_HOSTED[*]}" \
+             "GITHUB_WORKSPACE HOME=/home/runner RUNNER_TEMP=/home/runner/work/_temp GITHUB_WORKSPACE=/home/runner/runners/w" \
+             "GITHUB_WORKSPACE HOME=/home/runner RUNNER_TEMP=/home/runner/work/_temp GITHUB_WORKSPACE=/home/runner/.cache/w" \
+             "REVIEW_HEAD_DIR ${RUNNER_ENV[*]} REVIEW_HEAD_DIR=/home/runner/.config/head" \
+             "REVIEW_INPUT_DIR ${RUNNER_ENV[*]} REVIEW_INPUT_DIR=/proc" \
+             "REVIEW_INPUT_DIR ${RUNNER_ENV[*]} REVIEW_INPUT_DIR=/home/runner/work/_actions/x"; do
+  # shellcheck disable=SC2086
+  set -- $setup
+  want=$1; shift
+  out=$(env "$@" bash "$R" 2>"$tmp_err")
+  rc=$?
+  assert_exit 1 "$rc" "the review line refuses a denied root over $want ($*)"
+  assert_eq "" "$out" "and prints nothing ($*)"
+  assert_contains "$(cat "$tmp_err")" "$want" "and names $want on stderr"
+done
+# The hosted layout with the head and input under RUNNER_TEMP composes.
+env "${RUNNER_ENV[@]}" REVIEW_HEAD_DIR=/home/runner/work/_temp/head REVIEW_INPUT_DIR=/home/runner/work/_temp/review-input bash "$R" >/dev/null
+assert_exit 0 $? "the hosted layout composes"
+
 # ---------------------------------------------------------------------------
 # The security audit's variables (--audit) and models (--audit-models). The
 # checks above, which require Agent and Task denied, apply to the review
 # variable only: every audit step but repair delegates to subagents.
-# Rule lists hold * and are split on commas below, so no pathname expansion.
-set -f
-PARSE="$ROOT/tools/agent/test/helpers/parse-claude-args.py"
 PARSE_ENV="$ROOT/tools/agent/test/helpers/parse-env-file.py"
-RUNNER_ENV=(HOME=/home/runner RUNNER_TEMP=/home/runner/work/_temp GITHUB_WORKSPACE=/home/runner/work/ddemo/ddemo)
 # The audit deny list: the review's NO_HUMAN and NO_WRITE names, read from the
 # script, without the tools the audit agents use, then the audit-only names
 # from Stage 0's tool list and the Technical Plan.
@@ -101,7 +193,7 @@ NO_HUMAN=$(sed -n 's/^NO_HUMAN="\(.*\)"$/\1/p' "$R")
 NO_WRITE=$(sed -n 's/^NO_WRITE="\(.*\)"$/\1/p' "$R")
 [ -n "$NO_HUMAN" ] && [ -n "$NO_WRITE" ] || { echo "FAIL: NO_HUMAN or NO_WRITE could not be read from the script" >&2; exit 1; }
 AUDIT_DENY="$(printf '%s\n' "${NO_HUMAN//,/$'\n'}" "${NO_WRITE//,/$'\n'}" | grep -vxE 'Agent|Task|Write|Edit' | paste -sd, -),$AUDIT_ONLY"
-PATH_RULES="Read(//proc/**),Glob(//proc/**),Grep(//proc/**),Edit(//proc/**),Read(//sys/**),Glob(//sys/**),Grep(//sys/**),Edit(//sys/**),Read(//home/runner/work/_temp/**),Glob(//home/runner/work/_temp/**),Grep(//home/runner/work/_temp/**),Edit(//home/runner/work/_temp/**),Read(//home/runner/work/_actions/**),Glob(//home/runner/work/_actions/**),Grep(//home/runner/work/_actions/**),Edit(//home/runner/work/_actions/**),Read(//home/runner/runners/**),Glob(//home/runner/runners/**),Grep(//home/runner/runners/**),Edit(//home/runner/runners/**),Read(//home/runner/.*),Glob(//home/runner/.*),Grep(//home/runner/.*),Edit(//home/runner/.*),Read(//home/runner/.*/**),Glob(//home/runner/.*/**),Grep(//home/runner/.*/**),Edit(//home/runner/.*/**),Read(//home/runner/work/ddemo/ddemo/.git/**),Glob(//home/runner/work/ddemo/ddemo/.git/**),Grep(//home/runner/work/ddemo/ddemo/.git/**),Read(//proc),Glob(//proc),Grep(//proc),Read(//sys),Glob(//sys),Grep(//sys),Read(//home/runner/work/_temp),Glob(//home/runner/work/_temp),Grep(//home/runner/work/_temp),Read(//home/runner/work/_actions),Glob(//home/runner/work/_actions),Grep(//home/runner/work/_actions),Read(//home/runner/runners),Glob(//home/runner/runners),Grep(//home/runner/runners),Read(//home/runner/actions-runner),Glob(//home/runner/actions-runner),Grep(//home/runner/actions-runner),Read(//home/runner/actions-runner/**),Glob(//home/runner/actions-runner/**),Grep(//home/runner/actions-runner/**),Read(//home/runner/work/ddemo/ddemo/.git),Glob(//home/runner/work/ddemo/ddemo/.git),Grep(//home/runner/work/ddemo/ddemo/.git),Edit(//home/runner/work/ddemo/ddemo/**)"
+PATH_RULES="Read(//proc),Glob(//proc),Grep(//proc),Edit(//proc),Read(//proc/**),Glob(//proc/**),Grep(//proc/**),Edit(//proc/**),Read(//sys),Glob(//sys),Grep(//sys),Edit(//sys),Read(//sys/**),Glob(//sys/**),Grep(//sys/**),Edit(//sys/**),Read(//home/runner/work/_temp),Glob(//home/runner/work/_temp),Grep(//home/runner/work/_temp),Edit(//home/runner/work/_temp),Read(//home/runner/work/_temp/**),Glob(//home/runner/work/_temp/**),Grep(//home/runner/work/_temp/**),Edit(//home/runner/work/_temp/**),Read(//home/runner/work/_actions),Glob(//home/runner/work/_actions),Grep(//home/runner/work/_actions),Edit(//home/runner/work/_actions),Read(//home/runner/work/_actions/**),Glob(//home/runner/work/_actions/**),Grep(//home/runner/work/_actions/**),Edit(//home/runner/work/_actions/**),Read(//home/runner/runners),Glob(//home/runner/runners),Grep(//home/runner/runners),Edit(//home/runner/runners),Read(//home/runner/runners/**),Glob(//home/runner/runners/**),Grep(//home/runner/runners/**),Edit(//home/runner/runners/**),Read(//home/runner/.*),Glob(//home/runner/.*),Grep(//home/runner/.*),Edit(//home/runner/.*),Read(//home/runner/.*/**),Glob(//home/runner/.*/**),Grep(//home/runner/.*/**),Edit(//home/runner/.*/**),Read(//home/runner/actions-runner),Glob(//home/runner/actions-runner),Grep(//home/runner/actions-runner),Edit(//home/runner/actions-runner),Read(//home/runner/actions-runner/**),Glob(//home/runner/actions-runner/**),Grep(//home/runner/actions-runner/**),Edit(//home/runner/actions-runner/**),Read(//home/runner/work/ddemo/ddemo/.git),Glob(//home/runner/work/ddemo/ddemo/.git),Grep(//home/runner/work/ddemo/ddemo/.git),Read(//home/runner/work/ddemo/ddemo/.git/**),Glob(//home/runner/work/ddemo/ddemo/.git/**),Grep(//home/runner/work/ddemo/ddemo/.git/**),Edit(//home/runner/work/ddemo/ddemo/**)"
 
 # The exact line for one step, quoting included.
 expected_audit() { # name model job turns subagents(yes|no)
@@ -186,7 +278,8 @@ assert_eq '["Read", "Glob"] ["/a"]' "$(printf '%s' "$parsed" | python3 -I -c 'im
 # quoting, or ends in or doubles a slash (which would shift the _actions rule).
 for bad in "HOME=" "HOME=home/runner" "RUNNER_TEMP=/home/runner/work/_te'mp" "GITHUB_WORKSPACE=/home/runner/work/a b" \
            "GITHUB_WORKSPACE=/home/runner/work/../x" "RUNNER_TEMP=/" "RUNNER_TEMP=/home/runner/work/_temp/" \
-           "HOME=/home//runner" "GITHUB_WORKSPACE=/home/runner/work/ddemo/ddemo/"; do
+           "HOME=/home//runner" "GITHUB_WORKSPACE=/home/runner/work/ddemo/ddemo/" \
+           $'HOME=/home/runner\n/x' $'RUNNER_TEMP=/home/runner/work/_temp\nz' $'GITHUB_WORKSPACE=\n/w'; do
   out=$(env "${RUNNER_ENV[@]}" "$bad" bash "$R" --audit 2>/dev/null)
   rc=$?
   assert_exit 1 "$rc" "--audit refuses $bad"
@@ -197,7 +290,7 @@ assert_exit 1 $? "--audit refuses an unset RUNNER_TEMP"
 
 # --audit-models: the step's model three times, read as the runner reads $GITHUB_ENV.
 tmp=$(mktemp -d)
-trap 'rm -rf "$tmp"' EXIT
+trap 'rm -rf "$tmp" "$tmp_err"' EXIT
 for spec in "source claude-opus-5-5" "repair claude-opus-5-5" "poc_write claude-opus-5-5" \
             "poc_decide claude-opus-5-5" "cross_check claude-fable-5-1" "tie_break claude-sonnet-5-5"; do
   # shellcheck disable=SC2086
