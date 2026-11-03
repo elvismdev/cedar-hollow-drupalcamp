@@ -181,9 +181,13 @@ function runCase(repo, c, kind, base, verify) {
   mkdirSync(input);
   const env = { ...process.env, REVIEW_INPUT_DIR: input, GITHUB_WORKSPACE: repo, RUNNER_TEMP: process.env.RUNNER_TEMP || work };
   let args;
+  // The script prints no line and says why on stderr when it refuses a path.
+  const compose = sh('bash', [join(TOOLS, 'agent/compose-agent-args.sh')], { cwd: repo, env });
+  if (compose.status !== 0) {
+    return { error: `compose-agent-args.sh refused the reviewer's arguments: ${(compose.stderr || '').trim().slice(0, 300) || `exit ${compose.status}`}` };
+  }
   try {
-    const compose = sh('bash', [join(TOOLS, 'agent/compose-agent-args.sh')], { cwd: repo, env }).stdout || '';
-    args = reviewArgs(compose.split('\n').find((l) => l.startsWith('AGENT_ARGS_REVIEW=')));
+    args = reviewArgs((compose.stdout || '').split('\n').find((l) => l.startsWith('AGENT_ARGS_REVIEW=')));
   } catch (e) {
     return { error: e.message };
   }

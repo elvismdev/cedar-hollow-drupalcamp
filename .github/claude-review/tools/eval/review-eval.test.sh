@@ -136,6 +136,12 @@ for rule in 'Read(//proc/**)' "Grep(/$top/.git)" "Read(/$top/.git/**)" "Read(/$H
 done
 case "$deny" in *"'"*) echo "FAIL: the deny list reached the agent with its quotes" >&2; exit 1 ;; esac
 
+# When the argument script refuses a runner path, the case cannot run and the
+# eval says which variable was refused, from the script's own reason.
+assert_eq "2" "$(run REVIEW_JSON="$hit" RUNNER_TEMP='/bad path' -- cases --base main --no-verify --only gate-fails-open)" "a refused runner path stops the case"
+assert_contains "$(cat "$tmp/out")" "compose-agent-args.sh refused the reviewer's arguments" "the eval says the argument script refused"
+assert_contains "$(cat "$tmp/out")" "RUNNER_TEMP must be an absolute path" "and passes on its reason, naming the variable"
+
 # reviewArgs splits the composed line as claude-code-action does for the
 # shapes it holds: a double-quoted directory and a single-quoted rule list are
 # each one word with the quotes removed. A word quoted around a space, an
