@@ -17,10 +17,30 @@ export function derivativeUrls(html, base) {
 }
 
 // Returns the fetch options for url: the headers only when url is on base's
-// origin, and then with redirects not followed, because Node's fetch sends
-// custom headers on to whatever host a redirect names. A redirect answers
-// with its 3xx status instead.
+// origin, and then with redirects not followed by fetch, because Node's fetch
+// sends custom headers on to whatever host a redirect names. fetchSameOrigin()
+// follows the redirects that stay on base's origin.
 export function requestInit(url, base, headers) {
   if (Object.keys(headers).length === 0 || new URL(url).origin !== new URL(base).origin) return {};
   return { headers, redirect: 'manual' };
+}
+
+export const MAX_REDIRECTS = 5;
+
+// Fetches url, following a redirect only while its Location resolves to base's
+// origin and for at most MAX_REDIRECTS hops; each hop gets its options from
+// requestInit(). A redirect to another origin, or one past the bound, is
+// returned as its 3xx response without requesting the Location.
+export async function fetchSameOrigin(url, base, headers) {
+  const origin = new URL(base).origin;
+  let current = url;
+  for (let hop = 0; ; hop += 1) {
+    const response = await fetch(current, requestInit(current, base, headers));
+    const location = response.headers.get('location');
+    if (response.status < 300 || response.status > 399 || !location) return response;
+    const next = new URL(location, current);
+    if (next.origin !== origin || hop === MAX_REDIRECTS) return response;
+    await response.arrayBuffer();
+    current = next.href;
+  }
 }

@@ -5,7 +5,7 @@
 // On DDEV, Node needs DDEV's certificate authority:
 // NODE_EXTRA_CA_CERTS="$(mkcert -CAROOT)/rootCA.pem" npm run warm -- https://cedar-hollow.ddev.site:30001
 import { readFileSync } from 'node:fs';
-import { derivativeUrls, requestInit } from './derivative-urls.mjs';
+import { derivativeUrls, fetchSameOrigin } from './derivative-urls.mjs';
 
 const base = (process.argv[2] ?? '').replace(/\/$/, '');
 if (!base) {
@@ -15,8 +15,9 @@ if (!base) {
 // Pantheon sandboxes show a warning page unless Deterrence-Bypass is sent, and
 // PANTHEON_BOT_BYPASS_TOKEN (from `terminus gcdn:bot-bypass`) keeps the edge's
 // bot protection from challenging these requests. Neither goes to another
-// origin: only same-origin derivatives are collected, and requestInit() sends
-// the headers to the base URL's origin only and does not follow redirects.
+// origin: only same-origin derivatives are collected, and fetchSameOrigin()
+// sends them to the base URL's origin only and follows only redirects that
+// stay on it.
 const onPantheon = new URL(base).hostname.endsWith('.pantheonsite.io');
 const botBypass = process.env.PANTHEON_BOT_BYPASS_TOKEN;
 const headers = onPantheon
@@ -52,7 +53,7 @@ async function get(url) {
   let wait = REQUEST_GAP;
   for (let retry = 0; retry <= RETRY_PAUSES.length; retry += 1) {
     await sleep(wait);
-    const response = await fetch(url, requestInit(url, base, headers));
+    const response = await fetchSameOrigin(url, base, headers);
     const body = Buffer.from(await response.arrayBuffer());
     if (response.status !== 429) return { status: response.status, body };
     console.error(`${describe429(response, body)} (${url})`);
