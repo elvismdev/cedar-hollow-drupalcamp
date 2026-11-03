@@ -105,10 +105,34 @@ assert_eq "2" "$(rc "$(feed "${hundred[@]}")")" "a possibly truncated feed is no
 assert_contains "$(run "$(feed "${hundred[@]}")")" "truncated=true" "and says so in a machine line"
 assert_eq "" "$(run "$broken" | grep truncated)" "which an unreadable feed does not print"
 
+# Comment content edited by someone other than its author does not count. A
+# finding edited by anyone but the bot may have been retagged or emptied, so it
+# is important and unanswered whatever follows it; an owner reply edited by
+# someone else is not the owner's answer.
+# edited <first editor> <first body> [reply author] [reply editor]: one thread,
+# an editor of "" meaning the comment was never edited.
+edited () {
+	local fe=null re=null reply=""
+	[ -n "$1" ] && fe="{\"login\":\"$1\"}"
+	[ -n "${4:-}" ] && re="{\"login\":\"$4\"}"
+	[ -n "${3:-}" ] && reply=",{\"author\":{\"login\":\"$3\"},\"editor\":$re,\"body\":\"done\",\"url\":\"https://example.invalid/r\"}"
+	printf '{"comments":{"nodes":[{"author":{"login":"github-actions"},"editor":%s,"body":"%s","url":"https://example.invalid/%s"}%s]}}' \
+		"$fe" "$2" "$(printf '%s' "$2" | tr -c 'a-z0-9' '-')" "$reply"
+}
+retagged=$(feed "$(edited someone-else "nit: retagged")")
+assert_eq "1" "$(rc "$retagged")" "a finding edited by someone else blocks, whatever its tag"
+assert_contains "$(run "$retagged")" "thread=important https://example.invalid/nit--retagged" "and is listed as important"
+assert_eq "1" "$(rc "$(feed "$(edited someone-else "important: edited" repo-owner)")")" "and an owner reply does not answer it"
+assert_eq "1" "$(rc "$(feed "$(edited repo-owner "nit: edited by the owner")")")" "nor does an edit by the owner make it the bot's"
+assert_eq "0" "$(rc "$(feed "$(edited github-actions "nit: edited by the bot")")")" "a finding edited by the bot itself keeps its tag"
+assert_eq "0" "$(rc "$(feed "$(edited "github-actions[bot]" "important: edited by the bot" repo-owner)")")" "and is answered by an owner reply"
+assert_eq "1" "$(rc "$(feed "$(edited "" "important: x" repo-owner someone-else)")")" "an owner reply edited by someone else does not answer"
+assert_eq "0" "$(rc "$(feed "$(edited "" "important: x" repo-owner repo-owner)")")" "an owner reply edited by the owner answers"
+
 # The query asks for what the reader uses, in the same shape as
-# prior-findings.sh's query.
-grep -q 'comments(first:100){nodes{author{login} body url}}' "$G"
-assert_exit 0 "$?" "the query selects each comment's author, body and url"
+# prior-findings.sh's query, plus each comment's editor.
+grep -q 'comments(first:100){nodes{author{login} editor{login} body url}}' "$G"
+assert_exit 0 "$?" "the query selects each comment's author, editor, body and url"
 
 
 # A feed larger than one environment string may hold (128 KiB on Linux), under
