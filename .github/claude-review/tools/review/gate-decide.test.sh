@@ -222,6 +222,15 @@ assert_contains "$out" "Resource not accessible by integration" "and GitHub's ow
 assert_eq "1" "$(rc TIER=High REVIEW_COMMENTS_CMD="$denied")" "and is red"
 assert_eq "1" "$(rc BUGS_STATE=capped REVIEW_COMMENTS_CMD="$denied")" "for the round cap too"
 case "$(run TIER=High REVIEW_COMMENTS_CMD='exit 4')" in *"token was refused"*) echo "FAIL: a failure without a permission error is reported as one" >&2; exit 1;; esac
+# GitHub's FORBIDDEN error type, in the response gh prints, is named too.
+forbidden='printf %s "{\"errors\":[{\"type\":\"FORBIDDEN\",\"message\":\"denied\"}]}"; echo "gh: denied" >&2; exit 1'
+assert_contains "$(run TIER=High REVIEW_COMMENTS_CMD="$forbidden")" "the token was refused" "a FORBIDDEN error type names the missing permission"
+# A 403 that is not a permission error, such as a rate limit, is not.
+limited='echo "gh: API rate limit exceeded for installation ID 1. (HTTP 403)" >&2; exit 1'
+out=$(run TIER=High REVIEW_COMMENTS_CMD="$limited")
+assert_contains "$out" "Pull request comments could not be read." "a rate-limit 403 gets the generic message"
+case "$out" in *"token was refused"*) echo "FAIL: a rate-limit 403 is reported as a missing permission" >&2; exit 1;; esac
+assert_eq "1" "$(rc TIER=High REVIEW_COMMENTS_CMD="$limited")" "and is red"
 assert_eq "1" "$(rc TIER=High REVIEW_COMMENTS_CMD='printf "not json"')" "and is red"
 assert_eq "0" "$(rc REVIEW_COMMENTS_CMD='exit 4')" "but is not read when nothing needs an acknowledgement"
 

@@ -164,9 +164,12 @@ check_ack() {
   cat "$err_file" >&2
   if [ "$frc" -ne 0 ]; then
     # GitHub refuses a token that lacks a permission with "Resource not
-    # accessible by integration" (type FORBIDDEN). Pull request conversation
-    # comments are issue comments, so the gate job needs issues: read.
-    if grep -qE 'Resource not accessible|FORBIDDEN|HTTP 403' "$err_file"; then
+    # accessible by integration", error type FORBIDDEN in the response gh
+    # prints on stdout. Pull request conversation comments are issue
+    # comments, so the gate job needs issues: read. Any other 403, such as a
+    # rate limit, gets the generic message.
+    if grep -q 'Resource not accessible' "$err_file" ||
+       grep -qE '"type": *"FORBIDDEN"' "$feed_file" "$err_file"; then
       red "Pull request comments could not be read: the token was refused. The Review gate job needs issues: read and pull-requests: read." hint
     fi
     red "Pull request comments could not be read." hint
