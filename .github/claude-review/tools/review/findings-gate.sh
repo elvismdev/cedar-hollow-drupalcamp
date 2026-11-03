@@ -54,7 +54,7 @@ threads_feed() {
           }
         }
       }
-    }' -F owner="${GITHUB_REPOSITORY%%/*}" -F name="${GITHUB_REPOSITORY##*/}" -F pr="$PR" \
+    }' -f owner="${GITHUB_REPOSITORY%%/*}" -f name="${GITHUB_REPOSITORY##*/}" -F pr="$PR" \
     --jq '.data.repository.pullRequest.reviewThreads.nodes'
 }
 

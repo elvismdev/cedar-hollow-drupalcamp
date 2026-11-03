@@ -153,4 +153,21 @@ PY2
 assert_eq "1" "$(rc "cat $big")" "a feed over 128 KiB is read: its open finding blocks"
 assert_contains "$(run "cat $big")" "80 review finding(s)" "and every thread in it is counted"
 
+
+# The real thread query sends owner and name as strings. With -F, gh would
+# send an all-digit name as a number, which the query's String! refuses.
+stub=$(mktemp -d)
+cat > "$stub/gh" <<GH
+#!/usr/bin/env bash
+printf '%s\n' "\$@" > "$stub/gh-args"
+printf '[]'
+GH
+chmod +x "$stub/gh"
+env -u REVIEW_THREADS_CMD PATH="$stub:$PATH" GITHUB_REPOSITORY=12345/67890 bash "$G" 1 >/dev/null 2>&1
+args=$(cat "$stub/gh-args" 2>/dev/null)
+rm -rf "$stub"
+assert_contains "$args" $'-f\nowner=12345\n' "the owner is sent as a string"
+assert_contains "$args" $'-f\nname=67890\n' "the repository name is sent as a string"
+assert_contains "$args" $'-F\npr=1\n' "the pull request number is sent as a number"
+
 pass
