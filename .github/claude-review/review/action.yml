@@ -272,8 +272,11 @@ runs:
         echo "prior findings: $(wc -c <"$RUNNER_TEMP/prior-findings.md") bytes"
 
     # Read, Glob and Grep only, user settings only, every other tool denied by
-    # name, and the head and input directories added for reading. One
-    # definition, tested in compose-agent-args.test.sh.
+    # name, those three denied on /proc, /sys, the workspace's .git, the home's
+    # dot-files and the runner's own directories, and the head and input
+    # directories added for reading. One definition, tested in
+    # compose-agent-args.test.sh; it prints no line and fails the step when
+    # HOME, RUNNER_TEMP or GITHUB_WORKSPACE is unusable.
     - name: Compose the reviewer's arguments
       id: args
       if: steps.go.outputs.run == '1'
