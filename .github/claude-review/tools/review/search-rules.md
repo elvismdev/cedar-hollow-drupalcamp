@@ -26,3 +26,7 @@ fails the whole review if one breaks these rules, so keep to them:
   in normal form (`//`, `/./`, a trailing `/.`): give a path inside the
   checkout that does not pass through a symbolic link. To search every file
   in one folder, put the folder in `path` and leave `glob` out.
+- Keep each search's output small: use `head_limit`, `output_mode`
+  `files_with_matches`, or a narrower `path` or `glob`. An output over about
+  20,000 characters is saved to a file you cannot read, so you lose it and
+  have to search again.
