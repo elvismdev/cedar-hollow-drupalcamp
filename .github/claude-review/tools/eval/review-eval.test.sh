@@ -17,6 +17,7 @@ prompt=$(cat)
 # that directory when the agent started.
 if [ -n "${ARGS_LOG:-}" ]; then
   while [ "$#" -gt 0 ]; do
+    [ "$1" = "--disallowedTools" ] && printf 'deny %s\n' "$2" >> "$ARGS_LOG"
     if [ "$1" = "--add-dir" ]; then
       if [ -f "$2/review-diff.patch" ]; then has=patch; else has=nopatch; fi
       printf 'add-dir %s %s\n' "$2" "$has" >> "$ARGS_LOG"
@@ -124,5 +125,33 @@ case "$dir" in /*) abs=0;; *) abs=1;; esac
 assert_exit 0 "$abs" "for an absolute directory, without quotes ($dir)"
 assert_contains "$(cat "$tmp/args.log")" "add-dir $dir patch" "which holds the review diff when the agent starts"
 assert_contains "$(cat "$tmp/args.log")" "prompt-names $dir" "and the prompt names the diff there"
+
+# The reviewer gets the review job's path rules, written from the repository
+# under review and the input directory's parent, as one argument without the
+# quotes that keep it whole in claude_args.
+deny=$(awk '/^deny /{print $2; exit}' "$tmp/args.log")
+top=$(git -C "$r" rev-parse --show-toplevel)
+for rule in 'Read(//proc/**)' "Grep(/$top/.git)" "Read(/$top/.git/**)" "Read(/$HOME/.*/**)"; do
+  assert_contains ",$deny," ",$rule," "the reviewer's deny list holds $rule"
+done
+case "$deny" in *"'"*) echo "FAIL: the deny list reached the agent with its quotes" >&2; exit 1 ;; esac
+
+# When the argument script refuses a runner path, the case cannot run and the
+# eval says which variable was refused, from the script's own reason.
+assert_eq "2" "$(run REVIEW_JSON="$hit" RUNNER_TEMP='/bad path' -- cases --base main --no-verify --only gate-fails-open)" "a refused runner path stops the case"
+assert_contains "$(cat "$tmp/out")" "compose-agent-args.sh refused the reviewer's arguments" "the eval says the argument script refused"
+assert_contains "$(cat "$tmp/out")" "RUNNER_TEMP must be an absolute path" "and passes on its reason, naming the variable"
+
+# reviewArgs splits the composed line as claude-code-action does for the
+# shapes it holds: a double-quoted directory and a single-quoted rule list are
+# each one word with the quotes removed. A word quoted around a space, an
+# unclosed quote or a backslash makes the line unusable.
+args_of() { LINE="$1" node --input-type=module -e "import { reviewArgs } from '$E'; try { console.log(JSON.stringify(reviewArgs(process.env.LINE))); } catch { console.log('unusable'); }"; }
+assert_eq '["--add-dir","/a","--max-turns","3","--disallowedTools","Bash,Read(//proc/**),Grep(//h/.*)"]' \
+  "$(args_of "AGENT_ARGS_REVIEW=--add-dir \"/a\" --max-turns 3 --disallowedTools 'Bash,Read(//proc/**),Grep(//h/.*)'")" \
+  "a single-quoted rule list is one word without its quotes"
+for bad in "--disallowedTools 'Bash Read'" "--disallowedTools 'Bash" "--disallowedTools Bash'x'" "--add-dir \"/a b\"" "--x a\\b"; do
+  assert_eq "unusable" "$(args_of "$bad")" "refused: $bad"
+done
 
 pass "review-eval.test.sh"

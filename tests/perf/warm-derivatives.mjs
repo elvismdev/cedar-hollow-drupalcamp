@@ -5,6 +5,7 @@
 // On DDEV, Node needs DDEV's certificate authority:
 // NODE_EXTRA_CA_CERTS="$(mkcert -CAROOT)/rootCA.pem" npm run warm -- https://cedar-hollow.ddev.site:30001
 import { readFileSync } from 'node:fs';
+import { derivativeUrls, fetchResult } from './derivative-urls.mjs';
 
 const base = (process.argv[2] ?? '').replace(/\/$/, '');
 if (!base) {
@@ -13,7 +14,10 @@ if (!base) {
 }
 // Pantheon sandboxes show a warning page unless Deterrence-Bypass is sent, and
 // PANTHEON_BOT_BYPASS_TOKEN (from `terminus gcdn:bot-bypass`) keeps the edge's
-// bot protection from challenging these requests. Neither goes to other hosts.
+// bot protection from challenging these requests. Neither goes to another
+// origin: only same-origin derivatives are collected, and fetchSameOrigin()
+// sends them to the base URL's origin only and follows only redirects that
+// stay on it.
 const onPantheon = new URL(base).hostname.endsWith('.pantheonsite.io');
 const botBypass = process.env.PANTHEON_BOT_BYPASS_TOKEN;
 const headers = onPantheon
@@ -49,7 +53,8 @@ async function get(url) {
   let wait = REQUEST_GAP;
   for (let retry = 0; retry <= RETRY_PAUSES.length; retry += 1) {
     await sleep(wait);
-    const response = await fetch(url, { headers });
+    const { status, response } = await fetchResult(url, base, headers);
+    if (!response) return { status, body: Buffer.alloc(0) };
     const body = Buffer.from(await response.arrayBuffer());
     if (response.status !== 429) return { status: response.status, body };
     console.error(`${describe429(response, body)} (${url})`);
@@ -63,6 +68,7 @@ async function get(url) {
 }
 
 const images = new Set();
+const invalid = new Set();
 for (const path of pages) {
   const { status, body } = await get(base + path);
   if (status !== 200) {
@@ -70,16 +76,16 @@ for (const path of pages) {
     process.exitCode = 1;
     continue;
   }
-  const html = body.toString('utf8');
-  for (const [, attribute, value] of html.matchAll(/\s(src|srcset)="([^"]+)"/g)) {
-    const urls = attribute === 'src' ? [value] : value.split(',').map((candidate) => candidate.trim().split(/\s+/)[0]);
-    for (const url of urls) {
-      if (/\/files\/styles\//.test(url)) images.add(new URL(url.replaceAll('&amp;', '&'), base + '/').href);
-    }
-  }
+  const found = derivativeUrls(body.toString('utf8'), base);
+  for (const url of found.urls) images.add(url);
+  for (const candidate of found.invalid) invalid.add(candidate);
 }
 
 let failed = 0;
+for (const candidate of invalid) {
+  console.error(`error (not a URL) ${candidate}`);
+  failed += 1;
+}
 for (const url of images) {
   const { status } = await get(url);
   if (status !== 200) {
@@ -87,5 +93,6 @@ for (const url of images) {
     failed += 1;
   }
 }
-console.log(`Warmed ${images.size - failed} of ${images.size} image derivatives from ${pages.length} pages.`);
+const total = images.size + invalid.size;
+console.log(`Warmed ${total - failed} of ${total} image derivatives from ${pages.length} pages.`);
 if (failed) process.exitCode = 1;

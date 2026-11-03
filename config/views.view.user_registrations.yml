@@ -4,6 +4,7 @@ status: true
 dependencies:
   module:
     - registration
+    - user
 _core:
   default_config_hash: 9EK_i7pIqenV72Iw4TcJ2AGi9QJYSwceT6hv5zGJHdc
 id: user_registrations
@@ -467,8 +468,9 @@ display:
           sort_asc_label: Asc
           sort_desc_label: Desc
       access:
-        type: none
-        options: {  }
+        type: perm
+        options:
+          perm: 'administer registration'
       cache:
         type: tag
         options: {  }
@@ -590,7 +592,7 @@ display:
           replica: false
           query_tags: {  }
       relationships: {  }
-      use_ajax: true
+      use_ajax: false
       header: {  }
       footer: {  }
       display_extenders: {  }
@@ -601,6 +603,7 @@ display:
         - 'languages:language_interface'
         - url
         - url.query_args
+        - user.permissions
       tags: {  }
   block_1:
     id: block_1
@@ -617,4 +620,5 @@ display:
         - 'languages:language_interface'
         - url
         - url.query_args
+        - user.permissions
       tags: {  }
