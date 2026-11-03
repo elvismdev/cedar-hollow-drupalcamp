@@ -7,9 +7,11 @@
 # bookkeeping it shows (usage, the number of subagents the safety classifier
 # interrupted, never their ids, each job Claude Code's refusal fallback moved
 # to another model, named only by the job and the two model names, each
-# matching ^claude-[a-z0-9-]+$, poc, cross_check, dispute_rate, tie-break
-# sides, run_status, the incomplete reasons, and a fixed line for a tie-break
-# refused for its models) is read only from
+# matching ^claude-[a-z0-9-]+$, each job whose context Claude Code's automatic
+# compaction summarised on another model, named by the job and that model, poc, cross_check, dispute_rate, tie-break
+# sides, run_status, the incomplete reasons, a fixed line for a tie-break
+# refused for its models, and a fixed line with a count for a cross-check or
+# tie-break whose request the safety classifier refused) is read only from
 # trusted-meta.json, which only merge-records.py writes; run-metadata.json,
 # which agents can write, supplies only source_ref, profile and scope_paths.
 # Rejected, disputed, unvalidated and unchecked records appear only as counts,
@@ -90,7 +92,7 @@ FINDINGS, LEDGER, METADATA = _shared.FINDINGS, _shared.LEDGER, _shared.METADATA
 DISPUTED, HISTORY, TRUSTED_META = _shared.DISPUTED, _shared.HISTORY, _shared.TRUSTED_META
 FINGERPRINT = _shared.FINGERPRINT
 Refused = _shared.Refused
-MODEL_NAME, REFUSAL_FALLBACK = _shared.MODEL_NAME, _shared.REFUSAL_FALLBACK
+MODEL_NAME, REFUSAL_FALLBACK, COMPACTION = _shared.MODEL_NAME, _shared.REFUSAL_FALLBACK, _shared.COMPACTION
 
 MAX_STATE_BYTES = 5 * 1024 * 1024
 MAX_ARTIFACT_BYTES = 1024 * 1024
@@ -231,6 +233,15 @@ TIE_BREAK_REFUSALS = (
                              "so its disputed records were removed."),
     ("tie_break_model_unrecorded", "*   Tie-break not applied: a model it needed to compare was never recorded, "
                                    "so its disputed records were removed."),
+)
+# Fixed text for a judging job whose request the safety classifier refused;
+# it runs with the refusal fallback off, so it stopped instead of switching
+# models. The count is the only value shown.
+CLASSIFIER_REFUSAL_LINES = (
+    ("refused_by_classifier", "*   The cross-check's request was refused by the safety classifier %d time(s), "
+                              "with no fallback model; the records it did not reach are not cross-checked."),
+    ("tie_break_refused_by_classifier", "*   The tie-break's request was refused by the safety classifier %d time(s), "
+                                        "with no fallback model; the disputes it did not answer were removed."),
 )
 
 
@@ -382,6 +393,13 @@ def header(run, cut_note):
         if (isinstance(job, str) and LABEL.fullmatch(job) and isinstance(pinned, str) and MODEL_NAME.fullmatch(pinned)
                 and isinstance(fallback, str) and MODEL_NAME.fullmatch(fallback)):
             lines.append("*   %s ran on %s after %s refused the task." % (job, fallback, pinned))
+    compacted = trusted.get(COMPACTION) if isinstance(trusted.get(COMPACTION), list) else []
+    for entry in compacted:
+        if not isinstance(entry, dict):
+            continue
+        job, model = entry.get("job"), entry.get("compaction_model")
+        if isinstance(job, str) and LABEL.fullmatch(job) and isinstance(model, str) and MODEL_NAME.fullmatch(model):
+            lines.append("*   The %s job's context was summarised by %s." % (job, model))
     rate = trusted.get("dispute_rate") if isinstance(trusted.get("dispute_rate"), dict) else {}
     if isinstance(rate.get("rate"), (int, float)) and not isinstance(rate.get("rate"), bool):
         lines.append("*   Dispute rate: %d of %d records cross-checked (%.0f%%)" % (
@@ -398,6 +416,10 @@ def header(run, cut_note):
     for reason, text in TIE_BREAK_REFUSALS:
         if reason in reasons:
             lines.append(text)
+    for key, text in CLASSIFIER_REFUSAL_LINES:
+        n = run.cc.get(key)
+        if isinstance(n, int) and not isinstance(n, bool) and n > 0:
+            lines.append(text % n)
     if run.state_ok:
         rejected = sum(1 for r in run.findings if r.get("verdict") == "rejected")
         lines.append("*   Counts: confirmed %d, leads %d, rejected %d, disputed %d, not cross-checked %d, "

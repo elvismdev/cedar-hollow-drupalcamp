@@ -84,13 +84,17 @@
 #                        disputes, cross_checked, tie_breaks, removed,
 #                        applied, pending, inputs_sha256, same_model,
 #                        model_unrecorded, tie_break_same_model,
-#                        tie_break_model_unrecorded}; same_model and
+#                        tie_break_model_unrecorded, refused_by_classifier,
+#                        tie_break_refused_by_classifier}; same_model and
 #                        model_unrecorded mark a cross-check refused because
 #                        its models overlap a judged job's or a required
 #                        model was never recorded, so status adds no
 #                        cross_check_missing for that cause, and the
 #                        tie_break_ pair marks a tie-break refused for the
-#                        same causes; apply-tie-break
+#                        same causes; refused_by_classifier and
+#                        tie_break_refused_by_classifier count the requests
+#                        of that job refused with no fallback, set even when
+#                        that check is refused for its models; apply-tie-break
 #                        refuses inputs whose sha256 is not inputs_sha256,
 #                        or whose disputes are not objects whose original
 #                        and replacement carry the dispute's fingerprint
@@ -111,8 +115,9 @@
 #   job_models           {job: pinned model} for every counted job
 #   job_helpers          {job: [helper model]}: every helper a job was
 #                        counted with, never removed by a later count. A
-#                        job's model set is its pinned model, its helpers and
-#                        every refusal fallback recorded for it
+#                        job's model set is its pinned model, its helpers,
+#                        every refusal fallback and every compaction model
+#                        recorded for it
 #   refusal_fallback     [{job, pinned_model, fallback_model}] for each job
 #                        whose trace holds a system model_refusal_fallback
 #                        message in its top-level array (written by Claude
@@ -120,6 +125,25 @@
 #                        refusal-fallback-models.txt that the trace shows in
 #                        use; recorded by count, which takes the pinned model
 #                        as --model
+#   compaction           [{job, pinned_model, compaction_model}] for each job
+#                        whose trace holds a system compact_boundary message
+#                        with compact_metadata.trigger "auto" in its
+#                        top-level array and a model on compaction-models.txt
+#                        only in a result's modelUsage, with no assistant
+#                        message from it, that is not the pinned model, the
+#                        helper or a named refusal fallback; recorded by count
+#   classifier_refusals  [{job, where, agent_id, index, category}] for each request
+#                        of the cross-check or tie-break, which run with the
+#                        refusal fallback off, refused with no fallback:
+#                        where "main" for the main loop's
+#                        model_refusal_no_fallback system message (no
+#                        agent_id), "subagent" for an assistant message
+#                        attributed to a subagent call whose stop_reason is
+#                        "refusal"; index is its position in the trace's
+#                        top-level array; category only when it matches
+#                        ^[a-z_]{1,32}$, else null; recorded by count. A
+#                        refused subagent's entry is never merged
+#                        (label "subagent refused by the safety classifier")
 # and, in trusted-meta.json only, run_id and source_run_status.
 # Incomplete reasons it sets: cross_check_same_model (the cross-check's
 # model set overlaps that of a job it judges: source, source_repair,
@@ -133,8 +157,11 @@
 # applied and status removes its disputes as tie_break_refused),
 # cap_exceeded:<job>, cross_check_cap,
 # cross_check_missing (a selected record with no valid cross-check entry, or
-# a cross-check that never applied), cross_check_dispute, cross_check_not_run
-# and source_run_not_finished (status found run_status still in_progress).
+# a cross-check that never applied), cross_check_dispute, cross_check_not_run,
+# cross_check_refused_by_classifier and tie_break_refused_by_classifier (that
+# job's request was refused with no fallback, so an unknown part of what it
+# judges went unchecked; its other entries are applied), and
+# source_run_not_finished (status found run_status still in_progress).
 #
 # Run ids are the GitHub run id, read from run-metadata.json when
 # trusted-meta.json is created and stored there as a number.
@@ -172,6 +199,12 @@ FINGERPRINT = _shared.FINGERPRINT
 Refused = _shared.Refused
 MODEL_NAME, refusal_fallback_models = _shared.MODEL_NAME, _shared.refusal_fallback_models
 REFUSAL_FALLBACK = _shared.REFUSAL_FALLBACK
+COMPACTION, compaction_models = _shared.COMPACTION, _shared.compaction_models
+# trusted-meta.json key: each refused request with no fallback that count
+# found in a judging job, which runs with Claude Code's refusal fallback off.
+CLASSIFIER_REFUSALS = "classifier_refusals"
+JUDGING_JOBS = ("cross-check", "tie-break")
+REFUSAL_CATEGORY = re.compile(r"^[a-z_]{1,32}$")
 # trusted-meta.json keys: each counted job's pinned model and, when count was
 # given one, its helper model, which with its refusal fallbacks make up the
 # job's model set (D24).
@@ -421,7 +454,7 @@ def record_valid(record):
 # does not hold), so their copies there, which the source and repair agents
 # can write, are never read.
 MIRRORED_KEYS = ("usage", "poc", "cross_check", "merge_discarded", "incomplete_reasons", "dispute_rate",
-                 "prior_run_paths", "interrupted", REFUSAL_FALLBACK)
+                 "prior_run_paths", "interrupted", REFUSAL_FALLBACK, COMPACTION, CLASSIFIER_REFUSALS)
 
 
 def non_negative_int(value):
@@ -453,7 +486,8 @@ class State:
         for key in ("poc", "cross_check", "dispute_rate", JOB_MODELS, JOB_HELPERS):
             if key in trusted and not isinstance(trusted[key], dict):
                 raise Refused(TRUSTED_META + " %s is not an object" % key)
-        for key in ("merge_discarded", "prior_run_paths", "interrupted", REFUSAL_FALLBACK):
+        for key in ("merge_discarded", "prior_run_paths", "interrupted", REFUSAL_FALLBACK, COMPACTION,
+                    CLASSIFIER_REFUSALS):
             if not isinstance(trusted.get(key, []), list):
                 raise Refused(TRUSTED_META + " %s is not a list" % key)
         reasons = trusted.get("incomplete_reasons")
@@ -657,6 +691,43 @@ def interrupted_calls(messages, bindings):
     return found
 
 
+def refusals_without_fallback(messages, bindings):
+    """Each refused request with no fallback, read as check-agent-run.sh reads
+    them for a judging job: a model_refusal_no_fallback system message in the
+    top-level array is the main loop's ({where: main}); an assistant message
+    attributed to a subagent call whose stop_reason is "refusal" is that
+    subagent's ({where: subagent, agent_id}), once per call, each with index,
+    its position in the top-level array, so two alike are two. The category is
+    kept only when it matches ^[a-z_]{1,32}$; the explanation never is."""
+    def category(value):
+        return value if isinstance(value, str) and REFUSAL_CATEGORY.fullmatch(value) else None
+    found, seen = [], set()
+    for index, m in enumerate(messages):
+        if not isinstance(m, dict):
+            continue
+        if m.get("type") == "system" and m.get("subtype") == "model_refusal_no_fallback":
+            found.append({"where": "main", "index": index, "category": category(m.get("api_refusal_category"))})
+        parent = m.get("parent_tool_use_id")
+        body = m.get("message")
+        if (m.get("type") == "assistant" and isinstance(parent, str) and parent in bindings and parent not in seen
+                and isinstance(body, dict) and body.get("stop_reason") == "refusal"):
+            seen.add(parent)
+            details = body.get("stop_details") if isinstance(body.get("stop_details"), dict) else {}
+            found.append({"where": "subagent", "agent_id": bindings[parent], "index": index,
+                          "category": category(details.get("category"))})
+    return found
+
+
+def refused_ids(state, job):
+    """The agent ids of the subagents count recorded as refused in job."""
+    return {r["agent_id"] for r in state.trusted.get(CLASSIFIER_REFUSALS, [])
+            if isinstance(r, dict) and r.get("job") == job and isinstance(r.get("agent_id"), str)}
+
+
+def refusal_count(state, job):
+    return sum(1 for r in state.trusted.get(CLASSIFIER_REFUSALS, []) if isinstance(r, dict) and r.get("job") == job)
+
+
 def interrupted_ids(state, job):
     """The agent ids count recorded as interrupted in job, read back from
     trusted-meta.json rather than from any trace."""
@@ -695,6 +766,37 @@ def refusal_fallbacks(messages, pinned, helper=None):
     return sorted(named & used)
 
 
+def compactions(messages, pinned, helper, fallbacks):
+    """The models Claude Code's automatic compaction summarised the context
+    on, read as check-agent-run.sh reads them: a model in a result's
+    modelUsage that is not the pinned model, the helper or one of fallbacks
+    (what refusal_fallbacks returned for the same trace), that no assistant
+    message is from, that is on compaction-models.txt, in a trace whose
+    top-level array holds a system compact_boundary message with
+    compact_metadata.trigger "auto". The allowlist is read only when such a model exists; when it
+    cannot be read, nothing is recorded and the run check fails the run."""
+    if not any(isinstance(m, dict) and m.get("type") == "system" and m.get("subtype") == "compact_boundary"
+               and isinstance(m.get("compact_metadata"), dict) and m["compact_metadata"].get("trigger") == "auto"
+               for m in messages):
+        return []
+    usage, assistants = set(), set()
+    for m in messages:
+        if not isinstance(m, dict):
+            continue
+        if m.get("type") == "result" and isinstance(m.get("modelUsage"), dict):
+            usage.update(m["modelUsage"])
+        if m.get("type") == "assistant" and isinstance(m.get("message"), dict) and isinstance(m["message"].get("model"), str):
+            assistants.add(m["message"]["model"])
+    candidates = usage - {pinned, helper} - set(fallbacks) - assistants
+    if not candidates:
+        return []
+    try:
+        allowed = compaction_models()
+    except Refused:
+        return []
+    return sorted(candidates & set(allowed))
+
+
 def subagent_count(messages):
     calls = sum(1 for m in messages for c in tool_uses(m) if c.get("name") in SUBAGENT_TOOLS)
     spawned = 0
@@ -721,6 +823,7 @@ def read_entries(state, job, entries, trace_path):
     for agent_id in sorted(reused):
         state.discard(job, agent_id, "agent id declared by more than one subagent call")
     interrupted = interrupted_ids(state, job)
+    refused_by_classifier = refused_ids(state, job)
     paths = {entry_path(entries, agent_id): agent_id for agent_id in set(bindings.values())}
     last, refused = {}, {}
     for message in messages:
@@ -746,6 +849,9 @@ def read_entries(state, job, entries, trace_path):
     for agent_id in sorted(set(bindings.values())):
         if agent_id in interrupted:
             state.discard(job, agent_id, "subagent interrupted by the safety classifier")
+            continue
+        if agent_id in refused_by_classifier:
+            state.discard(job, agent_id, "subagent refused by the safety classifier")
             continue
         if agent_id in refused:
             state.discard(job, agent_id, refused[agent_id])
@@ -813,10 +919,22 @@ def cmd_count(state, args):
         if args.helper not in helpers:
             helpers.append(args.helper)
     fallbacks = state.trusted.setdefault(REFUSAL_FALLBACK, [])
-    for fallback in refusal_fallbacks(messages, args.model, args.helper):
+    fell_back = refusal_fallbacks(messages, args.model, args.helper)
+    for fallback in fell_back:
         key = {"job": args.job, "pinned_model": args.model, "fallback_model": fallback}
         if key not in fallbacks:
             fallbacks.append(key)
+    if args.job in JUDGING_JOBS:
+        refusals = state.trusted.setdefault(CLASSIFIER_REFUSALS, [])
+        for refusal in refusals_without_fallback(messages, bindings):
+            entry = dict(refusal, job=args.job)
+            if entry not in refusals:
+                refusals.append(entry)
+    compacted = state.trusted.setdefault(COMPACTION, [])
+    for model in compactions(messages, args.model, args.helper, fell_back):
+        key = {"job": args.job, "pinned_model": args.model, "compaction_model": model}
+        if key not in compacted:
+            compacted.append(key)
     recorded = state.trusted.setdefault("interrupted", [])
     for call_id, agent_id in interrupted_calls(messages, bindings):
         key = {"job": args.job, "agent_id": agent_id, "tool_use_id": call_id}
@@ -1312,8 +1430,8 @@ def cross_entry_valid(entry, selected):
 
 def model_set(state, job):
     """The models a counted job ran on: its pinned model, every helper model
-    it was counted with and every refusal fallback recorded for it;
-    None when the job's pinned model was never recorded."""
+    it was counted with, every refusal fallback and every compaction model
+    recorded for it; None when the job's pinned model was never recorded."""
     pinned = state.trusted.get(JOB_MODELS, {}).get(job)
     if not isinstance(pinned, str):
         return None
@@ -1321,8 +1439,10 @@ def model_set(state, job):
     helpers = state.trusted.get(JOB_HELPERS, {}).get(job)
     if isinstance(helpers, list):
         models |= {h for h in helpers if isinstance(h, str)}
-    return models | {r["fallback_model"] for r in state.trusted.get(REFUSAL_FALLBACK, [])
-                     if isinstance(r, dict) and r.get("job") == job and isinstance(r.get("fallback_model"), str)}
+    models |= {r["fallback_model"] for r in state.trusted.get(REFUSAL_FALLBACK, [])
+               if isinstance(r, dict) and r.get("job") == job and isinstance(r.get("fallback_model"), str)}
+    return models | {r["compaction_model"] for r in state.trusted.get(COMPACTION, [])
+                     if isinstance(r, dict) and r.get("job") == job and isinstance(r.get("compaction_model"), str)}
 
 
 # The jobs whose results each checking job judges (D24): the cross-check
@@ -1383,6 +1503,14 @@ def cmd_apply_cross_check(state, args):
     if not isinstance(cc, dict) or not isinstance(cc.get("selected"), list):
         raise Refused("no cross-check selection in trusted-meta.json")
     selected = set(cc["selected"])
+    # A refused request leaves an unknown part of the selection unchecked;
+    # every other entry is applied, and the run is marked incomplete. It is
+    # recorded before the model check, so a check refused for its models
+    # still shows it.
+    refusals = refusal_count(state, "cross-check")
+    if refusals:
+        cc["refused_by_classifier"] = refusals
+        state.incomplete("cross_check_refused_by_classifier")
     cause = model_independence(state, "cross-check")
     if cause is not None:
         # Not applied: a check that shares a model with a job it judges, or
@@ -1452,6 +1580,10 @@ def cmd_apply_tie_break(state, args):
     cc = state.trusted.get("cross_check")
     if not isinstance(cc, dict) or not cc.get("applied"):
         raise Refused("apply-cross-check has not run")
+    refusals = refusal_count(state, "tie-break")
+    if refusals:
+        cc["tie_break_refused_by_classifier"] = refusals
+        state.incomplete("tie_break_refused_by_classifier")
     cause = model_independence(state, "tie-break")
     if cause is not None:
         # Not applied, as for the cross-check (D24): the disputes stay

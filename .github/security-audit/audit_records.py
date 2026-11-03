@@ -36,17 +36,36 @@ MODEL_NAME = re.compile(r"^claude-[a-z0-9-]+$")
 FALLBACK_MODELS_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "refusal-fallback-models.txt")
 
 
-def refusal_fallback_models():
-    """The allowlisted fallback models; refused when the file is missing,
-    empty or holds a line that is not a model name."""
+# The trusted-meta.json and run-metadata.json key that records each job whose
+# context Claude Code's automatic compaction summarised on another model.
+COMPACTION = "compaction"
+# The models Claude Code's automatic compaction may summarise a job's context
+# on, one per line; check-agent-run.sh reads the same file. It is kept apart
+# from the refusal fallback list because the two are different mechanisms.
+COMPACTION_MODELS_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "compaction-models.txt")
+
+
+def _allowlisted_models(path, label):
     try:
-        with open(FALLBACK_MODELS_FILE, encoding="utf-8") as handle:
+        with open(path, encoding="utf-8") as handle:
             models = [line.strip() for line in handle if line.strip()]
     except OSError:
         models = []
     if not models or not all(MODEL_NAME.fullmatch(m) for m in models):
-        raise Refused("the refusal fallback allowlist is missing, empty or malformed")
+        raise Refused("the %s allowlist is missing, empty or malformed" % label)
     return models
+
+
+def refusal_fallback_models():
+    """The allowlisted fallback models; refused when the file is missing,
+    empty or holds a line that is not a model name."""
+    return _allowlisted_models(FALLBACK_MODELS_FILE, "refusal fallback")
+
+
+def compaction_models():
+    """The allowlisted compaction models, refused as refusal_fallback_models
+    is."""
+    return _allowlisted_models(COMPACTION_MODELS_FILE, "compaction")
 
 
 class Refused(Exception):

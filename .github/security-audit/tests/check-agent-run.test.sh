@@ -475,6 +475,33 @@ case "$(run poc-write "$tmp/t.json")" in *"ran on the refusal fallback"*) echo "
 fb_trace "$FB" "$(fb_event "$FB")" "$(top Bash '{"command":"id"}')"
 assert_eq "1" "$(rc poc-write "$tmp/t.json")" "every other rule still applies on a fallback run"
 
+# Automatic compaction: a model only in modelUsage is accepted when it is on
+# the compaction allowlist, no assistant message is from it, and a top-level
+# compact_boundary event has trigger "auto".
+cb_event () { printf '{"type":"system","subtype":"compact_boundary","compact_metadata":{"trigger":"%s","pre_tokens":989974}}' "$1"; }
+cb_trace () { # usage-model [message...]: a pinned-model run whose modelUsage also lists usage-model
+  local use="$1"; shift
+  trace "$tmp/t.json" "$INIT" "$@" "$(top Read "{\"file_path\":\"$WS/tracked.txt\"}")" "$(result "$M" "$use")"
+}
+cb_trace "$FB" "$(cb_event auto)"
+assert_eq "0" "$(rc source "$tmp/t.json")" "an allowlisted model only in modelUsage, after an automatic compaction, passes"
+assert_contains "$(run source "$tmp/t.json")" "the source step's context was summarised by the compaction model $FB" "and names the job and the model"
+cb_trace "$FB"
+assert_eq "1" "$(rc source "$tmp/t.json")" "the same usage with no compaction event fails"
+assert_contains "$(run source "$tmp/t.json")" "model use(s) other than the pinned model" "and fails on the model rule"
+cb_trace "$FB" "$(cb_event manual)"
+assert_eq "1" "$(rc source "$tmp/t.json")" "a manual compaction does not count"
+cb_trace claude-other-1 "$(cb_event auto)"
+assert_eq "1" "$(rc source "$tmp/t.json")" "a model off the compaction allowlist fails"
+cb_trace "$FB" "$(cb_event auto)" "$(as_model "$FB" "$(top Read "{\"file_path\":\"$WS/tracked.txt\"}")")"
+assert_eq "1" "$(rc source "$tmp/t.json")" "an assistant message from the compaction model fails"
+cb_trace "$FB" "{\"type\":\"user\",\"parent_tool_use_id\":null,\"message\":{\"content\":[{\"type\":\"tool_result\",\"tool_use_id\":\"tx\",\"content\":[$(cb_event auto)]}]}}"
+assert_eq "1" "$(rc source "$tmp/t.json")" "a compaction event only inside a tool_result does not count"
+cb_trace "$FB" '{"type":"system","subtype":"compact_boundary","compact_metadata":"auto"}'
+assert_eq "1" "$(rc source "$tmp/t.json")" "a compaction event without a trigger object does not count"
+cb_trace "$FB" "$(cb_event auto)" "$(top Bash '{"command":"id"}')"
+assert_eq "1" "$(rc source "$tmp/t.json")" "every other rule still applies after a compaction"
+
 # source_repair runs with exactly the source rules: the clean source trace,
 # with its state-file writes, passes in both, and a refused call fails in both.
 for j in source source_repair; do
@@ -499,6 +526,44 @@ for j in cross-check tie-break; do
   assert_eq "1" "$(rc "$j" "$tmp/t.json")" "a state file write fails as $j"
 done
 
+# The cross-check and tie-break run with the refusal fallback off. A refused
+# request with no fallback is reported, not refused: the main loop's event, or
+# a subagent's refused response, which exempts that subagent from the
+# no-tool-calls rule. Any fallback in those jobs fails them.
+nf_event () { printf '{"type":"system","subtype":"model_refusal_no_fallback","original_model":"%s","request_id":"req_1","api_refusal_category":"%s","api_refusal_explanation":"LEAKEXPLAIN52","refused_user_message_uuid":null,"content":"","uuid":"u1","session_id":"s1"}' "$M" "$1"; }
+refused_by () { # call-id category: the subagent's refused response
+  printf '{"type":"assistant","parent_tool_use_id":"%s","message":{"model":"%s","stop_reason":"refusal","stop_details":{"type":"refusal","category":"%s","explanation":"LEAKEXPLAIN52"},"content":[{"type":"text","text":"refused"}]}}' "$1" "$M" "$2"
+}
+JUDGED=("$INIT" "$(agent tc1 "agent-id: tb-1 judge")" "$(agent tc2 "agent-id: tb-2 judge")"
+  "$(sub tc1 Write "{\"file_path\":\"$OUT/agents/tb-1/scratch/entry.json\",\"content\":\"{}\"}")")
+for j in cross-check tie-break; do
+  trace "$tmp/t.json" "${JUDGED[@]}" "$(sub tc2 Write "{\"file_path\":\"$OUT/agents/tb-2/scratch/entry.json\",\"content\":\"{}\"}")" "$(nf_event cyber)" "$(result "$M")"
+  assert_eq "0" "$(rc "$j" "$tmp/t.json")" "a main-loop refusal with no fallback passes as $j"
+  assert_contains "$(run "$j" "$tmp/t.json")" "the $j step's request was refused with no fallback (main loop, message 7), category cyber" "and is reported with its position as $j"
+  case "$(run "$j" "$tmp/t.json")" in *LEAKEXPLAIN52*) echo "FAIL: the refusal explanation was printed" >&2; exit 1;; esac
+  trace "$tmp/t.json" "${JUDGED[@]}" "$(sub tc2 Write "{\"file_path\":\"$OUT/agents/tb-2/scratch/entry.json\",\"content\":\"{}\"}")" "$(nf_event cyber)" "$(nf_event cyber)" "$(result "$M")"
+  out=$(run "$j" "$tmp/t.json")
+  assert_contains "$out" "(main loop, message 7), category cyber" "the first of two alike refusals is reported as $j"
+  assert_contains "$out" "(main loop, message 8), category cyber" "and so is the second as $j"
+  trace "$tmp/t.json" "${JUDGED[@]}" "$(refused_by tc2 cyber)" "$(result "$M")"
+  assert_eq "0" "$(rc "$j" "$tmp/t.json")" "a refused subagent with no tool calls passes as $j"
+  assert_contains "$(run "$j" "$tmp/t.json")" "Agent call 2: (agent id tb-2) was refused with no fallback (message 6), category cyber; its entry is never merged" "and is reported by call and agent id as $j"
+  case "$(run "$j" "$tmp/t.json")" in *LEAKEXPLAIN52*) echo "FAIL: the refusal explanation was printed" >&2; exit 1;; esac
+  trace "$tmp/t.json" "${JUDGED[@]}" "$(refused_by tc2 'Not A Category!')" "$(result "$M")"
+  assert_contains "$(run "$j" "$tmp/t.json")" "was refused with no fallback (message 6), category not given" "a category off the pattern is not printed as $j"
+  trace "$tmp/t.json" "${JUDGED[@]}" "$(sub tc2 Write "{\"file_path\":\"$OUT/agents/tb-2/scratch/entry.json\",\"content\":\"{}\"}")" "$(fb_event "$FB")" "$(result "$M")"
+  assert_eq "1" "$(rc "$j" "$tmp/t.json")" "a refusal fallback event fails $j"
+  assert_contains "$(run "$j" "$tmp/t.json")" "a model_refusal_fallback event in the $j step, which runs with the refusal fallback off" "and says why as $j"
+  trace "$tmp/t.json" "${JUDGED[@]}" "$(sub tc2 Write "{\"file_path\":\"$OUT/agents/tb-2/scratch/entry.json\",\"content\":\"{}\"}")" "$(cb_event auto)" "$(result "$M" "$FB")"
+  assert_eq "0" "$(rc "$j" "$tmp/t.json")" "a compaction model is accepted in $j as in the other jobs"
+  assert_contains "$(run "$j" "$tmp/t.json")" "the $j step's context was summarised by the compaction model $FB" "and is reported in $j"
+  trace "$tmp/t.json" "${JUDGED[@]}" "$(as_model "$FB" "$(sub tc2 Write "{\"file_path\":\"$OUT/agents/tb-2/scratch/entry.json\",\"content\":\"{}\"}")")" "$(cb_event auto)" "$(result "$M" "$FB")"
+  assert_eq "1" "$(rc "$j" "$tmp/t.json")" "an assistant message from that model still fails $j"
+done
+# Other jobs keep the fallback: a subagent with no tool calls still fails them.
+trace "$tmp/t.json" "${JUDGED[@]}" "$(refused_by tc2 cyber)" "$(result "$M")"
+assert_eq "1" "$(rc poc-decide "$tmp/t.json")" "a refused subagent with no tool calls still fails poc-decide"
+
 # The allowlist is read only for a trace holding a fallback event: with the
 # file gone, a trace with no event still passes, and one with an event fails
 # with a reason line rather than a stack.
@@ -518,6 +583,19 @@ assert_contains "$out" "check-agent-run: the refusal fallback allowlist is missi
 case "$out" in *"at Object"*|*"ENOENT"*|*"node:"*) echo "FAIL: a missing allowlist printed a stack" >&2; exit 1;; esac
 printf 'not a model\n' > "$COPY/security-audit/refusal-fallback-models.txt"
 assert_eq "1" "$(copy_rc)" "a malformed allowlist file fails a fallback run"
+
+# The compaction allowlist is read only when a compaction model needs it.
+rm "$COPY/security-audit/compaction-models.txt"
+cb_trace "$M" "$(cb_event auto)"
+assert_eq "0" "$(copy_rc source)" "a compaction with every model accepted passes without the compaction allowlist file"
+cb_trace "$FB" "$(cb_event auto)"
+assert_eq "1" "$(copy_rc source)" "a compaction model without the compaction allowlist file fails"
+out=$(copy_run source || true)
+assert_contains "$out" "check-agent-run: the compaction allowlist is missing, empty or malformed" "and says why"
+case "$out" in *"at Object"*|*"ENOENT"*|*"node:"*) echo "FAIL: a missing compaction allowlist printed a stack" >&2; exit 1;; esac
+printf 'not a model\n' > "$COPY/security-audit/compaction-models.txt"
+assert_eq "1" "$(copy_rc source)" "a malformed compaction allowlist file fails a compaction run"
+assert_contains "$(copy_run source || true)" "check-agent-run: the compaction allowlist is missing, empty or malformed" "and says why, as for the fallback allowlist"
 
 # The fingerprint: the checkout and the watched parts of ~/.claude.
 assert_eq "0" "$(rc source "$tmp/clean.json")" "unchanged state passes"

@@ -15,7 +15,7 @@ from test_merge_records import SA, confirmed, lead, metadata, rejected, unit
 SCRIPT = os.path.join(SA, "render-issue.py")
 SHA = "b" * 64
 SCREEN_FAILED = "Output failed or could not run the secret screen"
-TRUSTED_KEYS = ("usage", "poc", "cross_check", "merge_discarded", "incomplete_reasons", "dispute_rate", "interrupted", "refusal_fallback",
+TRUSTED_KEYS = ("usage", "poc", "cross_check", "merge_discarded", "incomplete_reasons", "dispute_rate", "interrupted", "refusal_fallback", "compaction",
                 "run_status", "incomplete_reason")
 OK_JOBS = {"publish": True, "canary": "none", "source": {"result": "success", "cause": "ok"},
            "cross_check": {"result": "success", "cause": "ok", "validators": "pass"}}
@@ -189,6 +189,21 @@ class ContentTest(RenderTest):
         self.seed([], final_meta())
         self.assertNotIn("Tie-break not applied", self.render())
 
+    def test_a_classifier_refusal_is_a_fixed_line_with_its_count(self):
+        meta = final_meta(incomplete_reasons=["cross_check_refused_by_classifier", "tie_break_refused_by_classifier"])
+        meta["cross_check"].update(refused_by_classifier=2, tie_break_refused_by_classifier=1)
+        self.seed([], meta)
+        body = self.render()
+        self.assertIn("*   The cross-check's request was refused by the safety classifier 2 time(s), with no fallback "
+                      "model; the records it did not reach are not cross-checked.", body.splitlines())
+        self.assertIn("*   The tie-break's request was refused by the safety classifier 1 time(s), with no fallback "
+                      "model; the disputes it did not answer were removed.", body.splitlines())
+        for bad in ("2", True, -1, "LEAK"):
+            meta = final_meta()
+            meta["cross_check"]["refused_by_classifier"] = bad
+            self.seed([], meta)
+            self.assertNotIn("refused by the safety classifier", self.render())
+
     def test_a_refusal_fallback_is_one_line_per_job(self):
         self.seed([], final_meta(refusal_fallback=[
             {"job": "poc-write", "pinned_model": "claude-opus-5-5", "fallback_model": "claude-opus-4-8"},
@@ -202,6 +217,18 @@ class ContentTest(RenderTest):
         self.assertNotIn("@owner", body)
         self.seed([], final_meta())
         self.assertNotIn("refused the task", self.render())
+
+    def test_a_compaction_is_one_line_per_job(self):
+        self.seed([], final_meta(compaction=[
+            {"job": "source", "pinned_model": "claude-opus-5-5", "compaction_model": "claude-opus-4-8"},
+            {"job": "poc-write", "pinned_model": "claude-opus-5-5", "compaction_model": "http://evil.example"},
+            {"job": "Not A Label!", "pinned_model": "claude-opus-5-5", "compaction_model": "claude-opus-4-8"}]))
+        body = self.render()
+        self.assertIn("*   The source job's context was summarised by claude-opus-4-8.", body)
+        self.assertEqual(body.count("context was summarised by"), 1)
+        self.assertNotIn("evil", body)
+        self.seed([], final_meta())
+        self.assertNotIn("context was summarised", self.render())
 
     def test_interrupted_subagents_are_a_count_only(self):
         self.seed([], final_meta(interrupted=[{"job": "poc-decide", "agent_id": "decider-secret-7"},
