@@ -88,7 +88,7 @@ assert_contains "$(run BUGS_STATE=failed BUGS_CAUSE=empty_diff SECURITY_STATE=ca
 
 # 4. Capped, with no acknowledgement.
 out=$(run BUGS_STATE=capped)
-assert_contains "$out" "Round cap reached for bugs." "one angle capped with the other reviewed"
+assert_contains "$out" "Round cap reached for bugs. Waiting for 'Accepted at ${A1}:' (the full 40-character sha)." "one angle capped with the other reviewed names the full head sha to acknowledge"
 assert_eq "1" "$(rc BUGS_STATE=capped)" "is red"
 assert_contains "$(run BUGS_STATE=capped SECURITY_STATE=capped)" "Round cap reached for bugs and security." "both capped"
 assert_contains "$(run SECURITY_STATE=capped REVIEW_THREADS_CMD="$unreadable")" "Round cap reached for security." "the cap comes before the threads"
@@ -132,7 +132,7 @@ assert_contains "$(run REVIEW_THREADS_CMD="$(threads "$(thread "$BOT" "nit: nami
 
 # 8. High, with no acknowledgement.
 out=$(run TIER=High)
-assert_contains "$out" "High risk: waiting for 'Accepted at ${A1:0:7}:'." "a High tier waits for an acknowledgement"
+assert_contains "$out" "High risk: waiting for 'Accepted at ${A1}:' (the full 40-character sha)." "a High tier waits for an acknowledgement of the full head sha"
 assert_eq "1" "$(rc TIER=High)" "and is red"
 assert_eq "1" "$(rc TIER=)" "a missing tier is treated as High"
 
@@ -151,23 +151,38 @@ PY2
 [ "$(stat -c %s "$tmp/big-comments.json")" -gt 131072 ] || { echo "FAIL: the large feed fixture is under 128 KiB" >&2; exit 1; }
 assert_eq "0" "$(rc TIER=High REVIEW_COMMENTS_CMD="cat $tmp/big-comments.json")" "a comments feed over 128 KiB is read and its acknowledgement found"
 assert_eq "0" "$(rc BUGS_STATE=capped REVIEW_COMMENTS_CMD="$ack_head")" "and the round cap"
+# Only a full 40-hex sha counts. Git always reads 40 hex as an object id, while
+# a short sha is resolved through refs and prefixes: a tag named after it, or a
+# commit ground to share its prefix, moves it to another commit.
 ack_short=$(comments repo-owner "Accepted at ${A1:0:7}: short sha")
-assert_eq "0" "$(rc TIER=High REVIEW_COMMENTS_CMD="$ack_short")" "a short sha is expanded"
+assert_eq "1" "$(rc TIER=High REVIEW_COMMENTS_CMD="$ack_short")" "a short sha of the head does not count"
+assert_contains "$(run TIER=High REVIEW_COMMENTS_CMD="$ack_short")" "High risk: waiting for 'Accepted at ${A1}:' (the full 40-character sha)." "and the gate asks for the full sha"
+assert_eq "1" "$(rc BUGS_STATE=capped REVIEW_COMMENTS_CMD="$ack_short")" "nor for the round cap"
+# A tag named after the acknowledged short sha, pointing at an unreviewed head.
+git tag "${A1:0:7}" "$H3"
+assert_eq "1" "$(rc TIER=High HEAD_SHA="$H3" REVIEW_COMMENTS_CMD="$ack_short")" "a tag named after an acknowledged short sha does not move it to another head"
+git tag -d "${A1:0:7}" >/dev/null
+# A tag named after an acknowledged full sha, pointing at an unreviewed head:
+# the 40 hex still name the acknowledged commit.
+git tag "$A1" "$H3" 2>/dev/null
+[ "$(git rev-parse --verify --quiet "refs/tags/$A1")" = "$H3" ] || { echo "FAIL: the 40-hex tag fixture was not created" >&2; exit 1; }
+assert_eq "1" "$(rc TIER=High HEAD_SHA="$H3" REVIEW_COMMENTS_CMD="$ack_head")" "a tag named after an acknowledged full sha does not move it to another head"
+git tag -d "$A1" >/dev/null
 not_owner=$(comments someone-else "Accepted at $A1: me too")
 assert_eq "1" "$(rc TIER=High REVIEW_COMMENTS_CMD="$not_owner")" "an acknowledgement by anyone else does not count"
 quoted=$(comments repo-owner "I will write Accepted at $A1: later")
 assert_eq "1" "$(rc TIER=High REVIEW_COMMENTS_CMD="$quoted")" "nor does one not at the start of the comment"
-unknown=$(comments repo-owner "Accepted at deadbee: not a commit here")
+unknown=$(comments repo-owner "Accepted at deadbeefdeadbeefdeadbeefdeadbeefdeadbeef: not a commit here")
 assert_eq "1" "$(rc TIER=High REVIEW_COMMENTS_CMD="$unknown")" "nor one for a sha this checkout lacks"
 assert_eq "1" "$(rc TIER=High HEAD_SHA="$H2" REVIEW_COMMENTS_CMD="$(comments repo-owner "Accepted at $B0: the base")")" "nor one for an unrelated commit"
-assert_eq "0" "$(rc TIER=High REVIEW_COMMENTS_CMD="$(comments repo-owner "Accepted at deadbee: no" repo-owner "Accepted at $A1: yes")")" "any valid one among several counts"
+assert_eq "0" "$(rc TIER=High REVIEW_COMMENTS_CMD="$(comments repo-owner "Accepted at deadbeefdeadbeefdeadbeefdeadbeefdeadbeef: no" repo-owner "Accepted at $A1: yes")")" "any valid one among several counts"
 
 # An earlier commit acknowledged, then main merged in: the head is that commit
 # plus main, so the acknowledgement still holds.
 assert_eq "0" "$(rc TIER=High HEAD_SHA="$H2" REVIEW_COMMENTS_CMD="$ack_head")" "an acknowledgement before a clean merge from main is valid"
 # The same, then an edit: new work nobody accepted.
 assert_eq "1" "$(rc TIER=High HEAD_SHA="$H3" REVIEW_COMMENTS_CMD="$ack_head")" "the same followed by an edit is invalid"
-assert_contains "$(run TIER=High HEAD_SHA="$H3" REVIEW_COMMENTS_CMD="$ack_head")" "High risk: waiting for 'Accepted at ${H3:0:7}:'." "and asks for the new head"
+assert_contains "$(run TIER=High HEAD_SHA="$H3" REVIEW_COMMENTS_CMD="$ack_head")" "High risk: waiting for 'Accepted at ${H3}:' (the full 40-character sha)." "and asks for the new head"
 
 # Comments that cannot be read are not "no acknowledgement".
 assert_contains "$(run TIER=High REVIEW_COMMENTS_CMD='exit 4')" "Pull request comments could not be read." "an unreadable comments feed is named"

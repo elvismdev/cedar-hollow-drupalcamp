@@ -193,7 +193,7 @@ This table is a project addition to the design template. It records who settled 
 
 *   **Given**: A pull request has had three reviewed rounds on one angle.
 *   **When**: The owner pushes a fourth change.
-*   **Then**: That angle reports `capped`, and the gate is red with "Round cap reached for bugs." The owner reads the unreviewed commits and posts "Accepted at <short head sha>: <reason>". A re-run of the gate turns it green.
+*   **Then**: That angle reports `capped`, and the gate is red with "Round cap reached for bugs. Waiting for 'Accepted at <full head sha>:' (the full 40-character sha)." The owner reads the unreviewed commits and posts "Accepted at <full head sha>: <reason>". A re-run of the gate turns it green.
 
 ### CUJ 7: A reviewer change regresses
 
@@ -342,18 +342,19 @@ The repository's merge settings are changed to match (merge commits only), becau
         1.  Guard failed: "Outside pull requests are not accepted; please open an issue."
         2.  Draft: "Draft pull request: the review runs when it is marked ready."
         3.  Either angle `failed` or missing: "Review did not run (<cause>) for <angle>." A missing angle reports cause `missing`.
-        4.  Either angle `capped`, with no valid acknowledgement: "Round cap reached for <angle>."
+        4.  Either angle `capped`, with no valid acknowledgement: "Round cap reached for <angle>. Waiting for 'Accepted at <full head sha>:' (the full 40-character sha)."
         5.  Threads unreadable: "Review threads could not be read."
         6.  100 or more threads: "100 or more review threads; the gate cannot decide."
         7.  Important findings unanswered: "<N> important findings unanswered."
             *   The gate looks at review threads whose first comment is by `github-actions[bot]`.
             *   A thread is important unless it is explicitly tagged nit or pre-existing.
             *   A thread is answered when a comment by the repository owner follows the first comment. Resolved or outdated alone never answers it.
-        8.  Tier High, with no valid acknowledgement: "High risk: waiting for 'Accepted at <sha>:'."
+        8.  Tier High, with no valid acknowledgement: "High risk: waiting for 'Accepted at <full head sha>:' (the full 40-character sha)."
         9.  Otherwise green.
     *   **Acknowledgement.**
-        *   One owner comment on the pull request, "Accepted at <short sha>: <reason>", clears both the High tier and the round cap.
-        *   It is valid when the expanded sha is the head, or a commit whose clean merge with the head's base (as above) has the head's tree.
+        *   One owner comment on the pull request, "Accepted at <full sha>: <reason>", clears both the High tier and the round cap.
+        *   Only a full 40-character sha counts. Git always reads 40 hex digits as an object id, while a short sha is resolved through refs and prefixes, so a tag named after it, or a commit ground to share its prefix, would move it to another commit.
+        *   It is valid when the sha is the head, or a commit whose clean merge with the head's base (as above) has the head's tree.
         *   No timestamps are involved.
     *   **Red gate output.** A red gate prints each open thread's link and tag, then: "Reply in the thread, then re-run this job (Re-run jobs > Review gate, or `gh run rerun <run-id> --job <job-id>`)." Re-running only the gate keeps the review jobs' outputs from the same run, so no agent runs again.
 
@@ -434,7 +435,7 @@ The repository's merge settings are changed to match (merge commits only), becau
     *   **Risk**:
         *   three lines outside any comment: `- [ ] Low`, `- [ ] Medium`, `- [ ] High`;
         *   it states that changed paths can raise the tier to High and a ticked box cannot lower it;
-        *   it states that a High pull request needs an owner comment starting "Accepted at <sha>:".
+        *   it states that a High pull request needs an owner comment starting "Accepted at <sha>:" with the full 40-character sha.
     *   **How to revert**: `git revert -m 1 <merge>`, plus the one-way steps to name: update hooks, post-updates, deploy hooks, configuration imports, applied recipes, content created on Dev.
 
 ### 7. Documentation
@@ -702,7 +703,7 @@ Each stage is one or more pull requests, merged by the owner, with small single-
 *   **Type / Scope**: Pull request template.
 *   **Proposed Changes**: What and why; Testing; Risk; How to revert, with the wording in Technical Plan section 6.
     *   The Risk section has the three literal lines `- [ ] Low`, `- [ ] Medium` and `- [ ] High`, outside any HTML comment.
-    *   It says that changed paths can raise the tier to High, that a ticked box cannot lower it, and that a High pull request needs an owner comment starting "Accepted at <sha>:".
+    *   It says that changed paths can raise the tier to High, that a ticked box cannot lower it, and that a High pull request needs an owner comment starting "Accepted at <sha>:" with the full 40-character sha.
 
 #### 11. `docs/code-review-practice.md` (Create)
 
@@ -789,7 +790,7 @@ Stage 4 lands in this order:
         The calling job checks out `main` with full history and fetches the head (Technical Plan section 3, item 4).
     *   **`gate-decide.sh`** takes the inputs as environment variables and implements the decision order in Technical Plan section 3, item 4. It calls `findings-gate.sh` for decision steps 5 to 7, prints the gate messages listed there, and writes the cause and the per-thread list to `$GITHUB_STEP_SUMMARY`.
     *   **Acknowledgement check.**
-        *   It finds owner comments matching `^Accepted at ([0-9a-f]{7,40}):` and expands each sha with `git rev-parse --verify "<sha>^{commit}"`.
+        *   It finds owner comments matching `^Accepted at ([0-9a-f]{40}):` and resolves each sha with `git rev-parse --verify "<sha>^{commit}"`.
         *   A comment is valid when the sha is the head, or when `git merge-tree --write-tree $(git merge-base <head> origin/main) <sha>` equals `git rev-parse <head>^{tree}`.
     *   **Tests** cover:
         *   every decision step, and the order between them;
@@ -798,7 +799,7 @@ Stage 4 lands in this order:
         *   a draft;
         *   one angle `capped` with the other `reviewed`, which is red;
         *   an acknowledgement for the head;
-        *   a short sha;
+        *   a short sha of the head, which is invalid, and a tag named after an acknowledged sha, short or full, pointing at another head, which is invalid;
         *   an acknowledgement for an earlier commit followed by a merge from `main`, which is valid;
         *   the same followed by an edit, which is invalid.
 
@@ -1027,7 +1028,7 @@ Stage 4 lands in this order:
     *   `gh api repos/{owner}/{repo}/rules/branches/main` lists "Reviewer tools tests".
 *   **Stage 5 canary**, in this order on the throwaway pull request:
     1.  **(a)** An important finding about the stdout comparison, and a red gate naming it. If the finding is missed, re-run once; if it is still missed, record the miss and use any other important finding for step (b).
-    2.  **(b)** After an owner reply alone, the gate is red with "High risk: waiting for 'Accepted at <sha>:'." (the canary edits `.github/`, so it is High). After an "Accepted at <head sha>:" comment and a gate re-run, it is green.
+    2.  **(b)** After an owner reply alone, the gate is red with "High risk: waiting for 'Accepted at <full head sha>:' (the full 40-character sha)." (the canary edits `.github/`, so it is High). After an "Accepted at <full head sha>:" comment and a gate re-run, it is green.
     3.  **(c)** After a docs pull request moves `main`, merging `main` into the branch reports `current` and spends no round.
     4.  **(d)** A commit with these edits:
         *   `gate-decide.sh` starts with `exit 0`;

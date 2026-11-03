@@ -28,8 +28,8 @@
 - [ ] High
 
 The changed paths can raise the tier to High, and a ticked box cannot lower it.
-A High pull request needs an owner comment starting "Accepted at <sha>:" before
-the review gate passes.
+A High pull request needs an owner comment starting "Accepted at <sha>:", with
+the full 40-character head sha, before the review gate passes.
 
 ## How to revert
 

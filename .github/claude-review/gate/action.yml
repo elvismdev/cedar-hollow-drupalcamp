@@ -2,8 +2,9 @@ name: Review gate
 description: >
   Decide the Review gate for a pull request: red while the review did not run,
   while an important finding is unanswered, or while a High tier or a round cap
-  has no valid "Accepted at <sha>:" from the repository owner. Run as its own
-  job, with if: always(), after the guard, classify and both review jobs.
+  has no valid "Accepted at <sha>:", with the full 40-character sha, from the
+  repository owner. Run as its own job, with if: always(), after the guard,
+  classify and both review jobs.
 
 # The gate script comes from this action, never from the pull request, so a
 # change cannot edit the gate that judges it. The calling job checks out main
