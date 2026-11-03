@@ -43,11 +43,16 @@ thread () {
 		"$1" "$2" "$(printf '%s' "$2" | tr -c 'a-z0-9' '-')" "$reply"
 }
 threads () { local IFS=,; printf 'printf %%s %q' "[$*]"; }
-# comments <login> <body> ... : the pull request's issue comments.
+# comments <login> <body> ... : the pull request's issue comments, unedited,
+# as the GraphQL query returns them.
 comments () {
 	local out="" sep=""
-	while [ "$#" -ge 2 ]; do out+="$sep{\"user\":{\"login\":\"$1\"},\"body\":\"$2\"}"; sep=,; shift 2; done
+	while [ "$#" -ge 2 ]; do out+="$sep{\"author\":{\"login\":\"$1\"},\"editor\":null,\"body\":\"$2\"}"; sep=,; shift 2; done
 	printf 'printf %%s %q' "[$out]"
+}
+# edited_comment <login> <editor> <body>: one issue comment last edited by <editor>.
+edited_comment () {
+	printf 'printf %%s %q' "[{\"author\":{\"login\":\"$1\"},\"editor\":{\"login\":\"$2\"},\"body\":\"$3\"}]"
 }
 
 BOT='github-actions[bot]'
@@ -144,8 +149,8 @@ assert_eq "0" "$(rc TIER=High REVIEW_COMMENTS_CMD="$ack_head")" "an acknowledgem
 python3 -I - "$tmp/big-comments.json" "$A1" <<'PY2'
 import json, sys
 pad = 'x' * 2048
-comments = [{"user": {"login": "someone"}, "body": pad} for _ in range(70)]
-comments.append({"user": {"login": "repo-owner"}, "body": f"Accepted at {sys.argv[2]}: reviewed"})
+comments = [{"author": {"login": "someone"}, "editor": None, "body": pad} for _ in range(70)]
+comments.append({"author": {"login": "repo-owner"}, "editor": None, "body": f"Accepted at {sys.argv[2]}: reviewed"})
 open(sys.argv[1], 'w').write(json.dumps(comments))
 PY2
 [ "$(stat -c %s "$tmp/big-comments.json")" -gt 131072 ] || { echo "FAIL: the large feed fixture is under 128 KiB" >&2; exit 1; }
@@ -170,6 +175,14 @@ assert_eq "1" "$(rc TIER=High HEAD_SHA="$H3" REVIEW_COMMENTS_CMD="$ack_head")" "
 git tag -d "$A1" >/dev/null
 not_owner=$(comments someone-else "Accepted at $A1: me too")
 assert_eq "1" "$(rc TIER=High REVIEW_COMMENTS_CMD="$not_owner")" "an acknowledgement by anyone else does not count"
+# An acknowledgement edited by anyone but the owner does not count: its text
+# may not be what the owner wrote.
+assert_eq "1" "$(rc TIER=High REVIEW_COMMENTS_CMD="$(edited_comment repo-owner someone-else "Accepted at $A1: edited")")" "an acknowledgement edited by someone else does not count"
+assert_eq "1" "$(rc BUGS_STATE=capped REVIEW_COMMENTS_CMD="$(edited_comment repo-owner someone-else "Accepted at $A1: edited")")" "for the round cap either"
+assert_eq "0" "$(rc TIER=High REVIEW_COMMENTS_CMD="$(edited_comment repo-owner repo-owner "Accepted at $A1: edited")")" "one edited by the owner counts"
+# The comments come from GraphQL, which reports each comment's editor.
+grep -q 'nodes{author{login} editor{login} body}' "$G"
+assert_exit 0 "$?" "the comments query selects each comment's author, editor and body"
 quoted=$(comments repo-owner "I will write Accepted at $A1: later")
 assert_eq "1" "$(rc TIER=High REVIEW_COMMENTS_CMD="$quoted")" "nor does one not at the start of the comment"
 unknown=$(comments repo-owner "Accepted at deadbeefdeadbeefdeadbeefdeadbeefdeadbeef: not a commit here")
