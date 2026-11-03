@@ -13,8 +13,9 @@
 # write), $AUDIT_INPUT_DIR (read, when set), the job folder that holds the
 # output root (read, only when it holds nothing but in/ and out/ on disk) and
 # --grep-any-glob-in-subfolders,
-# so a Grep rooted in a folder below the checkout's top level may use negated
-# globs and brace lists of folders. The rules below are the audit's own:
+# so a Grep rooted in a folder below the checkout's top level may use any
+# glob without a .. segment; a negated part passes from any path. The rules
+# below are the audit's own:
 #
 #   - Every call of the subagent tool (named Agent in calls and Task in the
 #     session's tool list, so both names are treated alike) must
