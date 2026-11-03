@@ -32,7 +32,7 @@ Most of this repository is written by an AI coding agent working under one maint
 *   **Verifier**: an agent that reads a finding and the diff and tries to refute the finding. Three verifiers vote on each finding.
 *   **Round**: one review of a pull request by one angle. Each angle has three rounds per pull request.
 *   **Gate**: the required "Review gate" check that turns the review jobs' results and the review threads into one pass or fail, with a named cause.
-*   **Answered**: an important finding is answered when a comment by the owner follows the reviewer's first comment in its thread. Resolving a thread, or the thread going outdated, does not answer it.
+*   **Answered**: an important finding is answered when a comment by the owner follows the reviewer's first comment in its thread. Resolving a thread, or the thread going outdated, does not answer it. A finding edited by anyone but the reviewer stays important and unanswered, and an owner comment edited by anyone else does not count.
 *   **Acknowledgement**: one owner comment on the pull request starting "Accepted at <sha>:", with the full 40-character sha, followed by a reason. It clears the High tier and the round cap for that commit, or for a later commit that only merges `main` into it.
 *   **Tier**: the pull request's risk, High or Normal, from the ticked box and the changed paths, whichever is higher.
 *   **Eval**: the advisory workflow that replays the reviewer against known cases after the reviewer changes.

@@ -349,10 +349,12 @@ The repository's merge settings are changed to match (merge commits only), becau
             *   The gate looks at review threads whose first comment is by `github-actions[bot]`.
             *   A thread is important unless it is explicitly tagged nit or pre-existing.
             *   A thread is answered when a comment by the repository owner follows the first comment. Resolved or outdated alone never answers it.
+            *   A first comment edited by anyone but the bot is important and unanswered, whatever its tag, and an owner reply edited by anyone but the owner does not answer. The threads query reads each comment's `editor`, the last actor to edit it.
         8.  Tier High, with no valid acknowledgement: "High risk: waiting for 'Accepted at <full head sha>:' (the full 40-character sha)."
         9.  Otherwise green.
     *   **Acknowledgement.**
         *   One owner comment on the pull request, "Accepted at <full sha>: <reason>", clears both the High tier and the round cap.
+        *   A comment edited by anyone but the owner does not count. The gate reads the pull request's comments through GraphQL, which reports each comment's `editor`; the REST comments feed does not.
         *   Only a full 40-character sha counts. Git always reads 40 hex digits as an object id, while a short sha is resolved through refs and prefixes, so a tag named after it, or a commit ground to share its prefix, would move it to another commit.
         *   It is valid when the sha is the head, or a commit whose clean merge with the head's base (as above) has the head's tree.
         *   No timestamps are involved.
@@ -554,6 +556,7 @@ The repository's merge settings are changed to match (merge commits only), becau
 | Prompt injection through pull request content | An agent is steered to post or read something it should not | No shell, denied tools, trace check, secret screen before posting, findings voted on by three verifiers | A misleading finding can still be posted; the owner reads every finding |
 | Subscription exhaustion | Reviews cannot run; the gate is red | Round and turn caps; the gate names the cause; the bypass for urgent changes | Shared with the owner's own sessions |
 | A weakened reviewer merges (D17) | Pull requests are reviewed by the weaker prompt until the eval runs | Reviewer changes are High and need an acknowledgement; the eval runs on that push | The window between merge and the eval's result |
+| A gate comment edited or deleted by someone other than its author | A finding is retagged or emptied, an owner reply or acknowledgement is put in the owner's mouth, or a finding thread is deleted | The gate ignores a finding edited by anyone but the bot (it stays important and unanswered) and an owner reply or "Accepted at" edited by anyone but the owner | Deletion cannot be seen from the comments' current state and is not detected. It needs write access to the repository, which only the owner holds today |
 | `PANTHEON_BOT_BYPASS_TOKEN` at repository level | Any branch workflow can read it | None in this design | An open question |
 
 --------------------------------------------------------------------------------
