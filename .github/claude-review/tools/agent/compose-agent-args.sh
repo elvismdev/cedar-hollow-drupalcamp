@@ -199,10 +199,6 @@ audit_args() { # step
   in="$AUDIT_ROOT/$job/in"
   out="$AUDIT_ROOT/$job/out"
   work="${RUNNER_TEMP%/*}"
-  # The roots no agent reads or writes: the kernel's views of processes and
-  # devices, the runner's temporary, actions and runner directories, and
-  # every dot-file and dot-directory in the runner's home.
-  local roots=('/proc/**' '/sys/**' "$RUNNER_TEMP/**" "$work/_actions/**" "$HOME/runners/**" "$HOME/.*" "$HOME/.*/**")
   deny="$AUDIT_DENY"
   allow="Read,Glob,Grep"
   if [ "$subagents" = yes ]; then
@@ -211,13 +207,13 @@ audit_args() { # step
     deny="$deny,Agent,Task"
   fi
   allow="$allow,Edit(/$out/**)"
-  deny="$deny,$(path_rules "Read Glob Grep Edit" "${roots[@]}")"
-  deny="$deny,$(path_rules "Read Glob Grep" "$GITHUB_WORKSPACE/.git/**")"
-  # Each denied directory as itself too, so a Glob or Grep given the folder
-  # as its path is refused rather than left to whether X/** matches X; and the
-  # runner's install directory on images that put it in the home.
-  deny="$deny,$(path_rules "Read Glob Grep" /proc /sys "$RUNNER_TEMP" "$work/_actions" "$HOME/runners" \
-    "$HOME/actions-runner" "$HOME/actions-runner/**" "$GITHUB_WORKSPACE/.git")"
+  # The roots no agent reads or writes, each as itself and everything under
+  # it: the kernel's views of processes and devices, the runner's temporary,
+  # actions and runner directories (and its install directory on images that
+  # put it in the home), and every dot-file and dot-directory in the home.
+  deny="$deny,$(root_rules "Read Glob Grep Edit" /proc /sys "$RUNNER_TEMP" "$work/_actions" "$HOME/runners" \
+    "$HOME/.*" "$HOME/actions-runner")"
+  deny="$deny,$(root_rules "Read Glob Grep" "$GITHUB_WORKSPACE/.git")"
   deny="$deny,$(path_rules "Edit" "$GITHUB_WORKSPACE/**")"
   printf "%s --strict-mcp-config %s%s%s--max-turns %s --allowedTools '%s' --disallowedTools '%s'" \
     "$BASE" "$(model_flag "$model")" "$(dir_flag "$in")" "$(dir_flag "$out")" "$turns" "$allow" "$deny"
