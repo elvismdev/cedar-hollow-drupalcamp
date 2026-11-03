@@ -97,6 +97,16 @@
 #     compact_boundary with compact_metadata.trigger "auto"; a manual
 #     compaction does not count, since an audit run has no one to type
 #     /compact. The run prints the job and that model.
+#   - The cross-check and tie-break run with Claude Code's refusal fallback off.
+#     For them a refused request with no fallback is reported, not refused:
+#     the main loop's model_refusal_no_fallback system message (the whole
+#     agent stops; a running subagent gets the interruption sentence) and a
+#     subagent's assistant message with stop_reason "refusal" (only it stops,
+#     by its call's position and agent id, exempt from the no-tool-calls rules
+#     below, and its entry never merged). Only a category matching
+#     ^[a-z_]{1,32}$ is printed, never the explanation. In those two jobs any
+#     model_refusal_fallback event fails the run and no fallback model is
+#     accepted; a compaction model is accepted as in the other jobs.
 #   - A foreground subagent hands its report back with SubagentHandback, which
 #     check-trace-tools.sh accepts only with exactly a string message and only
 #     when the allowed tools name it; it counts as a call attributed to that
@@ -390,6 +400,37 @@ for (const [callId] of subagents) {
   if (!answered.has(callId)) refuse(callById.get(callId), 'has no result in the trace, so it cannot be shown to have finished in the foreground');
 }
 
+// Refusals with no fallback. The cross-check and tie-break agents run with
+// CLAUDE_CODE_DISABLE_REFUSAL_FALLBACK=1, so a refused request stops instead
+// of moving to another model. Claude Code writes a model_refusal_no_fallback
+// system message to the top-level array only for the main loop: the whole
+// agent stops, a subagent still running gets the interruption sentence above,
+// and entries already written stand. A refused subagent stops alone; its
+// response is an assistant message attributed to its call whose stop_reason
+// is "refusal", and its entry is never merged. Either is reported, not
+// refused, with its position in the top-level array and only a category that
+// matches ^[a-z_]{1,32}$; merge-records.py counts it and marks the check
+// incomplete. Other jobs keep the fallback.
+const JUDGE = job === 'cross-check' || job === 'tie-break';
+const CATEGORY = /^[a-z_]{1,32}$/;
+const category = (v) => (typeof v === 'string' && CATEGORY.test(v) ? v : 'not given');
+const refusedSubagents = new Set();
+if (JUDGE) {
+  msgs.forEach((m, index) => {
+    if (!isObj(m)) return;
+    if (m.type === 'system' && m.subtype === 'model_refusal_no_fallback') {
+      console.log(`check-agent-run: the ${job} step's request was refused with no fallback (main loop, message ${index}), category ${category(m.api_refusal_category)}`);
+    }
+    if (m.type === 'assistant' && typeof m.parent_tool_use_id === 'string' && subagents.has(m.parent_tool_use_id)
+        && isObj(m.message) && m.message.stop_reason === 'refusal' && !refusedSubagents.has(m.parent_tool_use_id)) {
+      refusedSubagents.add(m.parent_tool_use_id);
+      const id = subagents.get(m.parent_tool_use_id);
+      const details = isObj(m.message.stop_details) ? m.message.stop_details.category : undefined;
+      console.log(`check-agent-run: ${label(callById.get(m.parent_tool_use_id))}: (agent id ${id === null ? 'not valid' : id}) was refused with no fallback (message ${index}), category ${category(details)}; its entry is never merged`);
+    }
+  });
+}
+
 // Claude Code cannot start more subagents than the trace has subagent calls
 // for; more task_started events or a larger spawned count means some
 // subagent's call is missing. Interruptions do not relax this.
@@ -526,14 +567,15 @@ for (const call of calls) {
 
 for (const call of calls) {
   if (SUBAGENT_TOOLS.has(call.c.name) && typeof call.c.id === 'string' && call.c.id !== ''
-      && !perSubagent.has(call.c.id) && !interrupted.has(call.c.id)) {
+      && !perSubagent.has(call.c.id) && !interrupted.has(call.c.id) && !refusedSubagents.has(call.c.id)) {
     refuse(call, 'started a subagent with no tool calls in the trace, so what it did cannot be checked');
   }
 }
 
 // An interrupted subagent may have made no call that reached the trace, so it
 // alone does not count as subagent use whose calls must appear.
-const used = subagents.size > interrupted.size || (subagents.size === 0 && (started > 0 || spawned > 0));
+const stopped = new Set([...interrupted, ...refusedSubagents]);
+const used = subagents.size > stopped.size || (subagents.size === 0 && (started > 0 || spawned > 0));
 if (used && attributed === 0) {
   bad += 1;
   say('subagents were used but the trace holds none of their tool calls, so what they did cannot be checked');
@@ -567,10 +609,18 @@ const readAllowlist = (file, what, models) => {
   return lines;
 };
 const events = msgs.filter((m) => isObj(m) && m.type === 'system' && m.subtype === 'model_refusal_fallback');
-const allowlist = events.length > 0 ? readAllowlist(fallbackFile, 'refusal fallback', 'refusal fallback') : [];
+const allowlist = events.length > 0 && !JUDGE ? readAllowlist(fallbackFile, 'refusal fallback', 'refusal fallback') : [];
 const fallbacks = new Set();
+// The judging jobs run with the fallback off, so any fallback event there
+// means it was not, and no fallback model is accepted. A compaction model is
+// accepted there as in every job; merge-records.py adds it to the job's
+// model set, so the independence rule (D24) judges it.
+if (JUDGE && events.length > 0) {
+  bad += 1;
+  say(`a model_refusal_fallback event in the ${job} step, which runs with the refusal fallback off`);
+}
 for (const m of events) {
-  if (allowlist.length === 0) break;
+  if (allowlist.length === 0 || JUDGE) break;
   if (typeof m.fallback_model !== 'string' || !allowlist.includes(m.fallback_model)) {
     bad += 1;
     say('a model_refusal_fallback event names a model that is not on the refusal fallback allowlist');

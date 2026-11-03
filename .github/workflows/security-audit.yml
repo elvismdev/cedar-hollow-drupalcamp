@@ -1480,6 +1480,8 @@ jobs:
           ANTHROPIC_DEFAULT_SONNET_MODEL: ${{ steps.args-cross-check.outputs.ANTHROPIC_DEFAULT_SONNET_MODEL }}
           ANTHROPIC_DEFAULT_HAIKU_MODEL: ${{ steps.args-cross-check.outputs.ANTHROPIC_DEFAULT_HAIKU_MODEL }}
           CLAUDE_CODE_SUBAGENT_MODEL: ${{ steps.args-cross-check.outputs.CLAUDE_CODE_SUBAGENT_MODEL }}
+          # A refused request stops here instead of switching models (D24).
+          CLAUDE_CODE_DISABLE_REFUSAL_FALLBACK: "1"
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           github_token: ${{ github.token }}
@@ -1587,6 +1589,8 @@ jobs:
           ANTHROPIC_DEFAULT_SONNET_MODEL: ${{ steps.args-tie-break.outputs.ANTHROPIC_DEFAULT_SONNET_MODEL }}
           ANTHROPIC_DEFAULT_HAIKU_MODEL: ${{ steps.args-tie-break.outputs.ANTHROPIC_DEFAULT_HAIKU_MODEL }}
           CLAUDE_CODE_SUBAGENT_MODEL: ${{ steps.args-tie-break.outputs.CLAUDE_CODE_SUBAGENT_MODEL }}
+          # A refused request stops here instead of switching models (D24).
+          CLAUDE_CODE_DISABLE_REFUSAL_FALLBACK: "1"
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           github_token: ${{ github.token }}
