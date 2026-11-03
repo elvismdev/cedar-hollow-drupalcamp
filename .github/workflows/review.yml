@@ -180,8 +180,11 @@ jobs:
     if: always()
     runs-on: ubuntu-24.04
     timeout-minutes: 10
+    # issues: read because pull request conversation comments, where an
+    # acknowledgement is posted, are issue comments.
     permissions:
       contents: read
+      issues: read
       pull-requests: read
     steps:
       # Main with full history, then the head, because the acknowledgement

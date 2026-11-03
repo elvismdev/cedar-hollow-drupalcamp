@@ -335,7 +335,7 @@ The repository's merge settings are changed to match (merge commits only), becau
         *   `state`: `reviewed`, `current`, `capped` or `failed`.
         *   `cause`, for `failed`: `token_or_quota`, `no_agent_ran`, `tool_violation`, `secret_screen`, `head_mismatch`, `empty_diff` or `infrastructure`.
 4.  **Review gate** (job `name: Review gate`).
-    *   **Job settings.** `needs: [guard, classify, review-bugs, review-security]`, `if: always()`, no environment, `permissions: {contents: read, pull-requests: read}`.
+    *   **Job settings.** `needs: [guard, classify, review-bugs, review-security]`, `if: always()`, no environment, `permissions: {contents: read, issues: read, pull-requests: read}`. Pull request conversation comments, where acknowledgements are posted, are issue comments.
     *   **Checkout.** It checks out `main` with full history, then fetches the pull request head, so the acknowledgement check has both. It is never skipped, because a skipped required check can count as passing.
     *   **Trusted inputs.** The workflow file comes from `main`, so `needs.*.result` and outputs are trusted. An empty `state` from a review job that was not skipped for a draft counts as missing.
     *   **Decision order.** Each branch has one exact message. `<angle>` is "bugs", "security", or "bugs and security" when both are affected.
