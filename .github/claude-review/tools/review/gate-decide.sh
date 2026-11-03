@@ -29,12 +29,16 @@
 # head, or when the clean merge of that sha with the head's base, the newest
 # main commit the head contains, has the head's tree: the head is then the
 # accepted commit plus main and nothing else. No timestamps are involved.
+# A comment edited by anyone but the owner does not count, since its text may
+# not be what the owner wrote; GitHub reports each comment's last editor. A
+# deleted comment leaves no trace in the feed and is not detected.
 #
 # The checkout must hold main with full history as origin/main and the head
 # commit. `git merge-tree --write-tree` needs git 2.38 or later.
 #
 # Test hooks: REVIEW_THREADS_CMD reaches findings-gate.sh, and
-# REVIEW_COMMENTS_CMD replaces the comments API call.
+# REVIEW_COMMENTS_CMD replaces the comments query, printing what its --jq
+# selects: arrays of {author, editor, body}.
 set -uo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -117,7 +121,21 @@ HEAD_SHA="${HEAD_SHA:-}"
 
 comments_feed() {
   if [ -n "${REVIEW_COMMENTS_CMD:-}" ]; then bash -c "$REVIEW_COMMENTS_CMD"; return; fi
-  gh api "repos/${GITHUB_REPOSITORY}/issues/${PR_NUMBER}/comments" --paginate
+  # GraphQL rather than the REST comments feed, which does not say who edited
+  # a comment. -f sends owner and name as strings; -F would send an all-digit
+  # name as a number, which String! refuses.
+  gh api graphql --paginate -f query='
+    query($owner:String!, $name:String!, $pr:Int!, $endCursor:String) {
+      repository(owner:$owner, name:$name) {
+        pullRequest(number:$pr) {
+          comments(first:100, after:$endCursor) {
+            pageInfo{hasNextPage endCursor}
+            nodes{author{login} editor{login} body}
+          }
+        }
+      }
+    }' -f owner="${GITHUB_REPOSITORY%%/*}" -f name="${GITHUB_REPOSITORY##*/}" -F pr="$PR_NUMBER" \
+    --jq '.data.repository.pullRequest.comments.nodes'
 }
 
 # acknowledged: exit 0 when an owner comment acknowledges the head. Reads the
@@ -139,17 +157,31 @@ check_ack() {
   # 128 KiB, which a long-lived pull request's comments feed passes. Not local:
   # the trap reads it when the script exits.
   feed_file=$(mktemp) || red "Pull request comments could not be read." hint
-  trap 'rm -f "$feed_file"' EXIT
-  comments_feed > "$feed_file"; frc=$?
-  [ "$frc" -eq 0 ] || red "Pull request comments could not be read." hint
+  err_file=$(mktemp) || red "Pull request comments could not be read." hint
+  trap 'rm -f "$feed_file" "$err_file"' EXIT
+  comments_feed > "$feed_file" 2> "$err_file"; frc=$?
+  # The read's own error stays in the log.
+  cat "$err_file" >&2
+  if [ "$frc" -ne 0 ]; then
+    # GitHub refuses a token that lacks a permission with "Resource not
+    # accessible by integration", error type FORBIDDEN in the response gh
+    # prints on stdout. Pull request conversation comments are issue
+    # comments, so the gate job needs issues: read. Any other 403, such as a
+    # rate limit, gets the generic message.
+    if grep -q 'Resource not accessible' "$err_file" ||
+       grep -qE '"type": *"FORBIDDEN"' "$feed_file" "$err_file"; then
+      red "Pull request comments could not be read: the token was refused. The Review gate job needs issues: read and pull-requests: read." hint
+    fi
+    red "Pull request comments could not be read." hint
+  fi
   shas=$(python3 - "$OWNER" "$feed_file" <<'PY'
 import json, re, sys
 owner = sys.argv[1]
 with open(sys.argv[2], encoding='utf-8') as f:
     raw = f.read()
 
-# `gh api --paginate` may print one array per page, so read a sequence of JSON
-# documents rather than exactly one.
+# `gh api --paginate` with --jq prints one array per page, so read a sequence
+# of JSON documents rather than exactly one.
 def documents(text):
     dec, out, i, n = json.JSONDecoder(), [], 0, len(text)
     while i < n:
@@ -167,7 +199,11 @@ except Exception as exc:
     print(f'gate-decide: the comments feed is not readable JSON ({exc})', file=sys.stderr)
     sys.exit(2)
 for c in comments:
-    if ((c.get('user') or {}).get('login') or '') != owner:
+    if ((c.get('author') or {}).get('login') or '') != owner:
+        continue
+    # An unedited comment has a null editor.
+    editor = c.get('editor')
+    if editor and (editor.get('login') or '') != owner:
         continue
     m = re.match(r'Accepted at ([0-9a-f]{40}):', c.get('body') or '')
     if m:

@@ -9,6 +9,15 @@
 # defect. Resolving the thread does not answer it, and neither does a later
 # commit outdating it: both can happen with nobody having read the finding.
 #
+# Content edited by someone other than its author does not count. A finding
+# comment edited by anyone but the bot or the owner is important and
+# unanswered, since its tag or text may no longer be what the review posted; an
+# owner reply edited by anyone but the owner is not an answer. The owner's own
+# edits are trusted. The bot's login is shared by every workflow in the
+# repository, so an edit under it is not proof the reviewer made it. GitHub reports the last editor of each
+# comment. A deleted comment leaves no trace in this feed, so deletion is not
+# detected here.
+#
 # What never blocks: a human's own thread, a nit, and anything tagged
 # pre-existing. REVIEW.md says pre-existing findings do not block, because the
 # change did not introduce them and fixing them belongs in another change. An
@@ -40,12 +49,12 @@ threads_feed() {
         pullRequest(number:$pr) {
           reviewThreads(first:100) {
             nodes {
-              comments(first:100){nodes{author{login} body url}}
+              comments(first:100){nodes{author{login} editor{login} body url}}
             }
           }
         }
       }
-    }' -F owner="${GITHUB_REPOSITORY%%/*}" -F name="${GITHUB_REPOSITORY##*/}" -F pr="$PR" \
+    }' -f owner="${GITHUB_REPOSITORY%%/*}" -f name="${GITHUB_REPOSITORY##*/}" -F pr="$PR" \
     --jq '.data.repository.pullRequest.reviewThreads.nodes'
 }
 
@@ -91,6 +100,13 @@ if len(threads) >= 100:
 def login(comment):
     return ((comment.get('author') or {}).get('login') or '')
 
+def edited_by_other(comment, *authors):
+    # An unedited comment has a null editor.
+    editor = comment.get('editor')
+    if not editor:
+        return False
+    return (editor.get('login') or '') not in authors
+
 blocking, answered, reported, unanswered = [], 0, [], []
 for t in threads:
     comments = ((t.get('comments') or {}).get('nodes') or [])
@@ -103,10 +119,13 @@ for t in threads:
         continue
     body = (comments[0].get('body') or '').strip()
     reported.append(body)
-    if any(login(c) == owner for c in comments[1:]):
+    # The owner's own edits are trusted.
+    tampered = edited_by_other(comments[0], bot, f'{bot}[bot]', owner)
+    if not tampered and any(login(c) == owner and not edited_by_other(c, owner)
+                            for c in comments[1:]):
         answered += 1
         continue
-    tag = severity(body)
+    tag = 'important' if tampered else severity(body)
     unanswered.append((tag, comments[0].get('url') or ''))
     if tag == 'important':
         blocking.append(body)

@@ -13,7 +13,7 @@ description: >
 
 inputs:
   github_token:
-    description: secrets.GITHUB_TOKEN, with pull-requests read
+    description: secrets.GITHUB_TOKEN, with issues read and pull-requests read
     required: true
   owner_login:
     description: The repository owner's login; only its replies and acknowledgements count
