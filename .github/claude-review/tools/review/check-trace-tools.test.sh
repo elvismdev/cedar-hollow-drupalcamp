@@ -642,6 +642,52 @@ assert_eq "1" "$(bash "$tmp/nosplit/check-trace-tools.sh" "$tmp/b.json" >/dev/nu
 cp "$(dirname "$C")/grep_glob_parts.py" "$tmp/nosplit/"
 assert_eq "0" "$(bash "$tmp/nosplit/check-trace-tools.sh" "$tmp/b.json" >/dev/null 2>&1; echo $?)" "and passes with it beside the script"
 
+# A Read of the tool result Claude Code saved for an earlier call, denied by
+# the permission settings, is reported, not refused; every condition matters.
+saved_trace () { # out-file key=value...: the call that was saved, then the Read
+  python3 -I - "$@" <<'PY'
+import json, sys
+out, opts = sys.argv[1], dict(a.split('=', 1) for a in sys.argv[2:])
+home = opts.get('home', '/home/tester')
+path = opts.get('path', home + '/.claude/projects/-w-repo/sess-1/tool-results/toolu_A1.txt')
+marker = opts.get('marker', path)
+denied = '<tool_use_error>File is in a directory that is denied by your permission settings.</tool_use_error>'
+grep = {'type': 'assistant', 'message': {'content': [
+    {'type': 'tool_use', 'id': opts.get('grep_id', 'toolu_A1'), 'name': 'Grep', 'input': {'pattern': 'x'}}]}}
+saved = {'type': 'user', 'message': {'content': [{'type': 'tool_result', 'tool_use_id': opts.get('grep_id', 'toolu_A1'),
+         'content': '<persisted-output>\nOutput too large (21.5KB). Full output saved to: %s\n\nPreview (first 2KB):\nx\n</persisted-output>' % marker}]}}
+if opts.get('nested') == '1':
+    saved = {'type': 'user', 'message': {'content': [{'type': 'tool_result', 'tool_use_id': 'toolu_Z9', 'content': [saved]}]}}
+read = {'type': 'assistant', 'message': {'content': [
+    {'type': 'tool_use', 'id': 'toolu_R1', 'name': opts.get('tool', 'Read'),
+     'input': {'file_path': path} if opts.get('tool', 'Read') == 'Read' else {'pattern': 'x', 'path': path}}]}}
+text = opts.get('result', denied)
+answer = {'type': 'user', 'message': {'content': [{'type': 'tool_result', 'tool_use_id': 'toolu_R1',
+          'is_error': opts.get('is_error', '1') == '1', 'content': text}]}}
+msgs = [read, answer, grep, saved] if opts.get('order') == 'read-first' else [grep, saved, read, answer]
+json.dump(msgs, open(out, 'w'))
+PY
+}
+saved_rc () { saved_trace "$tmp/s.json" "$@"; HOME=/home/tester rc "$tmp/s.json"; }
+saved_trace "$tmp/s.json"
+assert_eq "0" "$(HOME=/home/tester rc "$tmp/s.json")" "a denied Read of an earlier call's saved output passes"
+assert_contains "$(HOME=/home/tester run "$tmp/s.json")" "check-trace-tools: Read call 2: a denied read of the tool result Claude Code saved for an earlier call; reported, not refused" "and is reported by call number"
+assert_eq "0" "$(saved_trace "$tmp/s.json"; HOME=/home/tester rc "$tmp/s.json" "${AUDIT_OPTS[@]}")" "and passes with the audit options"
+assert_eq "1" "$(saved_rc is_error=0 result='line one')" "the same Read that was not denied is refused"
+assert_eq "1" "$(saved_rc result='<tool_use_error>File does not exist.</tool_use_error>')" "a Read that failed for another reason is refused"
+assert_eq "1" "$(saved_rc is_error=0)" "the deny text without is_error is refused"
+assert_eq "1" "$(saved_rc order=read-first)" "a Read naming a call that comes later is refused"
+assert_eq "1" "$(saved_rc grep_id=toolu_B2)" "a Read naming an id no call has is refused"
+assert_eq "1" "$(saved_rc marker=/home/tester/.claude/projects/-w-repo/sess-1/tool-results/toolu_X9.txt)" "a marker naming a different path is refused"
+assert_eq "1" "$(saved_rc nested=1)" "a marker only inside another tool_result is refused"
+assert_eq "1" "$(saved_rc path=/home/tester/.claude/projects/-w-repo/sess-1/x/tool-results/toolu_A1.txt)" "an extra segment is refused"
+assert_eq "1" "$(saved_rc path=/home/tester/.claude/projects/-w-repo/../tool-results/toolu_A1.txt)" "a .. segment is refused"
+assert_eq "1" "$(saved_rc path=/home/tester/.claude/settings.json)" "another file under ~/.claude is refused"
+assert_eq "1" "$(saved_rc path=/home/tester/.claude/projects/-w-repo/sess-1/tool-results/toolu_A1.json)" "another extension is refused"
+assert_eq "1" "$(saved_rc home=/home/other)" "the same shape under another home is refused"
+assert_eq "1" "$(saved_rc tool=Grep)" "a Grep of the saved output's path is refused"
+assert_eq "1" "$(saved_rc tool=Glob)" "a Glob of the saved output's path is refused"
+
 # It fails closed on what it cannot read.
 assert_eq "1" "$(rc "$tmp/absent.json")" "a missing trace fails"
 : > "$tmp/empty.json"

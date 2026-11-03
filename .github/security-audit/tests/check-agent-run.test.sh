@@ -229,6 +229,21 @@ assert_eq "0" "$(rc source "$tmp/t.json")" "the same negated glob with no path p
 trace "$tmp/t.json" "${CLEAN[@]}" "$(sub ta1 Grep '{"pattern":"x","glob":"!**/node_modules/**,*"}')" "$(result "$M")"
 assert_eq "1" "$(rc source "$tmp/t.json")" "a negated glob beside * with no path fails, for the * part"
 
+# A subagent whose Grep output Claude Code saved, and whose Read of that file
+# the permission settings denied, passes: check-trace-tools.sh reports the
+# denied read, and both calls count as the subagent's.
+SAVED_PATH="$HOME/.claude/projects/-w/sess-1/tool-results/toolu_G1.txt"
+DENY_TEXT='<tool_use_error>File is in a directory that is denied by your permission settings.</tool_use_error>'
+saved_grep="{\"type\":\"assistant\",\"parent_tool_use_id\":\"ta1\",\"message\":{\"model\":\"$M\",\"content\":[{\"type\":\"tool_use\",\"id\":\"toolu_G1\",\"name\":\"Grep\",\"input\":{\"pattern\":\"x\",\"path\":\"$WS\"}}]}}"
+saved_note="{\"type\":\"user\",\"parent_tool_use_id\":\"ta1\",\"message\":{\"content\":[{\"type\":\"tool_result\",\"tool_use_id\":\"toolu_G1\",\"content\":\"<persisted-output>\\nOutput too large (21.5KB). Full output saved to: $SAVED_PATH\\n\\nPreview (first 2KB):\\nx\\n</persisted-output>\"}]}}"
+saved_read="{\"type\":\"assistant\",\"parent_tool_use_id\":\"ta1\",\"message\":{\"model\":\"$M\",\"content\":[{\"type\":\"tool_use\",\"id\":\"toolu_R1\",\"name\":\"Read\",\"input\":{\"file_path\":\"$SAVED_PATH\"}}]}}"
+saved_deny="{\"type\":\"user\",\"parent_tool_use_id\":\"ta1\",\"message\":{\"content\":[{\"type\":\"tool_result\",\"tool_use_id\":\"toolu_R1\",\"is_error\":true,\"content\":\"$DENY_TEXT\"}]}}"
+trace "$tmp/t.json" "$INIT" "$(agent ta1 "agent-id: h01 hunt")" "$saved_grep" "$saved_note" "$saved_read" "$saved_deny" "$(result "$M")"
+assert_eq "0" "$(rc source "$tmp/t.json")" "a subagent's denied Read of its saved Grep output passes the run check"
+assert_contains "$(run source "$tmp/t.json")" "a denied read of the tool result Claude Code saved for an earlier call" "and the trace check reports it"
+trace "$tmp/t.json" "$INIT" "$(agent ta1 "agent-id: h01 hunt")" "$saved_grep" "$saved_note" "$saved_read" "$(result "$M")"
+assert_eq "1" "$(rc source "$tmp/t.json")" "the same Read with no deny result fails the run check"
+
 # Subagent writes: only its own scratch, and never a shared or combined file.
 sub_write () { # path expected-rc message [label]
   trace "$tmp/t.json" "${CLEAN[@]}" "$(sub ta1 Write "{\"file_path\":\"$1\",\"content\":\"x\"}")" "$(result "$M")"

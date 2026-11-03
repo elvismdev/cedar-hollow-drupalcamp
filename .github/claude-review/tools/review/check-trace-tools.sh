@@ -87,6 +87,20 @@
 #     **/*, .g*, */ and **/.git do not; from above the workspace repo/* and
 #     */* do not either; !web/**,* does not, for its * part.
 #
+# One Read outside the roots is reported instead of refused: a denied read of
+# the tool result Claude Code saved for an earlier call. Claude Code saves a
+# result over its size limit (20,000 characters for Grep) to
+# $HOME/.claude/projects/<project>/<session>/tool-results/<tool_use id>.txt
+# and tells the agent "Full output saved to: <path>"; the deny rules on
+# $HOME's dot-folders then refuse the agent's Read of it before anything is
+# read. It is reported only when the file_path has exactly that shape (path
+# allowlist, no ..), the id is an earlier tool_use in the trace whose
+# top-level tool_result has a line ending "Full output saved to: <this path>",
+# and this Read's own top-level tool_result is an error whose text is exactly
+# Claude Code 2.1.309's "<tool_use_error>File is in a directory that is
+# denied by your permission settings.</tool_use_error>". It is printed by
+# call number; Glob and Grep get no such exception.
+#
 # A Glob or Grep with no path searches the working directory and is allowed. A
 # Read with no file_path, and any of these fields present but empty, is
 # refused. Nothing is resolved on disk, so a symlink is not followed here; the
@@ -684,10 +698,71 @@ def refusal(call):
                 return ('path outside the allowed roots', 'pattern')
     return None
 
+# Claude Code saves a tool result over its size limit to
+# <config home>/projects/<project>/<session>/tool-results/<tool_use id>.txt
+# and tells the agent "Full output saved to: <path>". The audit's deny rules
+# cover $HOME's dot-folders, so an agent's Read of that file is denied before
+# anything is read. Such a Read is reported instead of refused, and only when
+# the path has exactly that shape under $HOME/.claude, it names a tool_use
+# earlier in the trace whose top-level tool_result says "Full output saved
+# to: <this path>" on a line, and this Read's own top-level tool_result is
+# Claude Code's deny error. Any other Read outside the roots is refused.
+HOME = posixpath.normpath(os.environ.get('HOME') or '/nonexistent')
+SAVED = re.compile(r'([^/]+)/([^/]+)/tool-results/(toolu_[A-Za-z0-9_-]+)\.txt')
+# Claude Code 2.1.309's Read tool returns this message, wrapped as a
+# tool_use_error, when a Read deny rule matches.
+DENIED = '<tool_use_error>File is in a directory that is denied by your permission settings.</tool_use_error>'
+
+def top_results(node):
+    """{tool_use_id: [tool_result]} from the trace's top-level messages only."""
+    found = {}
+    for m in node if isinstance(node, list) else []:
+        body = m.get('message') if isinstance(m, dict) and m.get('type') == 'user' else None
+        content = body.get('content') if isinstance(body, dict) else None
+        for r in content if isinstance(content, list) else []:
+            if isinstance(r, dict) and r.get('type') == 'tool_result' and isinstance(r.get('tool_use_id'), str):
+                found.setdefault(r['tool_use_id'], []).append(r)
+    return found
+
+def result_text(r):
+    c = r.get('content')
+    if isinstance(c, str):
+        return c
+    if isinstance(c, list) and all(isinstance(b, dict) and b.get('type') == 'text' and isinstance(b.get('text'), str)
+                                   for b in c):
+        return '\n'.join(b['text'] for b in c)
+    return None
+
+def denied_saved_output(call, earlier, results):
+    """True for a Read refused only for its path that is a denied read of a
+    tool result Claude Code saved for an earlier call in this trace."""
+    args = call.get('input')
+    fp = args.get('file_path') if isinstance(args, dict) else None
+    if call.get('name') != 'Read' or not path_ok(fp) or '..' in fp.split('/'):
+        return False
+    prefix = HOME + '/.claude/projects/'
+    m = SAVED.fullmatch(fp[len(prefix):]) if fp.startswith(prefix) else None
+    if m is None or {m.group(1), m.group(2)} & {'.', '..'} or m.group(3) not in earlier:
+        return False
+    marker = 'Full output saved to: ' + fp
+    if not any(t is not None and any(line.endswith(marker) for line in t.split('\n'))
+               for t in (result_text(r) for r in results.get(m.group(3), []))):
+        return False
+    own = results.get(call.get('id')) if isinstance(call.get('id'), str) else None
+    return bool(own) and all(r.get('is_error') is True and (result_text(r) or '').strip() == DENIED for r in own)
+
 trace = json.load(open(sys.argv[1]))
+results = top_results(trace)
+earlier = set()
 refused = []
 for i, c in enumerate(calls(trace), 1):
     r = refusal(c)
+    if r and r[0] == 'path outside the allowed roots' and denied_saved_output(c, earlier, results):
+        print(f"check-trace-tools: Read call {i}: a denied read of the tool result Claude Code saved for an "
+              "earlier call; reported, not refused", file=sys.stderr)
+        r = None
+    if isinstance(c.get('id'), str):
+        earlier.add(c['id'])
     if r:
         refused.append(f"{c.get('name')} call {i}")
         label, field = r
