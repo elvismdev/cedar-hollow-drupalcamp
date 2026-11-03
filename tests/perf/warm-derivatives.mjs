@@ -5,6 +5,7 @@
 // On DDEV, Node needs DDEV's certificate authority:
 // NODE_EXTRA_CA_CERTS="$(mkcert -CAROOT)/rootCA.pem" npm run warm -- https://cedar-hollow.ddev.site:30001
 import { readFileSync } from 'node:fs';
+import { derivativeUrls } from './derivative-urls.mjs';
 
 const base = (process.argv[2] ?? '').replace(/\/$/, '');
 if (!base) {
@@ -70,13 +71,7 @@ for (const path of pages) {
     process.exitCode = 1;
     continue;
   }
-  const html = body.toString('utf8');
-  for (const [, attribute, value] of html.matchAll(/\s(src|srcset)="([^"]+)"/g)) {
-    const urls = attribute === 'src' ? [value] : value.split(',').map((candidate) => candidate.trim().split(/\s+/)[0]);
-    for (const url of urls) {
-      if (/\/files\/styles\//.test(url)) images.add(new URL(url.replaceAll('&amp;', '&'), base + '/').href);
-    }
-  }
+  for (const url of derivativeUrls(body.toString('utf8'), base)) images.add(url);
 }
 
 let failed = 0;
