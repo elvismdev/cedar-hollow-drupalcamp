@@ -22,10 +22,13 @@
 # Steps 5 to 7 come from findings-gate.sh.
 #
 # An acknowledgement is an owner comment on the pull request beginning
-# "Accepted at <sha>: <reason>". It is valid when the sha is the head, or when
-# the clean merge of that sha with the head's base, the newest main commit the
-# head contains, has the head's tree: the head is then the accepted commit plus
-# main and nothing else. No timestamps are involved.
+# "Accepted at <sha>: <reason>", where <sha> is the full 40-character sha. Git
+# always reads 40 hex digits as an object id, while a short sha is resolved
+# through refs and prefixes, so a tag named after it or a commit ground to share
+# its prefix would move it to another commit. It is valid when the sha is the
+# head, or when the clean merge of that sha with the head's base, the newest
+# main commit the head contains, has the head's tree: the head is then the
+# accepted commit plus main and nothing else. No timestamps are involved.
 #
 # The checkout must hold main with full history as origin/main and the head
 # commit. `git merge-tree --write-tree` needs git 2.38 or later.
@@ -111,7 +114,6 @@ OWNER="${REVIEW_OWNER_LOGIN:-}"
 [ -n "$OWNER" ] || red "REVIEW_OWNER_LOGIN is not set, so no finding or acknowledgement can be answered; the gate cannot decide."
 
 HEAD_SHA="${HEAD_SHA:-}"
-SHORT_HEAD="${HEAD_SHA:0:7}"
 
 comments_feed() {
   if [ -n "${REVIEW_COMMENTS_CMD:-}" ]; then bash -c "$REVIEW_COMMENTS_CMD"; return; fi
@@ -167,7 +169,7 @@ except Exception as exc:
 for c in comments:
     if ((c.get('user') or {}).get('login') or '') != owner:
         continue
-    m = re.match(r'Accepted at ([0-9a-f]{7,40}):', c.get('body') or '')
+    m = re.match(r'Accepted at ([0-9a-f]{40}):', c.get('body') or '')
     if m:
         print(m.group(1))
 PY
@@ -223,7 +225,7 @@ fi
 # 8. Risk tier. Anything other than Normal, a missing tier included, needs the
 # acknowledgement.
 if [ "${TIER:-}" != "Normal" ] && ! acknowledged; then
-  red "High risk: waiting for 'Accepted at ${SHORT_HEAD}:'." hint
+  red "High risk: waiting for 'Accepted at ${HEAD_SHA}:' (the full 40-character sha)." hint
 fi
 
 # 9.
