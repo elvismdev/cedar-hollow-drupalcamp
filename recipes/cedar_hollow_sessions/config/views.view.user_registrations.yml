@@ -3,6 +3,7 @@ status: true
 dependencies:
   module:
     - registration
+    - user
 id: user_registrations
 label: 'User registrations'
 module: views
@@ -599,6 +600,7 @@ display:
         - 'languages:language_interface'
         - url
         - url.query_args
+        - user.permissions
       tags: {  }
   block_1:
     id: block_1
@@ -615,4 +617,5 @@ display:
         - 'languages:language_interface'
         - url
         - url.query_args
+        - user.permissions
       tags: {  }

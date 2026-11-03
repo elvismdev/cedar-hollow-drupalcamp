@@ -4,6 +4,7 @@ status: true
 dependencies:
   module:
     - registration
+    - user
 _core:
   default_config_hash: 9EK_i7pIqenV72Iw4TcJ2AGi9QJYSwceT6hv5zGJHdc
 id: user_registrations
@@ -602,6 +603,7 @@ display:
         - 'languages:language_interface'
         - url
         - url.query_args
+        - user.permissions
       tags: {  }
   block_1:
     id: block_1
@@ -618,4 +620,5 @@ display:
         - 'languages:language_interface'
         - url
         - url.query_args
+        - user.permissions
       tags: {  }

@@ -5,8 +5,10 @@ declare(strict_types=1);
 namespace Drupal\Tests\cedar_hollow_core\Functional;
 
 use Behat\Mink\Driver\BrowserKitDriver;
+use Drupal\Component\Serialization\Yaml;
 use Drupal\Core\Session\AccountInterface;
 use Drupal\user\Entity\User;
+use Drupal\views\Entity\View;
 use Drupal\views\Views;
 use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\Attributes\RunTestsInSeparateProcesses;
@@ -67,6 +69,30 @@ final class UserRegistrationsViewAccessTest extends SessionTestBase {
     // requests, not even from an administrator.
     $this->requestRegistrations('all');
     $this->assertDenied($title);
+  }
+
+  /**
+   * Tests that both shipped copies of the view are what saving it stores.
+   *
+   * Views computes each display's cache metadata only on a save outside a
+   * config sync, so a config import keeps whatever the YAML says. The YAML
+   * must already carry it, user.permissions from the access plugin
+   * included, or the site serves stale contexts and the next save differs
+   * from config/.
+   */
+  public function testShippedViewMatchesSavedView(): void {
+    $name = 'views.view.user_registrations';
+    $view = View::load('user_registrations');
+    $this->assertNotNull($view);
+    $view->save();
+    $this->container->get('config.factory')->reset($name);
+    $saved = $this->config($name)->getRawData();
+    unset($saved['uuid'], $saved['_core']);
+    foreach (['config', 'recipes/cedar_hollow_sessions/config'] as $directory) {
+      $shipped = Yaml::decode((string) file_get_contents($this->root . "/../$directory/$name.yml"));
+      unset($shipped['uuid'], $shipped['_core']);
+      $this->assertSame($saved, $shipped, $directory);
+    }
   }
 
   /**
