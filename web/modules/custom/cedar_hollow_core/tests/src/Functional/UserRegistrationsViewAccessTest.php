@@ -5,6 +5,9 @@ declare(strict_types=1);
 namespace Drupal\Tests\cedar_hollow_core\Functional;
 
 use Behat\Mink\Driver\BrowserKitDriver;
+use Drupal\Core\Session\AccountInterface;
+use Drupal\user\Entity\User;
+use Drupal\views\Views;
 use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\Attributes\RunTestsInSeparateProcesses;
 
@@ -12,20 +15,22 @@ use PHPUnit\Framework\Attributes\RunTestsInSeparateProcesses;
  * The user registrations view lists registrations only to administrators.
  *
  * Views answers /views/ajax for any view and display it is given, so the
- * view's own access setting is what keeps anonymous visitors from listing
- * every registration with "all" as the user argument.
+ * view's own access setting is what keeps other users from listing every
+ * registration with "all", or another user's id, as the user argument.
  */
 #[Group('cedar_hollow_core')]
 #[RunTestsInSeparateProcesses]
 final class UserRegistrationsViewAccessTest extends SessionTestBase {
 
   /**
-   * Tests anonymous and administrator requests for every registration.
+   * Tests who can list registrations through the view.
    */
-  public function testViewsAjaxListsRegistrationsOnlyToAdministrators(): void {
+  public function testOnlyAdministratorsListRegistrations(): void {
+    // Letters, digits and spaces only, so the title reads the same in HTML
+    // and in JSON.
     $title = 'Registration listing probe ' . $this->randomMachineName();
     $session = $this->createSession($title, 10);
-    $attendee = $this->drupalCreateUser(['access content', 'create attendee registration self']);
+    $attendee = $this->drupalCreateUser(['access content', 'create attendee registration self', 'view own registration']);
     $this->container->get('entity_type.manager')->getStorage('registration')->create([
       'type' => 'attendee',
       'entity_type_id' => 'node',
@@ -34,28 +39,59 @@ final class UserRegistrationsViewAccessTest extends SessionTestBase {
       'count' => 1,
       'state' => 'complete',
     ])->save();
+    $administrator = $this->drupalCreateUser(['access content', 'administer registration']);
+    $other = $this->drupalCreateUser(['access content', 'create attendee registration self', 'view own registration']);
 
-    $this->requestAllRegistrations();
-    $this->assertSession()->statusCodeEquals(403);
-    $this->assertSession()->responseNotContains($title);
+    // The view's own access decision, independent of how it is requested.
+    $this->assertFalse($this->viewAccess(User::getAnonymousUser()));
+    $this->assertFalse($this->viewAccess($other));
+    $this->assertTrue($this->viewAccess($administrator));
 
-    $this->drupalLogin($this->drupalCreateUser(['access content', 'administer registration']));
-    $this->requestAllRegistrations();
+    $this->requestRegistrations('all');
+    $this->assertDenied($title);
+
+    $this->drupalLogin($other);
+    foreach (['all', (string) $attendee->id()] as $argument) {
+      $this->requestRegistrations($argument);
+      $this->assertDenied($title);
+    }
+
+    // The administrator sees the session through the view: the route's
+    // fallback table has no column for the session.
+    $this->drupalLogin($administrator);
+    $this->drupalGet('user/' . $attendee->id() . '/registrations');
     $this->assertSession()->statusCodeEquals(200);
-    $this->assertSession()->responseContains($title);
+    $this->assertSession()->pageTextContains($title);
   }
 
   /**
-   * Posts the request the view's AJAX pager makes, with "all" as the user.
+   * Returns whether the account may see the view's block display.
    */
-  private function requestAllRegistrations(): void {
+  private function viewAccess(AccountInterface $account): bool {
+    $view = Views::getView('user_registrations');
+    $this->assertNotNull($view);
+    return $view->access('block_1', $account);
+  }
+
+  /**
+   * Posts the request a view's AJAX refresh makes, for the given user id.
+   */
+  private function requestRegistrations(string $argument): void {
     $driver = $this->getSession()->getDriver();
     $this->assertInstanceOf(BrowserKitDriver::class, $driver);
     $driver->getClient()->request('POST', $this->buildUrl('views/ajax', ['query' => ['_wrapper_format' => 'drupal_ajax']]), [
       'view_name' => 'user_registrations',
       'view_display_id' => 'block_1',
-      'view_args' => 'all',
+      'view_args' => $argument,
     ]);
+  }
+
+  /**
+   * Asserts the last response was refused and does not name the session.
+   */
+  private function assertDenied(string $title): void {
+    $this->assertSession()->statusCodeEquals(403);
+    $this->assertSession()->responseNotContains($title);
   }
 
 }
