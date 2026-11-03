@@ -65,6 +65,9 @@ jobs:
         working-directory: web/themes/custom/cedar_hollow
       - run: npm ci
         working-directory: tests
+      # Node 22's --test takes files or globs, not a directory.
+      - name: Warm-up script tests
+        run: node --test 'tests/perf/*.test.mjs'
       - name: Known vulnerabilities in npm packages, less reviewed exceptions
         run: node scripts/npm-audit-check.mjs web/themes/custom/cedar_hollow tests
       - run: npm run build
