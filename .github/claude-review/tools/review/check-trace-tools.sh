@@ -60,7 +60,8 @@
 #     its static prefix rather than from its path. It is then resolved against
 #     its path, normalised for .. (a brace group's .. included, as segments),
 #     and held to the same roots.
-#   - A Grep glob: the same set as a Glob pattern, with no .. segment. Claude
+#   - A Grep glob: the same set as a Glob pattern, plus ! as the first
+#     character of a part, with no .. segment. Claude
 #     Code passes it to ripgrep after its own !.git exclusion, where it
 #     overrides that exclusion, which matters only where the search can reach
 #     the workspace's .git/config. So the rule below applies when the Grep has
@@ -70,9 +71,13 @@
 #     holds only a diff, any glob that passes the character allowlist is
 #     accepted. The rule: ripgrep's last matching glob wins, so a glob
 #     reopens .git when it can match the .git directory itself. After Claude
-#     Code's split on commas (a part holding a brace group is kept whole),
-#     every part and every brace expansion must have no .. segment and no
-#     leading !, and is judged whole, as ripgrep matches it: with no / (a
+#     Code's split on commas (a part holding a brace group is kept whole), a
+#     part that starts with ! is an exclusion to ripgrep and only removes
+#     files, so it passes from any path (!web/**, !{a,b}); a ! anywhere else
+#     is a literal character to ripgrep, measured with rg 13.0.0 and Claude
+#     Code's rg 14.1.1, and is refused ({!a,b}, a/!b). Every other part and
+#     brace expansion must have no .. segment and is judged whole, as ripgrep
+#     matches it: with no / (a
 #     trailing / aside) against the name .git, and with a / against .git's
 #     path, which is .git from the workspace and, from a root above it, also
 #     its path from there (repo/.git). A glob with a / that names .git on the
@@ -80,7 +85,7 @@
 #     Matching ignores letter case. So *gitignore*, {.gitignore,composer.json},
 #     {scripts/*,web/modules/custom/**}, */x.php and src/** pass, and *, **,
 #     **/*, .g*, */ and **/.git do not; from above the workspace repo/* and
-#     */* do not either.
+#     */* do not either; !web/**,* does not, for its * part.
 #
 # A Glob or Grep with no path searches the working directory and is allowed. A
 # Read with no file_path, and any of these fields present but empty, is
@@ -117,8 +122,8 @@
 #                        a Grep whose path is a valid path inside the allowed
 #                        roots, neither the workspace's top level nor a
 #                        directory above it (an added root can be), takes any
-#                        glob: the character allowlist gains !, so negated
-#                        globs and brace lists of folders pass, and the
+#                        glob: the character allowlist takes ! anywhere,
+#                        brace lists of folders pass, and the
 #                        .git rule above is skipped. A glob with a ..
 #                        segment is still refused. With no path, or with the
 #                        workspace's top level or a directory above it as the
@@ -416,19 +421,40 @@ def git_targets(path):
         targets |= {a.lstrip('/') for a in absolute}
     return targets
 
+def grep_parts(value):
+    """The globs Claude Code passes to ripgrep for a Grep glob: it splits on
+    whitespace, which the allowlist refuses, then on commas unless a part
+    holds a brace group."""
+    return [value] if '{' in value and '}' in value else [t for t in value.split(',') if t]
+
+def grep_glob_chars_ok(value):
+    """The Grep glob allowlist: the Glob pattern characters, and ! only as
+    the first character of a part. ripgrep reads a glob that starts with ! as
+    an exclusion, which can only remove files from the search; a ! anywhere
+    else (inside a brace group, after a /) is a literal character to it, so a
+    glob holding one would be judged as a positive glob naming a !, and is
+    refused instead."""
+    if not isinstance(value, str):
+        return False
+    parts = grep_parts(value)
+    return bool(parts) and all(GLOB_CHARS.fullmatch(t[1:] if t.startswith('!') else t) is not None
+                               for t in parts)
+
 def grep_glob_allowed(value, exps, path):
     """True when no part or expansion of a Grep glob can reopen the
-    workspace's .git for a Grep with this path."""
-    if not glob_ok(value):
+    workspace's .git for a Grep with this path. A part that starts with !
+    only excludes, so it passes, and so do its expansions, which all start
+    with ! too; every other part is judged."""
+    if not grep_glob_chars_ok(value):
         return False
-    # Claude Code splits on whitespace, which glob_ok has already refused, then
-    # on commas unless a part holds a brace group.
-    parts = [value] if '{' in value and '}' in value else [t for t in value.split(',') if t]
+    parts = grep_parts(value)
     if not parts:
         return False
     targets = git_targets(path)
     for t in parts + exps:
-        if '..' in t.split('/') or t.startswith('!') or can_reach_git(t, targets):
+        if t.startswith('!'):
+            continue
+        if '..' in t.split('/') or can_reach_git(t, targets):
             return False
     return True
 
@@ -596,14 +622,14 @@ def refusal(call):
             if any('..' in re.split(r'[/{},!]', e) for e in exps):
                 return ('Grep glob holds a .. segment', 'glob')
         else:
-            if not glob_ok(g):
+            if not grep_glob_chars_ok(g):
                 return ('character outside the allowlist', 'glob')
-            if '..' in re.split(r'[/{},]', g):
+            if '..' in re.split(r'[/{},!]', g):
                 return ('Grep glob holds a .. segment', 'glob')
             exps = expansions(g)
             if exps is None:
                 return ('braces cannot be expanded', 'glob')
-            if any('..' in re.split(r'[/{},]', e) for e in exps):
+            if any('..' in re.split(r'[/{},!]', e) for e in exps):
                 return ('Grep glob holds a .. segment', 'glob')
             if not away_from_workspace(args.get('path')):
                 if not grep_glob_allowed(g, exps, args.get('path')):

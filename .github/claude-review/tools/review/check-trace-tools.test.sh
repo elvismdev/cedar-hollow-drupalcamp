@@ -131,7 +131,7 @@ ok_path Grep '{"pattern":"x","glob":"*.{php,module}"}' "a Grep glob *.{php,modul
 ok_path Grep '{"pattern":"x","glob":"src/**/*.ts"}' "a Grep glob src/**/*.ts passes"
 ok_path Grep '{"pattern":"x","glob":"*.php,*.inc"}' "comma-separated extension globs pass"
 no_path Grep '{"pattern":"x","glob":""}' "an empty Grep glob is refused"
-no_path Grep '{"pattern":"x","glob":"!*.php"}' "a ! outside the allowlist is refused"
+ok_path Grep '{"pattern":"x","glob":"!*.php"}' "a negated part passes from any path"
 ok_path Grep '{"pattern":"x","glob":"**/{a,b}.php"}' "a brace group of names before the extension passes after **/"
 ok_path Grep '{"pattern":"x","glob":"{a,b}.php"}' "a brace group of names before the extension passes on its own"
 ok_path Grep '{"pattern":"x","glob":"src/**/*.{php,module}"}' "a brace group of extensions passes after a directory"
@@ -197,7 +197,7 @@ for opts in none audit; do
   assert_eq "0" "$(grep_rc '' '*gitignore*' "${O[@]}")" "*gitignore* with no path passes ($opts options)"
   assert_eq "0" "$(grep_rc /w/repo '{.gitignore,composer.json}' "${O[@]}")" "{.gitignore,composer.json} at the workspace passes ($opts options)"
   for p in '' /w/repo; do
-    for g in '**' '{a,**}' '*' '*.git' '.git*/x' '{.git,a}' '*.{git,php}' '!x' '../x' 'a/../*' \
+    for g in '**' '{a,**}' '*' '*.git' '.git*/x' '{.git,a}' '*.{git,php}' '../x' 'a/../*' \
              'a,**' '*.*' '**/*' '.g*' '**/.git' '.git/config' '**/.git/**' '{a,*}' '{x,**}' '*/' '/.git' \
              '.git/' '**/'; do
       assert_eq "1" "$(grep_rc "$p" "$g" "${O[@]}")" "the Grep glob $g is refused (path ${p:-none}, $opts options)"
@@ -358,6 +358,26 @@ for p in './/web' 'web//x' "//$zr/real/repo" "///$zr/real/repo" "$zr/real/repo/.
 done
 for p in './web' 'web/' '.' "$zr/real/repo/web/"; do
   assert_contains "$(zgrep "$zr/real/repo" "$p" '*.php')" "rc=0" "the Grep path $p still passes"
+done
+
+# A part that starts with ! is an exclusion to ripgrep and only removes files,
+# so it passes from any path; every other part is judged as before. A ! not at
+# the start of a part is a literal character to ripgrep, and is refused. The
+# first three are the negated globs Grep calls in audit run 41554500456 used
+# with no path.
+for opts in none audit; do
+  if [ "$opts" = audit ]; then O=("${AUDIT_OPTS[@]}"); else O=(); fi
+  for p in '' /w/repo /w/repo/web /rt/head; do
+    for g in '!web/**' '!.github/workflows/**' '!.github/**' '!**/node_modules/**' '!*' '!**' '!.git' '!{a,b}' \
+             '!web/**,*.php' '!*,!**' '!{.git,*}'; do
+      assert_eq "0" "$(grep_rc "$p" "$g" "${O[@]}")" "the negated Grep glob $g passes (path ${p:-none}, $opts options)"
+    done
+  done
+  for p in '' /w/repo; do
+    for g in '!web/**,*' '*,!web/**' '{!a,*}' '{!a,b}' '{a,!b}' 'a/!b' '!!a' '!../x' '!a/../b' '! a' '!' '!,*'; do
+      assert_eq "1" "$(grep_rc "$p" "$g" "${O[@]}")" "the Grep glob $g is refused (path ${p:-none}, $opts options)"
+    done
+  done
 done
 
 # Closed input fields. Each tool's input may hold only the fields of its own
@@ -525,7 +545,7 @@ grep_glob () { # path-json-or-empty glob expected-rc message [options...]
 grep_glob '"web/modules/custom"' '!**/node_modules/**' 0 "a negated glob with a subfolder path passes" "${G[@]}"
 grep_glob '"/w/repo/web"' '{web/modules/custom/**,tests/**,scripts/**}' 0 "a brace folder list with a subfolder path passes" "${G[@]}"
 grep_glob '"/mnt/a/out/agents"' '!*.json' 0 "a negated glob in an added root passes" "${G[@]}"
-grep_glob '' '!**/node_modules/**' 1 "the same negated glob with no path fails" "${G[@]}"
+grep_glob '' '!**/node_modules/**' 0 "the same negated glob with no path passes" "${G[@]}"
 grep_glob '".git"' '!**/node_modules/**' 1 "the same glob with path .git fails" "${G[@]}"
 grep_glob '".git/hooks"' '!**/node_modules/**' 1 "the same glob with path .git/hooks fails" "${G[@]}"
 grep_glob '"/w/repo"' '{web/modules/custom/**,tests/**}' 0 "a brace folder list with the checkout root as path passes" "${G[@]}"
@@ -542,7 +562,7 @@ grep_glob '"/w"' 'repo/**' 1 "and repo/**, which can match repo/.git, from above
 grep_glob '"/w/repo/.."' '**' 1 "as is ** from above the checkout reached with .." "${W[@]}"
 grep_glob '"/w/repo/.."' '**/.git/config' 1 "and so does one that climbs there with .." "${W[@]}"
 grep_glob '"/w/repo/web"' '!**/node_modules/**' 0 "a real subfolder under the same options still passes" "${W[@]}"
-grep_glob '"web/modules/custom"' '!**/node_modules/**' 1 "without the option the negated glob fails as before"
+grep_glob '"web/modules/custom"' '!**/node_modules/**' 0 "without the option the negated glob passes too"
 grep_glob '"web/modules/custom"' '{web/**,tests/**}' 0 "without the option a brace folder list in the workspace passes"
 grep_glob '"web/modules/custom"' '{web/**,**}' 1 "without the option a brace list holding ** in the workspace fails"
 
