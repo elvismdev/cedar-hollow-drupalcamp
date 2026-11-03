@@ -86,6 +86,27 @@ assert_contains "$(run "$mixed" security)" "since=$C2" "the header the body star
 late='printf "[{\"user\":{\"login\":\"github-actions[bot]\"},\"commit_id\":\"'"$C2"'\",\"submitted_at\":\"2026-01-01T00:00:00Z\",\"body\":\"Note. Claude bugs review: ok\"}]"'
 assert_contains "$(run "$late" bugs)" "state=full" "nor does a header that is not at the start"
 
+# Round trip: what post-findings.sh posts for each angle, read back by
+# review-rounds.sh and reviewed-through.sh. Each review's finding title names
+# the other angle's header, and the security review is the newer one.
+P="$ROOT/tools/review/post-findings.sh"
+RR="$ROOT/tools/review/review-rounds.sh"
+: > "$tmp/diffmap"
+post () {  # <angle> <commit> <submitted_at> <title>: one review as the feed returns it
+	printf '[{"severity":"nit","file":"x","line":1,"title":"%s","detail":"d"}]' "$4" > "$tmp/findings.json"
+	REVIEW_POST_CMD="cat > $tmp/payload.json" bash "$P" 1 "$1" "$tmp/findings.json" "$tmp/diffmap" "$2" >/dev/null 2>&1 ||
+		{ echo "FAIL: post-findings.sh did not post the $1 review" >&2; exit 1; }
+	python3 -I -c 'import json,sys; b=json.load(open(sys.argv[1])); print(json.dumps({"user":{"login":"github-actions[bot]"},"commit_id":b["commit_id"],"submitted_at":sys.argv[2],"body":b["body"]}))' "$tmp/payload.json" "$3"
+}
+bugs_review=$(post bugs "$C1" 2026-01-01T00:00:00Z "Claude security review: not this angle")
+security_review=$(post security "$C2" 2026-01-02T00:00:00Z "Claude bugs review: not this angle")
+printf '[%s,%s]' "$bugs_review" "$security_review" > "$tmp/round-trip.json"
+case "$security_review" in *"Claude bugs review"*) ;; *) echo "FAIL: the security review's body does not carry the bugs header" >&2; exit 1;; esac
+assert_eq "1" "$(REVIEW_REVIEWS_CMD="cat $tmp/round-trip.json" bash "$RR" 1 bugs 2>/dev/null)" "round trip: one bugs round"
+assert_eq "1" "$(REVIEW_REVIEWS_CMD="cat $tmp/round-trip.json" bash "$RR" 1 security 2>/dev/null)" "round trip: one security round"
+assert_contains "$(run "cat $tmp/round-trip.json" bugs)" "since=$C1" "round trip: bugs read through its own review's commit"
+assert_contains "$(run "cat $tmp/round-trip.json" security)" "since=$C2" "round trip: security read through its own review's commit"
+
 # Only the bot's reviews count. A human's approval is not a review round, and
 # taking its commit_id would silently shrink the next review's surface.
 human='printf "[{\"user\":{\"login\":\"repo-owner\"},\"commit_id\":\"'"$C2"'\",\"submitted_at\":\"2026-01-01T00:00:00Z\",\"body\":\"Claude bugs review: looks fine\"}]"'
