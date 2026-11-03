@@ -192,7 +192,7 @@ cap_bugs=""; cap_sec=""
 [ "${BUGS_STATE:-}" != "capped" ] || cap_bugs=1
 [ "${SECURITY_STATE:-}" != "capped" ] || cap_sec=1
 if [ -n "$cap_bugs$cap_sec" ] && ! acknowledged; then
-  red "Round cap reached for $(angles "$cap_bugs" "$cap_sec")." hint
+  red "Round cap reached for $(angles "$cap_bugs" "$cap_sec"). Waiting for 'Accepted at ${HEAD_SHA}:' (the full 40-character sha)." hint
 fi
 
 # 5 to 7. The review threads. findings-gate.sh's stderr stays in the log: it

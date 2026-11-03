@@ -88,7 +88,7 @@ assert_contains "$(run BUGS_STATE=failed BUGS_CAUSE=empty_diff SECURITY_STATE=ca
 
 # 4. Capped, with no acknowledgement.
 out=$(run BUGS_STATE=capped)
-assert_contains "$out" "Round cap reached for bugs." "one angle capped with the other reviewed"
+assert_contains "$out" "Round cap reached for bugs. Waiting for 'Accepted at ${A1}:' (the full 40-character sha)." "one angle capped with the other reviewed names the full head sha to acknowledge"
 assert_eq "1" "$(rc BUGS_STATE=capped)" "is red"
 assert_contains "$(run BUGS_STATE=capped SECURITY_STATE=capped)" "Round cap reached for bugs and security." "both capped"
 assert_contains "$(run SECURITY_STATE=capped REVIEW_THREADS_CMD="$unreadable")" "Round cap reached for security." "the cap comes before the threads"

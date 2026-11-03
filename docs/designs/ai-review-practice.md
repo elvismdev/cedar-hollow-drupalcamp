@@ -193,7 +193,7 @@ This table is a project addition to the design template. It records who settled 
 
 *   **Given**: A pull request has had three reviewed rounds on one angle.
 *   **When**: The owner pushes a fourth change.
-*   **Then**: That angle reports `capped`, and the gate is red with "Round cap reached for bugs." The owner reads the unreviewed commits and posts "Accepted at <full head sha>: <reason>". A re-run of the gate turns it green.
+*   **Then**: That angle reports `capped`, and the gate is red with "Round cap reached for bugs. Waiting for 'Accepted at <full head sha>:' (the full 40-character sha)." The owner reads the unreviewed commits and posts "Accepted at <full head sha>: <reason>". A re-run of the gate turns it green.
 
 ### CUJ 7: A reviewer change regresses
 
@@ -342,7 +342,7 @@ The repository's merge settings are changed to match (merge commits only), becau
         1.  Guard failed: "Outside pull requests are not accepted; please open an issue."
         2.  Draft: "Draft pull request: the review runs when it is marked ready."
         3.  Either angle `failed` or missing: "Review did not run (<cause>) for <angle>." A missing angle reports cause `missing`.
-        4.  Either angle `capped`, with no valid acknowledgement: "Round cap reached for <angle>."
+        4.  Either angle `capped`, with no valid acknowledgement: "Round cap reached for <angle>. Waiting for 'Accepted at <full head sha>:' (the full 40-character sha)."
         5.  Threads unreadable: "Review threads could not be read."
         6.  100 or more threads: "100 or more review threads; the gate cannot decide."
         7.  Important findings unanswered: "<N> important findings unanswered."
