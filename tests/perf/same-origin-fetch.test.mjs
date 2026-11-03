@@ -62,3 +62,14 @@ test('stops a redirect loop at the bound', async () => {
   assert.equal(response.status, 302);
   assert.equal(siteHits.length, MAX_REDIRECTS + 1);
 });
+
+test('without headers, follows same-origin redirects and not another origin', async () => {
+  siteHits.length = 0;
+  otherHits.length = 0;
+  const followed = await fetchSameOrigin(`${base}/`, base, {});
+  assert.equal(followed.status, 200);
+  assert.deepEqual(siteHits.map((hit) => hit.path), ['/', '/home', '/final']);
+  const refused = await fetchSameOrigin(`${base}/away`, base, {});
+  assert.equal(refused.status, 302);
+  assert.deepEqual(otherHits, []);
+});

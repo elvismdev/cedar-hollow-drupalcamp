@@ -17,11 +17,11 @@ export function derivativeUrls(html, base) {
 }
 
 // Returns the fetch options for url: the headers only when url is on base's
-// origin, and then with redirects not followed by fetch, because Node's fetch
-// sends custom headers on to whatever host a redirect names. fetchSameOrigin()
-// follows the redirects that stay on base's origin.
+// origin, and never fetch's own redirect handling, because Node's fetch sends
+// custom headers on to whatever host a redirect names. fetchSameOrigin()
+// follows the redirects that stay on base's origin, with or without headers.
 export function requestInit(url, base, headers) {
-  if (Object.keys(headers).length === 0 || new URL(url).origin !== new URL(base).origin) return {};
+  if (Object.keys(headers).length === 0 || new URL(url).origin !== new URL(base).origin) return { redirect: 'manual' };
   return { headers, redirect: 'manual' };
 }
 

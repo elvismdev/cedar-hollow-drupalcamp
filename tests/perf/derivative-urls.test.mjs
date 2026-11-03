@@ -35,11 +35,11 @@ test('sends the bypass headers to the base origin without following redirects', 
   assert.deepEqual(requestInit(`${base}/sessions`, base, bypass), { headers: bypass, redirect: 'manual' });
 });
 
-test('sends no headers to another origin', () => {
-  assert.deepEqual(requestInit('https://attacker.test/files/styles/x/a.jpg', base, bypass), {});
-  assert.deepEqual(requestInit('http://dev-cedar-hollow.example.test/sessions', base, bypass), {});
+test('sends no headers to another origin, and follows no redirect there either', () => {
+  assert.deepEqual(requestInit('https://attacker.test/files/styles/x/a.jpg', base, bypass), { redirect: 'manual' });
+  assert.deepEqual(requestInit('http://dev-cedar-hollow.example.test/sessions', base, bypass), { redirect: 'manual' });
 });
 
-test('leaves requests unchanged when there are no headers to send', () => {
-  assert.deepEqual(requestInit(`${base}/sessions`, base, {}), {});
+test('leaves redirects to fetchSameOrigin() when there are no headers to send', () => {
+  assert.deepEqual(requestInit(`${base}/sessions`, base, {}), { redirect: 'manual' });
 });
