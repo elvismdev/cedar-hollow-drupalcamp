@@ -17,6 +17,7 @@ prompt=$(cat)
 # that directory when the agent started.
 if [ -n "${ARGS_LOG:-}" ]; then
   while [ "$#" -gt 0 ]; do
+    [ "$1" = "--disallowedTools" ] && printf 'deny %s\n' "$2" >> "$ARGS_LOG"
     if [ "$1" = "--add-dir" ]; then
       if [ -f "$2/review-diff.patch" ]; then has=patch; else has=nopatch; fi
       printf 'add-dir %s %s\n' "$2" "$has" >> "$ARGS_LOG"
@@ -124,6 +125,16 @@ case "$dir" in /*) abs=0;; *) abs=1;; esac
 assert_exit 0 "$abs" "for an absolute directory, without quotes ($dir)"
 assert_contains "$(cat "$tmp/args.log")" "add-dir $dir patch" "which holds the review diff when the agent starts"
 assert_contains "$(cat "$tmp/args.log")" "prompt-names $dir" "and the prompt names the diff there"
+
+# The reviewer gets the review job's path rules, written from the repository
+# under review and the input directory's parent, as one argument without the
+# quotes that keep it whole in claude_args.
+deny=$(awk '/^deny /{print $2; exit}' "$tmp/args.log")
+top=$(git -C "$r" rev-parse --show-toplevel)
+for rule in 'Read(//proc/**)' "Grep(/$top/.git)" "Read(/$top/.git/**)" "Read(/$HOME/.*/**)"; do
+  assert_contains ",$deny," ",$rule," "the reviewer's deny list holds $rule"
+done
+case "$deny" in *"'"*) echo "FAIL: the deny list reached the agent with its quotes" >&2; exit 1 ;; esac
 
 # reviewArgs splits the composed line as claude-code-action does for the
 # shapes it holds: a double-quoted directory and a single-quoted rule list are

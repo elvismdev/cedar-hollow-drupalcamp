@@ -13,7 +13,9 @@
 #
 # It also puts the argument string in ONE place.
 #
-# Usage: compose-agent-args.sh            (reads AGENT_* and REVIEW_*_DIR from the environment)
+# Usage: compose-agent-args.sh            (reads AGENT_*, REVIEW_*_DIR, HOME, RUNNER_TEMP and
+#                                          GITHUB_WORKSPACE from the environment; prints
+#                                          nothing and exits 1 when a runner path is unusable)
 #        compose-agent-args.sh --audit | --audit-models <step>   (the security audit's steps, below)
 set -uo pipefail
 
@@ -86,10 +88,34 @@ path_rules() { # tools path...
   printf '%s' "${out#,}"
 }
 
+# Each root as itself and as everything under it, one rule per tool, so a Glob
+# or Grep given the folder as its path is refused rather than left to whether
+# X/** matches X.
+root_rules() { # tools root...
+  local tools="$1" r paths=()
+  shift
+  for r in "$@"; do paths+=("$r" "$r/**"); done
+  path_rules "$tools" "${paths[@]}"
+}
+
+# The roots the reviewer and the verifiers never read: the kernel's views of
+# processes (/proc/self/environ holds the job's tokens) and devices, the
+# checkout's .git (claude-code-action writes its token into .git/config), every
+# dot-file and dot-directory in the runner's home, and the runner's actions
+# and install directories. RUNNER_TEMP is not among them: it holds the head and
+# the input directory the agent is given with --add-dir, and a deny rule beats
+# that grant.
+review_rules() {
+  root_rules "Read Glob Grep" /proc /sys "$GITHUB_WORKSPACE/.git" "$HOME/.*" \
+    "${RUNNER_TEMP%/*}/_actions" "$HOME/runners" "$HOME/actions-runner"
+}
+
+# The deny list is single-quoted, so claude-code-action keeps its rules, which
+# hold ( ) and *, in one argument.
 args() { # model turns tools
-  printf '%s %s%s%s--max-turns %s --allowedTools %s --disallowedTools %s,%s' \
+  printf "%s %s%s%s--max-turns %s --allowedTools %s --disallowedTools '%s,%s,%s'" \
     "$BASE" "$(model_flag "$1")" "$(dir_flag "${REVIEW_HEAD_DIR:-}")" \
-    "$(dir_flag "${REVIEW_INPUT_DIR:-}")" "$2" "$3" "$NO_HUMAN" "$NO_WRITE"
+    "$(dir_flag "${REVIEW_INPUT_DIR:-}")" "$2" "$3" "$NO_HUMAN" "$NO_WRITE" "$(review_rules)"
 }
 
 # ---------------------------------------------------------------------------
@@ -196,6 +222,7 @@ if [ "${1:-}" = "--audit" ]; then
 fi
 
 [ "$#" -eq 0 ] || { echo "usage: compose-agent-args.sh [--audit | --audit-models <step>]" >&2; exit 2; }
+runner_paths_ok || exit 1
 
 printf 'AGENT_ARGS_REVIEW=%s\n' \
   "$(args "${AGENT_MODEL_REVIEW:-}" "${AGENT_TURNS_REVIEW:-60}" "$TOOLS_READ")"

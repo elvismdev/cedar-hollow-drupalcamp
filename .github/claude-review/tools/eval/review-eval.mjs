@@ -174,9 +174,12 @@ function runCase(repo, c, kind, base, verify) {
   // The diffs are written here and the agent opens them with the Read tool. It
   // runs in the worktree, so the directory is added for reading with --add-dir,
   // which compose-agent-args.sh emits from REVIEW_INPUT_DIR, as in the review job.
+  // Its deny rules are written from GITHUB_WORKSPACE, here the repository whose
+  // .git the worktree shares, and RUNNER_TEMP, the runner's when the eval runs
+  // in a job and the case's directory otherwise.
   const input = join(work, 'input');
   mkdirSync(input);
-  const env = { ...process.env, REVIEW_INPUT_DIR: input };
+  const env = { ...process.env, REVIEW_INPUT_DIR: input, GITHUB_WORKSPACE: repo, RUNNER_TEMP: process.env.RUNNER_TEMP || work };
   let args;
   try {
     const compose = sh('bash', [join(TOOLS, 'agent/compose-agent-args.sh')], { cwd: repo, env }).stdout || '';
