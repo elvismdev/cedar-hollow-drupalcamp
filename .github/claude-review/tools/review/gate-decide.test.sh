@@ -199,6 +199,21 @@ assert_contains "$(run TIER=High HEAD_SHA="$H3" REVIEW_COMMENTS_CMD="$ack_head")
 
 # Comments that cannot be read are not "no acknowledgement".
 assert_contains "$(run TIER=High REVIEW_COMMENTS_CMD='exit 4')" "Pull request comments could not be read." "an unreadable comments feed is named"
+# The real comments query sends owner and name as strings. With -F, gh would
+# send an all-digit name as a number, which the query's String! refuses.
+mkdir -p "$tmp/bin"
+cat > "$tmp/bin/gh" <<GH
+#!/usr/bin/env bash
+printf '%s\n' "\$@" > "$tmp/gh-args"
+printf '[]'
+GH
+chmod +x "$tmp/bin/gh"
+env -u REVIEW_COMMENTS_CMD PATH="$tmp/bin:$PATH" TIER=High GITHUB_REPOSITORY=12345/67890 bash "$G" >/dev/null 2>&1
+args=$(cat "$tmp/gh-args" 2>/dev/null)
+assert_contains "$args" $'-f\nowner=12345\n' "the owner is sent as a string"
+assert_contains "$args" $'-f\nname=67890\n' "the repository name is sent as a string"
+assert_contains "$args" $'-F\npr=1\n' "the pull request number is sent as a number"
+
 # A token without the permission is named as such, and still fails closed.
 denied='echo "GraphQL: Resource not accessible by integration (repository.pullRequest.comments)" >&2; exit 1'
 out=$(run TIER=High REVIEW_COMMENTS_CMD="$denied")

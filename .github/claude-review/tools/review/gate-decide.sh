@@ -122,7 +122,8 @@ HEAD_SHA="${HEAD_SHA:-}"
 comments_feed() {
   if [ -n "${REVIEW_COMMENTS_CMD:-}" ]; then bash -c "$REVIEW_COMMENTS_CMD"; return; fi
   # GraphQL rather than the REST comments feed, which does not say who edited
-  # a comment.
+  # a comment. -f sends owner and name as strings; -F would send an all-digit
+  # name as a number, which String! refuses.
   gh api graphql --paginate -f query='
     query($owner:String!, $name:String!, $pr:Int!, $endCursor:String) {
       repository(owner:$owner, name:$name) {
@@ -133,7 +134,7 @@ comments_feed() {
           }
         }
       }
-    }' -F owner="${GITHUB_REPOSITORY%%/*}" -F name="${GITHUB_REPOSITORY##*/}" -F pr="$PR_NUMBER" \
+    }' -f owner="${GITHUB_REPOSITORY%%/*}" -f name="${GITHUB_REPOSITORY##*/}" -F pr="$PR_NUMBER" \
     --jq '.data.repository.pullRequest.comments.nodes'
 }
 
