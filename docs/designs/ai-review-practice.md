@@ -887,6 +887,7 @@ Stage 4 lands in this order:
         *   The reproduce and fix lines are removed, with the write tool list. Variables are renamed from upstream's prefix to `AGENT_ARGS_*`.
         *   `AGENT_ARGS_REVIEW` gets `--allowedTools Read,Glob,Grep`.
         *   `--disallowedTools` gets upstream's no-human list plus Bash, Edit, Write, MultiEdit, NotebookEdit, WebFetch, WebSearch and Skill.
+        *   The same single-quoted list carries Read, Glob and Grep deny rules on `/proc`, `/sys`, `$GITHUB_WORKSPACE/.git`, `$HOME`'s dot-files and the runner's `_actions`, `runners` and `actions-runner` directories, each as itself and `/**`, and none on `$RUNNER_TEMP`, which holds the head and input directories; the line is not printed when `HOME`, `RUNNER_TEMP` or `GITHUB_WORKSPACE` fails the audit's path check.
         *   `--setting-sources user` is kept.
         *   `--add-dir "$REVIEW_HEAD_DIR"` and `--add-dir "$REVIEW_INPUT_DIR"` are emitted only when each is set, and placed before `--max-turns`.
     *   **`compose-agent-args.test.sh`** is rewritten. It asserts both tool lists, the `--add-dir` behaviour with each variable set and unset, and that no `--add-dir` swallows the next flag.
