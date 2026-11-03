@@ -17,6 +17,15 @@ assert_eq "1" "$(count "$(cmd "[$bot]")")" "a bugs review by the bot counts"
 assert_eq "1" "$(count "$(cmd "[$(review github-actions bugs)]")")" "the login without the [bot] suffix counts too"
 assert_eq "0" "$(count "$(cmd "[$bot]")" security)" "another angle's review does not count"
 
+# A review is an angle's only when its body starts with that angle's header;
+# another angle's header later in the body, as a finding title can put it,
+# does not count.
+mixed='{"user":{"login":"github-actions[bot]"},"body":"Claude security review: 1 finding(s).\n- nit Claude bugs review"}'
+assert_eq "0" "$(count "$(cmd "[$mixed]")" bugs)" "another angle's header later in the body does not count"
+assert_eq "1" "$(count "$(cmd "[$mixed]")" security)" "the header the body starts with does"
+late='{"user":{"login":"github-actions[bot]"},"body":"Note. Claude bugs review: ok"}'
+assert_eq "0" "$(count "$(cmd "[$late]")" bugs)" "nor does a header that is not at the start"
+
 # Logins that merely contain the bot's are not the bot.
 lookalikes="[$(review 'my-github-actions-app[bot]' bugs),$(review 'github-actions-impostor' bugs),$(review 'xgithub-actions[bot]' bugs)]"
 assert_eq "0" "$(count "$(cmd "$lookalikes")")" "a login containing the bot's is not the bot"
