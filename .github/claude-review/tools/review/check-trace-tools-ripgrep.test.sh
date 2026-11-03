@@ -93,6 +93,19 @@ for f in FOLDER:
 for a, b in itertools.combinations(FOLDER, 2):
     globs.add('{%s,%s}' % (a, b))
     globs.add('%s,%s' % (a, b))
+# Negated shapes: a part starting with ! alone, beside every folder shape in
+# either order, two together, and a ! inside a brace group or after a /,
+# which ripgrep reads as a literal character.
+NEGATED = ['!*', '!**', '!.git', '!.git/**', '!**/.git', '!src/**', '!*/x.php', '!{a,*}', '!{.git,src}',
+           '!' + os.path.basename(ws) + '/**', '!**/*']
+for n in NEGATED:
+    globs.add(n)
+    for f in FOLDER:
+        globs.add('%s,%s' % (n, f))
+        globs.add('%s,%s' % (f, n))
+for a, b in itertools.combinations(NEGATED, 2):
+    globs.add('%s,%s' % (a, b))
+globs |= {'{!a,*}', '{!.git,src/*}', '{src/*,!*}', 'src/!a', '*/!*', '!!*'}
 # The globs of the three calls that leaked by their raw path: src/.. with
 # src/**, <checkout>/.. with */repo/** from the parent as a root, and a
 # folder linked to the checkout with src/**.
