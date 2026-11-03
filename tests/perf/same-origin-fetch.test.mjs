@@ -33,9 +33,12 @@ before(async () => {
   base = await listen(site);
 });
 
+// fetch keeps connections alive; ending them lets the servers close at once.
 after(() => {
-  site.close();
-  other.close();
+  for (const server of [site, other]) {
+    server.closeAllConnections();
+    server.close();
+  }
 });
 
 test('follows same-origin redirects with the headers on every hop', async () => {
