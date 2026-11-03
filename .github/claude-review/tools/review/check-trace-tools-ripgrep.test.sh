@@ -63,6 +63,10 @@ import itertools, json, os, re, subprocess, sys
 from concurrent.futures import ThreadPoolExecutor
 
 check, suite, ws, token, plain, tmp, up = sys.argv[1:]
+# The check's own split of a Grep glob into ripgrep --glob arguments.
+sys.dont_write_bytecode = True
+sys.path.insert(0, os.path.dirname(check))
+from grep_glob_parts import parts as grep_parts
 AUDIT = ['--tools', 'Read,Glob,Grep,Write,Edit,Agent,Task,SubagentHandback',
          '--root', '/mnt/audit/source/in', '--root', '/mnt/audit/source/out',
          '--write-root', '/mnt/audit/source/out', '--grep-any-glob-in-subfolders']
@@ -149,9 +153,8 @@ def search(glob, path, mode):
     for d in ('.git', '.svn', '.hg', '.bzr', '.jj', '.sl'):
         args += ['--glob', '!' + d]
     args += ['--max-columns', '500', '-l', '--null', token + '|' + plain]
-    for part in glob.split():
-        for p in ([part] if '{' in part and '}' in part else [t for t in part.split(',') if t]):
-            args += ['--glob', p]
+    for p in grep_parts(glob):
+        args += ['--glob', p]
     cwd, target = spawn(path, mode)
     r = subprocess.run(args + [target], capture_output=True, cwd=cwd)
     return r.returncode, r.stdout.decode('utf-8', 'replace'), r.stderr.decode('utf-8', 'replace')

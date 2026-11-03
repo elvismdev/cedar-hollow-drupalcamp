@@ -614,6 +614,12 @@ mkdir -p "$tmp/noexp"
 cp "$C" "$tmp/noexp/check-trace-tools.sh"
 printf '[%s]' "$(call Read '{"file_path":"/w/repo/a"}')" > "$tmp/b.json"
 assert_eq "1" "$(bash "$tmp/noexp/check-trace-tools.sh" "$tmp/b.json" >/dev/null 2>&1; echo $?)" "a missing expander fails closed"
+# Without the shared glob split it fails closed too.
+mkdir -p "$tmp/nosplit"
+cp "$C" "$(dirname "$C")/expand-braces.cjs" "$tmp/nosplit/"
+assert_eq "1" "$(bash "$tmp/nosplit/check-trace-tools.sh" "$tmp/b.json" >/dev/null 2>&1; echo $?)" "a missing glob split fails closed"
+cp "$(dirname "$C")/grep_glob_parts.py" "$tmp/nosplit/"
+assert_eq "0" "$(bash "$tmp/nosplit/check-trace-tools.sh" "$tmp/b.json" >/dev/null 2>&1; echo $?)" "and passes with it beside the script"
 
 # It fails closed on what it cannot read.
 assert_eq "1" "$(rc "$tmp/absent.json")" "a missing trace fails"

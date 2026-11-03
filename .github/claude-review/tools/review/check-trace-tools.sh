@@ -256,7 +256,7 @@ if ! jq -c '[.. | objects | select(.type? == "tool_use") | .input? | objects
   exit 1
 fi
 
-outside_roots=$(python3 -I - "$TRACE" "$ROOT_ARGS" "$WRITE_ROOT_ARGS" "$any_glob_in_subfolders" "$EXPANSIONS" <<'PY'
+outside_roots=$(python3 -I - "$TRACE" "$ROOT_ARGS" "$WRITE_ROOT_ARGS" "$any_glob_in_subfolders" "$EXPANSIONS" "$HERE" <<'PY'
 import json, os, posixpath, re, sys
 
 ws = posixpath.normpath(os.environ['GITHUB_WORKSPACE'])
@@ -265,6 +265,10 @@ extra_roots = [posixpath.normpath(r) for r in json.loads(sys.argv[2])]
 write_roots = [posixpath.normpath(r) for r in json.loads(sys.argv[3])]
 any_glob_in_subfolders = sys.argv[4] == '1'
 EXPANDED = json.load(open(sys.argv[5]))
+# Claude Code's own split of a Grep glob, shared with the ripgrep canary.
+sys.dont_write_bytecode = True
+sys.path.insert(0, sys.argv[6])
+from grep_glob_parts import parts as grep_parts
 
 def expansions(value):
     """The brace expansions of a path-bearing value, or None when they could
@@ -421,12 +425,6 @@ def git_targets(path):
         targets |= {a.lstrip('/') for a in absolute}
     return targets
 
-def grep_parts(value):
-    """The globs Claude Code passes to ripgrep for a Grep glob: it splits on
-    whitespace, which the allowlist refuses, then on commas unless a part
-    holds a brace group."""
-    return [value] if '{' in value and '}' in value else [t for t in value.split(',') if t]
-
 def grep_glob_chars_ok(value):
     """The Grep glob allowlist: the Glob pattern characters, and ! only as
     the first character of a part. ripgrep reads a glob that starts with ! as
@@ -434,7 +432,7 @@ def grep_glob_chars_ok(value):
     else (inside a brace group, after a /) is a literal character to it, so a
     glob holding one would be judged as a positive glob naming a !, and is
     refused instead."""
-    if not isinstance(value, str):
+    if not isinstance(value, str) or re.search(r'\s', value):
         return False
     parts = grep_parts(value)
     return bool(parts) and all(GLOB_CHARS.fullmatch(t[1:] if t.startswith('!') else t) is not None
@@ -447,11 +445,8 @@ def grep_glob_allowed(value, exps, path):
     with ! too; every other part is judged."""
     if not grep_glob_chars_ok(value):
         return False
-    parts = grep_parts(value)
-    if not parts:
-        return False
     targets = git_targets(path)
-    for t in parts + exps:
+    for t in grep_parts(value) + exps:
         if t.startswith('!'):
             continue
         if '..' in t.split('/') or can_reach_git(t, targets):
