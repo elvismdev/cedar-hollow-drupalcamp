@@ -63,10 +63,29 @@ import itertools, json, os, re, subprocess, sys
 from concurrent.futures import ThreadPoolExecutor
 
 check, suite, ws, token, plain, tmp, up = sys.argv[1:]
-# The check's own split of a Grep glob into ripgrep --glob arguments.
+
+def model_parts(glob):
+    """The canary's own model of how Claude Code turns a Grep glob into
+    ripgrep --glob arguments, kept apart from the check's: split on
+    whitespace, then split each piece on commas unless it holds both braces,
+    and drop empty pieces."""
+    out = []
+    for piece in glob.split():
+        out.extend([piece] if '{' in piece and '}' in piece else [t for t in piece.split(',') if t])
+    return out
+
+# The model and the check's grep_glob_parts.py must agree on a fixed corpus,
+# so a change to either shows here.
 sys.dont_write_bytecode = True
 sys.path.insert(0, os.path.dirname(check))
-from grep_glob_parts import parts as grep_parts
+from grep_glob_parts import parts as check_parts
+CORPUS = ['*.php', 'a,b', 'a,,b', ',a,', '{a,b}', 'a,{b,c}', '!x,{y,z}/**', 'a b', 'a,b c,{d,e} f',
+          '{', '}', 'a{b,c', 'a}b,c', '', ' ', '!web/**,*', '{a,b},c', 'src/**/*.php,!vendor/**',
+          '!{vendor,node_modules}/**', '{a,{b,c}}', 'x}{,y']
+drift = [g for g in CORPUS if model_parts(g) != check_parts(g)]
+if drift:
+    sys.exit('FAIL: the canary\'s split model and the check\'s disagree on: %s' % ' | '.join(repr(g) for g in drift))
+print('split model agrees with the check on %d corpus globs' % len(CORPUS))
 AUDIT = ['--tools', 'Read,Glob,Grep,Write,Edit,Agent,Task,SubagentHandback',
          '--root', '/mnt/audit/source/in', '--root', '/mnt/audit/source/out',
          '--write-root', '/mnt/audit/source/out', '--grep-any-glob-in-subfolders']
@@ -153,7 +172,7 @@ def search(glob, path, mode):
     for d in ('.git', '.svn', '.hg', '.bzr', '.jj', '.sl'):
         args += ['--glob', '!' + d]
     args += ['--max-columns', '500', '-l', '--null', token + '|' + plain]
-    for p in grep_parts(glob):
+    for p in model_parts(glob):
         args += ['--glob', p]
     cwd, target = spawn(path, mode)
     r = subprocess.run(args + [target], capture_output=True, cwd=cwd)
