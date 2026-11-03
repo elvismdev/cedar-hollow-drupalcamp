@@ -10,9 +10,11 @@
 # commit outdating it: both can happen with nobody having read the finding.
 #
 # Content edited by someone other than its author does not count. A finding
-# comment edited by anyone but the bot is important and unanswered, since its
-# tag or text may no longer be what the review posted; an owner reply edited by
-# anyone but the owner is not an answer. GitHub reports the last editor of each
+# comment edited by anyone but the bot or the owner is important and
+# unanswered, since its tag or text may no longer be what the review posted; an
+# owner reply edited by anyone but the owner is not an answer. The owner's own
+# edits are trusted. The bot's login is shared by every workflow in the
+# repository, so an edit under it is not proof the reviewer made it. GitHub reports the last editor of each
 # comment. A deleted comment leaves no trace in this feed, so deletion is not
 # detected here.
 #
@@ -117,7 +119,8 @@ for t in threads:
         continue
     body = (comments[0].get('body') or '').strip()
     reported.append(body)
-    tampered = edited_by_other(comments[0], bot, f'{bot}[bot]')
+    # The owner's own edits are trusted.
+    tampered = edited_by_other(comments[0], bot, f'{bot}[bot]', owner)
     if not tampered and any(login(c) == owner and not edited_by_other(c, owner)
                             for c in comments[1:]):
         answered += 1

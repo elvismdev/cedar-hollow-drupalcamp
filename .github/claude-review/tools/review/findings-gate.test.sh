@@ -106,9 +106,9 @@ assert_contains "$(run "$(feed "${hundred[@]}")")" "truncated=true" "and says so
 assert_eq "" "$(run "$broken" | grep truncated)" "which an unreadable feed does not print"
 
 # Comment content edited by someone other than its author does not count. A
-# finding edited by anyone but the bot may have been retagged or emptied, so it
-# is important and unanswered whatever follows it; an owner reply edited by
-# someone else is not the owner's answer.
+# finding edited by anyone but the bot or the owner may have been retagged or
+# emptied, so it is important and unanswered whatever follows it; an owner
+# reply edited by someone else is not the owner's answer.
 # edited <first editor> <first body> [reply author] [reply editor]: one thread,
 # an editor of "" meaning the comment was never edited.
 edited () {
@@ -123,7 +123,9 @@ retagged=$(feed "$(edited someone-else "nit: retagged")")
 assert_eq "1" "$(rc "$retagged")" "a finding edited by someone else blocks, whatever its tag"
 assert_contains "$(run "$retagged")" "thread=important https://example.invalid/nit--retagged" "and is listed as important"
 assert_eq "1" "$(rc "$(feed "$(edited someone-else "important: edited" repo-owner)")")" "and an owner reply does not answer it"
-assert_eq "1" "$(rc "$(feed "$(edited repo-owner "nit: edited by the owner")")")" "nor does an edit by the owner make it the bot's"
+# The owner's own edits are trusted: an edit by the owner is not tampering.
+assert_eq "0" "$(rc "$(feed "$(edited repo-owner "nit: edited by the owner")")")" "a finding edited by the owner keeps its tag"
+assert_eq "0" "$(rc "$(feed "$(edited repo-owner "important: edited by the owner" repo-owner)")")" "and is answered by an owner reply"
 assert_eq "0" "$(rc "$(feed "$(edited github-actions "nit: edited by the bot")")")" "a finding edited by the bot itself keeps its tag"
 assert_eq "0" "$(rc "$(feed "$(edited "github-actions[bot]" "important: edited by the bot" repo-owner)")")" "and is answered by an owner reply"
 assert_eq "1" "$(rc "$(feed "$(edited "" "important: x" repo-owner someone-else)")")" "an owner reply edited by someone else does not answer"
