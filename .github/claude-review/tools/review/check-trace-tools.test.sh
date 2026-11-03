@@ -140,10 +140,12 @@ no_path Grep '{"pattern":"x","glob":"**/{..,a}.php"}' "a .. in the names brace g
 ok_path Grep '{"pattern":"x","glob":"{a,b}/x.php"}' "a brace group in a directory segment passes"
 ok_path Grep '{"pattern":"x","glob":"**/{a,b}"}' "a brace group of names with no extension passes"
 
-# A brace group of literal names passes. A path segment that, read as a glob,
-# can match .git is refused (.git*, *.git, {a,b}.git, *.{git,sample}), while a
-# literal name such as .gitignore passes. Both with no options and with the
-# audit's. The first two passing globs, {REVIEW.md,AGENTS.md,CLAUDE.md} and
+# A brace group of literal names passes. A glob is refused when it can match
+# the name .git (*.git, .GIT, *.{git,sample}), or holds a / and can match .git
+# or name it on the way to a path inside it (.git/config, **/.Git/hooks/*);
+# a glob anchored elsewhere (x/.git/y.md, src/*.Git) and a name that only ends
+# in .git ({a,b}.git) pass, as does a literal name such as .gitignore. Both
+# with no options and with the audit's. The first two passing globs, {REVIEW.md,AGENTS.md,CLAUDE.md} and
 # *.{yml,yaml,sh,htaccess,gitignore,json,php,md}, are real calls from audit run
 # 41347206214; every other glob in these loops is synthetic.
 glob_rc () { # glob [option...]: exit status of a Grep with that glob and no path
@@ -155,13 +157,14 @@ for opts in none audit; do
   if [ "$opts" = audit ]; then O=("${AUDIT_OPTS[@]}"); else O=(); fi
   for g in '{REVIEW.md,AGENTS.md,CLAUDE.md}' '*.{yml,yaml,sh,htaccess,gitignore,json,php,md}' \
            'src/{a.php,b.yml}' '*.gitignore' '.gitattributes' '**/*.gitkeep' \
-           '{REVIEW,AGENTS.md}' 'src/{a,b}' '{a.md,*.md}' '{a.md,b/c.md}' '{.htaccess,a.md}'; do
+           '{REVIEW,AGENTS.md}' 'src/{a,b}' '{a.md,*.md}' '{a.md,b/c.md}' '{.htaccess,a.md}' \
+           'x/.git/y.md' '{a,b}.git' '{x.git,y.md}' 'src/*.Git'; do
     assert_eq "0" "$(glob_rc "$g" "${O[@]}")" "the Grep glob $g passes ($opts options)"
   done
-  for g in '.git/config' '**/.git/**' '{.git,x}/config' '.GIT/config' '{.git/x.php,a.php}' 'x/.git/y.md' \
+  for g in '.git/config' '**/.git/**' '{.git,x}/config' '.GIT/config' '{.git/x.php,a.php}' \
            '**/.Git/hooks/*.sample' 'a.php,.git/x.md' '{a.md,../b.md}' \
-           '.git*/hooks/pre-commit.sample' '**/.git*/**/*.pack' '*.git' '**/*.git' '*.GIT' '{a,b}.git' \
-           '{x.git,y.md}' '*.{git,sample}' '*.git,*.sample' '*.git,*.pack,*.idx' 'src/*.Git'; do
+           '.git*/hooks/pre-commit.sample' '**/.git*/**/*.pack' '*.git' '**/*.git' '*.GIT' \
+           '*.{git,sample}' '*.git,*.sample' '*.git,*.pack,*.idx'; do
     assert_eq "1" "$(glob_rc "$g" "${O[@]}")" "the Grep glob $g is still refused ($opts options)"
   done
 done
@@ -194,18 +197,168 @@ for opts in none audit; do
   assert_eq "0" "$(grep_rc '' '*gitignore*' "${O[@]}")" "*gitignore* with no path passes ($opts options)"
   assert_eq "0" "$(grep_rc /w/repo '{.gitignore,composer.json}' "${O[@]}")" "{.gitignore,composer.json} at the workspace passes ($opts options)"
   for p in '' /w/repo; do
-    for g in '**' 'src/**' '{a,**}' '*' '*.git' '.git*/x' '{.git,a}' '*.{git,php}' '!x' '../x' 'a/../*' \
-             'a,**' 'src/' '*.*' '{a,b}/**'; do
+    for g in '**' '{a,**}' '*' '*.git' '.git*/x' '{.git,a}' '*.{git,php}' '!x' '../x' 'a/../*' \
+             'a,**' '*.*' '**/*' '.g*' '**/.git' '.git/config' '**/.git/**' '{a,*}' '{x,**}' '*/' '/.git' \
+             '.git/' '**/'; do
       assert_eq "1" "$(grep_rc "$p" "$g" "${O[@]}")" "the Grep glob $g is refused (path ${p:-none}, $opts options)"
     done
   done
 done
 
-# A middle segment that can match .git is refused as defence in depth, though
-# only the last segment reopens .git: the folder is named instead.
-no_path Grep '{"pattern":"x","glob":"*/x.php"}' "a bare * middle segment is refused"
-no_path Grep '{"pattern":"x","glob":"src/.gi*/x.php"}' "a middle segment matching .git is refused"
-ok_path Grep '{"pattern":"x","glob":"web/modules/*.php"}' "a named folder before a wildcard passes"
+# The whole glob is judged as ripgrep matches it: folder lists and globs that
+# cannot match .git pass, with no options and with the audit's. The first five
+# are the shapes of the 14 brace-list globs refused in audit run 41414274201.
+for opts in none audit; do
+  if [ "$opts" = audit ]; then O=("${AUDIT_OPTS[@]}"); else O=(); fi
+  for p in '' /w/repo; do
+    for g in '{tests/**/*,web/modules/custom/**/*.{php,js},REVIEW.md,config/*.yml,recipes/**/*}' \
+             '{scripts/*,.github/workflows/*.yml,composer.json}' '{web/modules/custom/**,tests/**}' \
+             '{.github/workflows/*,config/*,scripts/*}' '{*.md,.github/claude-review/*.md}' \
+             '*/x.php' 'web/*/x.php' 'src/**' 'src/' '{a,b}/**' 'web/modules/*.php' 'src/.gi*/x.php' '*/*' '**/x.php'; do
+      assert_eq "0" "$(grep_rc "$p" "$g" "${O[@]}")" "the Grep glob $g passes (path ${p:-none}, $opts options)"
+    done
+  done
+done
+# From the directory above the checkout, in an added root, the glob is also
+# judged against .git's path from there (repo/.git).
+for opts in none audit; do
+  if [ "$opts" = audit ]; then O=("${AUDIT_OPTS[@]}" --root /w); else O=(--root /w); fi
+  for g in 'repo/*' '*/.git' '*/*' 'repo/**' 'repo/.git/x' '*/.git/*' '*' '**/.git'; do
+    assert_eq "1" "$(grep_rc /w "$g" "${O[@]}")" "the Grep glob $g from above the checkout is refused ($opts options)"
+  done
+  for g in 'repo/web/*.php' '*.php' 'repo/{web,tests}/**' '**/x.php'; do
+    assert_eq "0" "$(grep_rc /w "$g" "${O[@]}")" "the Grep glob $g from above the checkout passes ($opts options)"
+  done
+done
+
+# ripgrep matches a glob against the path as written, and follows a symlinked
+# folder, so where the glob rule applies a Grep path that holds a .. segment or
+# passes through a symlink is refused: web/.. with web/** and a link to the
+# checkout with web/** each returned .git/info/x.php with ripgrep 13.0.0. This
+# needs a real folder, since the symlink is looked up on disk.
+sws="$(realpath "$tmp")/sym/repo"
+mkdir -p "$sws/web"
+ln -s .. "$sws/web/link"
+sym_grep () { # path glob [option...]: the check's output for one Grep in the scratch checkout
+  printf '[%s]' "$(call Grep "{\"pattern\":\"x\",\"path\":\"$1\",\"glob\":\"$2\"}")" > "$tmp/s.json"; shift 2
+  GITHUB_WORKSPACE="$sws" bash "$C" "$tmp/s.json" "$@" 2>&1; echo "rc=$?"
+}
+out=$(sym_grep web/.. 'web/**')
+assert_contains "$out" "Grep call 1: Grep path holds a .. segment (field path)" "web/.. with web/** is refused"
+assert_contains "$out" "rc=1" "and fails"
+out=$(sym_grep "$sws/.." '*/repo/**' --root "$(dirname "$sws")")
+assert_contains "$out" "Grep call 1: Grep path holds a .. segment (field path)" "<workspace>/.. with */repo/** from an added root is refused"
+assert_contains "$out" "rc=1" "and fails"
+out=$(sym_grep web/link 'web/**')
+assert_contains "$out" "Grep call 1: Grep path passes through a symlink (field path)" "a symlinked folder with web/** is refused"
+assert_contains "$out" "rc=1" "and fails"
+out=$(sym_grep "$sws/web/link/web" '*.php')
+assert_contains "$out" "Grep call 1: Grep path passes through a symlink (field path)" "a path through a symlinked folder is refused"
+assert_contains "$(sym_grep web 'web/**')" "rc=0" "an ordinary subfolder with web/** still passes"
+assert_contains "$(sym_grep "$sws/web" '*.php')" "rc=0" "an ordinary absolute subfolder still passes"
+assert_contains "$(sym_grep "$sws" '*.php')" "rc=0" "the workspace itself still passes"
+# Only the components below the root that holds the path are judged, so a
+# workspace reached through a symlinked parent folder still takes ordinary
+# Greps, while a symlink inside it is still refused.
+ln -s "$(dirname "$sws")" "$(realpath "$tmp")/symparent"
+lws="$(realpath "$tmp")/symparent/repo"
+lgrep () { # path glob [option...]: as sym_grep, with the workspace behind the link
+  printf '[%s]' "$(call Grep "{\"pattern\":\"x\",\"path\":\"$1\",\"glob\":\"$2\"}")" > "$tmp/s.json"; shift 2
+  GITHUB_WORKSPACE="$lws" bash "$C" "$tmp/s.json" "$@" 2>&1; echo "rc=$?"
+}
+assert_contains "$(lgrep "$lws" '*.php')" "rc=0" "a workspace behind a symlinked parent takes a top-level Grep"
+assert_contains "$(lgrep web 'web/**')" "rc=0" "and a subfolder Grep"
+assert_contains "$(lgrep "$lws/web" '*.php')" "rc=0" "and an absolute subfolder Grep"
+assert_contains "$(lgrep "$(dirname "$lws")" '*.php' --root "$(dirname "$lws")")" "rc=0" "and a Grep at an added root behind the link"
+assert_contains "$(lgrep web/link 'web/**')" "Grep path passes through a symlink (field path)" "a symlink inside that workspace is still refused"
+# There, ripgrep run in the workspace with its spelled path as the target
+# matches a glob against the absolute path, so */*/** returned
+# .git/info/x.php with ripgrep 13.0.0; such a glob is judged against .git's
+# absolute paths too.
+for g in '*/*/**' '**/*/*' '*/**/*'; do
+  assert_contains "$(lgrep "$lws" "$g")" "Grep glob can reach .git (field glob)" "$g at a workspace behind a symlinked parent is refused"
+done
+assert_contains "$(lgrep "$lws" '*/x.php')" "rc=0" "*/x.php at a workspace behind a symlinked parent still passes"
+assert_contains "$(sym_grep "$sws" '*/*/**')" "rc=0" "*/*/** at a workspace with no symlinked parent still passes"
+# A symlinked folder is not a subfolder for --grep-any-glob-in-subfolders: the
+# link to the checkout with * returned .git/info/x.php, searched as Claude Code
+# 2.1.309 spawns ripgrep (in the opened folder) and by its raw path.
+out=$(sym_grep web/link '*' --tools Read,Glob,Grep --grep-any-glob-in-subfolders)
+assert_contains "$out" "Grep call 1: Grep glob can reach .git (field glob)" "a symlinked folder with * in subfolder mode is refused"
+assert_contains "$out" "rc=1" "and fails"
+out=$(sym_grep web/link '*.php' --tools Read,Glob,Grep --grep-any-glob-in-subfolders)
+assert_contains "$out" "Grep call 1: Grep path passes through a symlink (field path)" "a symlinked folder with *.php in subfolder mode is refused as a symlink"
+assert_contains "$(sym_grep web '*' --tools Read,Glob,Grep --grep-any-glob-in-subfolders)" "rc=0" "an ordinary subfolder with * in subfolder mode still passes"
+
+# Every containment decision is made on the spelled and on the resolved form
+# of the path, the workspace and each root, and a call passes only under both.
+# With the workspace spelled through a link and an added root given by its
+# real path, a Grep at that root with * or repo/** passed and ripgrep 13.0.0
+# returned repo/.git files.
+zr="$(realpath "$tmp")/zf7"
+mkdir -p "$zr/real/repo/web" "$zr/other"
+ln -s "$zr/real" "$zr/link"            # the workspace's parent, spelled through a link
+ln -s "$zr/real/repo" "$zr/rootlink"   # an added root that is a link to the checkout
+ln -s "$zr/real" "$zr/uplink"          # an added root that is a link to the checkout's parent
+ln -s ../.git "$zr/real/repo/web/gitlink"
+ln -s "$zr/other" "$zr/outlink"
+zgrep () { # workspace path glob [option...]: the check's output for one Grep
+  local w="$1"
+  printf '[%s]' "$(call Grep "{\"pattern\":\"x\",\"path\":\"$2\",\"glob\":\"$3\"}")" > "$tmp/z.json"; shift 3
+  GITHUB_WORKSPACE="$w" bash "$C" "$tmp/z.json" "$@" 2>&1; echo "rc=$?"
+}
+zcall () { # workspace name input-json [option...]: the check's output for one call
+  local w="$1"
+  printf '[%s]' "$(call "$2" "$3")" > "$tmp/z.json"; shift 3
+  GITHUB_WORKSPACE="$w" bash "$C" "$tmp/z.json" "$@" 2>&1; echo "rc=$?"
+}
+for g in '*' 'repo/**'; do
+  out=$(zgrep "$zr/link/repo" "$zr/real" "$g" --root "$zr/real")
+  assert_contains "$out" "Grep glob can reach .git (field glob)" "a workspace behind a link and the real parent as a root refuse $g"
+  out=$(zgrep "$zr/real/repo" "$zr/uplink" "$g" --root "$zr/uplink")
+  assert_contains "$out" "Grep glob can reach .git (field glob)" "a real workspace and a root linked to its parent refuse $g"
+done
+out=$(zgrep "$zr/real/repo" "$zr/rootlink" '*' --root "$zr/rootlink")
+assert_contains "$out" "Grep glob can reach .git (field glob)" "a root that is a link to the checkout keeps the glob rule"
+out=$(zgrep "$zr/real/repo" "$zr/rootlink/web" '*' --root "$zr/rootlink" --grep-any-glob-in-subfolders)
+assert_contains "$out" "rc=0" "a subfolder under a root linked to the checkout still takes any glob"
+assert_contains "$(zgrep "$zr/link/repo" "$zr/real" 'repo/web/*.php' --root "$zr/real")" "rc=0" "a folder glob at the real parent still passes"
+assert_contains "$(zgrep "$zr/real/repo" "$zr/uplink" 'repo/web/*.php' --root "$zr/uplink")" "rc=0" "a folder glob at the linked parent still passes"
+out=$(zcall "$zr/real/repo" Read '{"file_path":"web/gitlink/config"}')
+assert_contains "$out" "Read call 1: path under .git (field file_path)" "a Read through a link into .git is refused"
+out=$(zcall "$zr/real/repo" Read "{\"file_path\":\"$zr/rootlink/.git/config\"}" --root "$zr/rootlink")
+assert_contains "$out" "Read call 1: path under .git (field file_path)" "a Read of .git through a root linked to the checkout is refused"
+# A path in no root gets that label before the symlink check.
+out=$(zgrep "$zr/real/repo" "$zr/outlink" '*.php')
+assert_contains "$out" "Grep call 1: path outside the allowed roots (field path)" "a linked path in no root is refused as outside the roots"
+# A link from the head or the input directory to the checkout or its parent
+# resolves into the workspace, so the glob rule holds there.
+mkdir -p "$zr/head" "$zr/input"
+ln -s "$zr/real/repo" "$zr/head/wslink"
+ln -s "$zr/real/repo" "$zr/input/wslink"
+ln -s "$zr/real" "$zr/head/uplink"
+for p in head/wslink input/wslink head/uplink; do
+  out=$(REVIEW_HEAD_DIR="$zr/head" REVIEW_INPUT_DIR="$zr/input" zgrep "$zr/real/repo" "$zr/$p" '*')
+  assert_contains "$out" "Grep glob can reach .git (field glob)" "$p with * is refused"
+done
+assert_contains "$(REVIEW_HEAD_DIR="$zr/head" REVIEW_INPUT_DIR="$zr/input" zgrep "$zr/real/repo" "$zr/head" '*')" "rc=0" "the head itself still takes *"
+# The head or the input directory that is itself a link to the checkout or
+# its parent is not away from it, so the glob rule holds there too.
+ln -s "$zr/real/repo" "$zr/headlink"
+ln -s "$zr/real" "$zr/inputlink"
+out=$(REVIEW_HEAD_DIR="$zr/headlink" REVIEW_INPUT_DIR="$zr/input" zgrep "$zr/real/repo" "$zr/headlink" '*')
+assert_contains "$out" "Grep glob can reach .git (field glob)" "a head that is a link to the checkout keeps the glob rule"
+out=$(REVIEW_HEAD_DIR="$zr/head" REVIEW_INPUT_DIR="$zr/inputlink" zgrep "$zr/real/repo" "$zr/inputlink" '*')
+assert_contains "$out" "Grep glob can reach .git (field glob)" "an input directory that is a link to the checkout's parent keeps the glob rule"
+# A Grep path must be in normal form where the glob rule applies: ripgrep
+# matches a glob against the path as written.
+for p in './/web' 'web//x' "//$zr/real/repo" "///$zr/real/repo" "$zr/real/repo/." 'web/./x' 'web/.'; do
+  out=$(zgrep "$zr/real/repo" "$p" '*.php')
+  assert_contains "$out" "Grep call 1: Grep path is not in normal form (field path)" "the Grep path $p is refused"
+done
+for p in './web' 'web/' '.' "$zr/real/repo/web/"; do
+  assert_contains "$(zgrep "$zr/real/repo" "$p" '*.php')" "rc=0" "the Grep path $p still passes"
+done
 
 # Closed input fields. Each tool's input may hold only the fields of its own
 # schema in Claude Code 2.1.309. Claude Code reads aliases and stray fields
@@ -282,7 +435,7 @@ for input in \
   "Read {\"file_path\":\"/w/repo/$canary \"}" \
   "Read {\"file_path\":\"$canary\",\"$canary\":1}" \
   "Grep {\"pattern\":\"$canary\",\"path\":\"/proc/$canary\"}" \
-  "Grep {\"pattern\":\"$canary\",\"glob\":\"$canary/**\"}" \
+  "Grep {\"pattern\":\"$canary\",\"glob\":\"{$canary,*}\"}" \
   "Grep {\"pattern\":\"$canary\",\"file_path\":\"/proc/$canary\"}" \
   "Glob {\"pattern\":\"/$canary/*\"}" \
   "Glob {\"pattern\":\"$canary/../../*\",\"path\":\"/proc/$canary\"}"; do
@@ -375,8 +528,9 @@ grep_glob '"/mnt/a/out/agents"' '!*.json' 0 "a negated glob in an added root pas
 grep_glob '' '!**/node_modules/**' 1 "the same negated glob with no path fails" "${G[@]}"
 grep_glob '".git"' '!**/node_modules/**' 1 "the same glob with path .git fails" "${G[@]}"
 grep_glob '".git/hooks"' '!**/node_modules/**' 1 "the same glob with path .git/hooks fails" "${G[@]}"
-grep_glob '"/w/repo"' '{web/modules/custom/**,tests/**}' 1 "a brace folder list with the checkout root as path fails" "${G[@]}"
-grep_glob '"."' '{web/modules/custom/**,tests/**}' 1 "a brace folder list with . as path fails" "${G[@]}"
+grep_glob '"/w/repo"' '{web/modules/custom/**,tests/**}' 0 "a brace folder list with the checkout root as path passes" "${G[@]}"
+grep_glob '"."' '{web/modules/custom/**,tests/**}' 0 "a brace folder list with . as path passes" "${G[@]}"
+grep_glob '"/w/repo"' '{web/**,*}' 1 "a brace list holding * with the checkout root as path fails" "${G[@]}"
 grep_glob '"/w/repo/web/"' '**' 0 "a trailing slash on a subfolder path passes" "${G[@]}"
 grep_glob '"web"' '../.git/**' 1 "a .. glob from a subfolder still fails" "${G[@]}"
 grep_glob '"web"' '!../x' 1 "a negated .. glob from a subfolder still fails" "${G[@]}"
@@ -384,12 +538,13 @@ grep_glob '"web"' '* *' 1 "a space in the glob still fails" "${G[@]}"
 # A path above the checkout, inside an added root, reaches .git/config too.
 W=(--tools "Read,Glob,Grep" --root /w --grep-any-glob-in-subfolders)
 grep_glob '"/w"' '**/.git/config' 1 "a Grep rooted above the checkout in an added root keeps the .git rule" "${W[@]}"
-grep_glob '"/w"' 'repo/**' 1 "and a glob ending in ** from above the checkout is refused" "${W[@]}"
+grep_glob '"/w"' 'repo/**' 1 "and repo/**, which can match repo/.git, from above the checkout is refused" "${W[@]}"
 grep_glob '"/w/repo/.."' '**' 1 "as is ** from above the checkout reached with .." "${W[@]}"
 grep_glob '"/w/repo/.."' '**/.git/config' 1 "and so does one that climbs there with .." "${W[@]}"
 grep_glob '"/w/repo/web"' '!**/node_modules/**' 0 "a real subfolder under the same options still passes" "${W[@]}"
 grep_glob '"web/modules/custom"' '!**/node_modules/**' 1 "without the option the negated glob fails as before"
-grep_glob '"web/modules/custom"' '{web/**,tests/**}' 1 "without the option a brace folder list in the workspace fails as before"
+grep_glob '"web/modules/custom"' '{web/**,tests/**}' 0 "without the option a brace folder list in the workspace passes"
+grep_glob '"web/modules/custom"' '{web/**,**}' 1 "without the option a brace list holding ** in the workspace fails"
 
 # Brace groups are expanded and every expansion judged, with no options too:
 # {.,}. spells .. without a literal .. segment.
