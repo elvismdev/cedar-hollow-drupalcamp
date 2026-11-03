@@ -90,10 +90,11 @@
 # One Read outside the roots is reported instead of refused: a denied read of
 # the tool result Claude Code saved for an earlier call. Claude Code saves a
 # result over its size limit (20,000 characters for Grep) to
-# $HOME/.claude/projects/<project>/<session>/tool-results/<tool_use id>.txt
-# and tells the agent "Full output saved to: <path>"; the deny rules on
-# $HOME's dot-folders then refuse the agent's Read of it before anything is
-# read. It is reported only when the file_path has exactly that shape (path
+# <config home>/projects/<project>/<session>/tool-results/<tool_use id>.txt,
+# where the config home is $CLAUDE_CONFIG_DIR when set and $HOME/.claude
+# otherwise, and tells the agent "Full output saved to: <path>"; the deny
+# rules on $HOME's dot-folders then refuse the agent's Read of it before
+# anything is read. It is reported only when the file_path has exactly that shape (path
 # allowlist, no ..), the id is an earlier tool_use in the trace whose
 # top-level tool_result has a line ending "Full output saved to: <this path>",
 # and this Read's own top-level tool_result is an error whose text is exactly
@@ -703,11 +704,16 @@ def refusal(call):
 # and tells the agent "Full output saved to: <path>". The audit's deny rules
 # cover $HOME's dot-folders, so an agent's Read of that file is denied before
 # anything is read. Such a Read is reported instead of refused, and only when
-# the path has exactly that shape under $HOME/.claude, it names a tool_use
+# the path has exactly that shape under the config home ($CLAUDE_CONFIG_DIR
+# when set, else $HOME/.claude), it names a tool_use
 # earlier in the trace whose top-level tool_result says "Full output saved
 # to: <this path>" on a line, and this Read's own top-level tool_result is
 # Claude Code's deny error. Any other Read outside the roots is refused.
-HOME = posixpath.normpath(os.environ.get('HOME') or '/nonexistent')
+# Claude Code's config home: $CLAUDE_CONFIG_DIR when set, else $HOME/.claude.
+# A relative CLAUDE_CONFIG_DIR cannot be placed, so no Read is excused.
+_config_dir = os.environ.get('CLAUDE_CONFIG_DIR') or ''
+CONFIG_HOME = (posixpath.normpath(_config_dir) if _config_dir.startswith('/') else None) if _config_dir \
+    else posixpath.normpath(os.environ.get('HOME') or '/nonexistent') + '/.claude'
 SAVED = re.compile(r'([^/]+)/([^/]+)/tool-results/(toolu_[A-Za-z0-9_-]+)\.txt')
 # Claude Code 2.1.309's Read tool returns this message, wrapped as a
 # tool_use_error, when a Read deny rule matches.
@@ -740,7 +746,9 @@ def denied_saved_output(call, earlier, results):
     fp = args.get('file_path') if isinstance(args, dict) else None
     if call.get('name') != 'Read' or not path_ok(fp) or '..' in fp.split('/'):
         return False
-    prefix = HOME + '/.claude/projects/'
+    if CONFIG_HOME is None:
+        return False
+    prefix = CONFIG_HOME + '/projects/'
     m = SAVED.fullmatch(fp[len(prefix):]) if fp.startswith(prefix) else None
     if m is None or {m.group(1), m.group(2)} & {'.', '..'} or m.group(3) not in earlier:
         return False

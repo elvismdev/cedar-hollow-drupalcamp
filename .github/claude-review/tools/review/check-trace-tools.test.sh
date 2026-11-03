@@ -687,6 +687,12 @@ assert_eq "1" "$(saved_rc path=/home/tester/.claude/projects/-w-repo/sess-1/tool
 assert_eq "1" "$(saved_rc home=/home/other)" "the same shape under another home is refused"
 assert_eq "1" "$(saved_rc tool=Grep)" "a Grep of the saved output's path is refused"
 assert_eq "1" "$(saved_rc tool=Glob)" "a Glob of the saved output's path is refused"
+# The config home is $CLAUDE_CONFIG_DIR when set, else $HOME/.claude.
+cfg_rc () { local dir="$1"; shift; saved_trace "$tmp/s.json" "$@"; HOME=/home/tester CLAUDE_CONFIG_DIR="$dir" rc "$tmp/s.json"; }
+assert_eq "0" "$(cfg_rc /opt/claude-home path=/opt/claude-home/projects/-w-repo/sess-1/tool-results/toolu_A1.txt)" "with CLAUDE_CONFIG_DIR set, its saved output passes"
+assert_eq "1" "$(cfg_rc /opt/claude-home)" "with CLAUDE_CONFIG_DIR set, the same shape under ~/.claude is refused"
+assert_eq "0" "$(cfg_rc '')" "with CLAUDE_CONFIG_DIR empty, ~/.claude is the config home"
+assert_eq "1" "$(cfg_rc claude-home)" "a relative CLAUDE_CONFIG_DIR excuses nothing, not even ~/.claude"
 
 # It fails closed on what it cannot read.
 assert_eq "1" "$(rc "$tmp/absent.json")" "a missing trace fails"
