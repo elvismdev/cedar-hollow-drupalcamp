@@ -10,9 +10,9 @@ fails the whole review if one breaks these rules, so keep to them:
   `?`, `[`, `]` or a space, and use `!` only as the first character of a
   comma part: such a part (`!**/node_modules/**`) only excludes files and
   works from any `path`. A glob holding a brace group is not split on
-  commas, so a negation is either the whole glob (`!{vendor,node_modules}/**`)
-  or a part of a glob with no braces (`src/**/*.php,!vendor/**`);
-  `src/**/*.php,!{vendor,node_modules}/**` is refused.
+  commas, so it must not also have a comma outside its braces: write
+  `!{vendor,node_modules}/**` or `src/**/*.php,!vendor/**`, not
+  `src/**/*.php,{web,docs}/**` or `src/**/*.php,!{vendor,node_modules}/**`.
 - A Grep with no `path`, or with a `path` in your working directory, takes
   folder and brace globs (`src/**/*.php`, `{scripts/*,web/modules/custom/**}`,
   `*/x.php`, `*gitignore*`, `{.gitignore,composer.json}`), but a glob is
