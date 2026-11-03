@@ -438,18 +438,23 @@ def grep_glob_chars_ok(value):
     return bool(parts) and all(GLOB_CHARS.fullmatch(t[1:] if t.startswith('!') else t) is not None
                                for t in parts)
 
-def negation_with_outer_comma(value):
-    """True for a glob Claude Code keeps whole because it holds a brace group,
-    that starts with ! and has a comma outside its braces
-    (!web/**,{a/**,z.php}): ripgrep reads it as one exclusion whose comma is
-    a literal character, so it silently excludes nothing the agent meant."""
-    if not value.startswith('!') or grep_parts(value) != [value] or '{' not in value:
+def comma_outside_kept_braces(value):
+    """True for a glob Claude Code keeps whole because it holds a brace group
+    that also has a comma outside its braces (src/**/*.php,{web,docs}/**,
+    !web/**,{a/**,z.php}): ripgrep reads that comma as a literal character,
+    so the glob silently matches nothing the agent meant. A } before its {
+    counts too."""
+    if grep_parts(value) != [value] or '{' not in value or '}' not in value:
         return False
     depth = 0
     for ch in value:
-        depth += ch == '{'
-        depth -= ch == '}'
-        if ch == ',' and depth == 0:
+        if ch == '{':
+            depth += 1
+        elif ch == '}':
+            depth -= 1
+            if depth < 0:
+                return True
+        elif ch == ',' and depth == 0:
             return True
     return False
 
@@ -621,30 +626,21 @@ def refusal(call):
             return ('empty field', 'glob')
         if not isinstance(g, str):
             return ('field not a string', 'glob')
-        if subfolder_search(args.get('path')):
-            if SUBFOLDER_GLOB_CHARS.fullmatch(g) is None:
-                return ('character outside the allowlist', 'glob')
-            if negation_with_outer_comma(g):
-                return ('Grep glob negates a brace list with a comma outside its braces', 'glob')
-            if '..' in re.split(r'[/{},!]', g):
-                return ('Grep glob holds a .. segment', 'glob')
-            exps = expansions(g)
-            if exps is None:
-                return ('braces cannot be expanded', 'glob')
-            if any('..' in re.split(r'[/{},!]', e) for e in exps):
-                return ('Grep glob holds a .. segment', 'glob')
-        else:
-            if not grep_glob_chars_ok(g):
-                return ('character outside the allowlist', 'glob')
-            if negation_with_outer_comma(g):
-                return ('Grep glob negates a brace list with a comma outside its braces', 'glob')
-            if '..' in re.split(r'[/{},!]', g):
-                return ('Grep glob holds a .. segment', 'glob')
-            exps = expansions(g)
-            if exps is None:
-                return ('braces cannot be expanded', 'glob')
-            if any('..' in re.split(r'[/{},!]', e) for e in exps):
-                return ('Grep glob holds a .. segment', 'glob')
+        subfolder = subfolder_search(args.get('path'))
+        # The character allowlist depends on the mode; the refusals after it
+        # apply in every mode.
+        if not (SUBFOLDER_GLOB_CHARS.fullmatch(g) is not None if subfolder else grep_glob_chars_ok(g)):
+            return ('character outside the allowlist', 'glob')
+        if comma_outside_kept_braces(g):
+            return ('Grep glob holds a brace group and a comma outside it', 'glob')
+        if '..' in re.split(r'[/{},!]', g):
+            return ('Grep glob holds a .. segment', 'glob')
+        exps = expansions(g)
+        if exps is None:
+            return ('braces cannot be expanded', 'glob')
+        if any('..' in re.split(r'[/{},!]', e) for e in exps):
+            return ('Grep glob holds a .. segment', 'glob')
+        if not subfolder:
             if not away_from_workspace(args.get('path')):
                 if not grep_glob_allowed(g, exps, args.get('path')):
                     return ('Grep glob can reach .git', 'glob')

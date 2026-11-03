@@ -380,20 +380,23 @@ for opts in none audit; do
   done
 done
 
-# A glob holding a brace group is kept whole, so a ! at its start negates
-# all of it and a comma outside its braces is a literal character to
-# ripgrep: such a glob is refused rather than excluding nothing.
+# A glob holding a brace group is kept whole, so a comma outside its braces
+# is a literal character to ripgrep and the glob matches nothing the agent
+# meant: such a glob is refused, whatever its first character, in every
+# mode. A } before its { is refused too.
 for opts in none audit; do
   if [ "$opts" = audit ]; then O=("${AUDIT_OPTS[@]}"); else O=(); fi
   for p in '' /w/repo /rt/head; do
-    for g in '!web/**,{a/**,z.php}' '!{a,b},c' '!x,{y,z}/**'; do
-      assert_eq "1" "$(grep_rc "$p" "$g" "${O[@]}")" "the kept-whole negation $g is refused (path ${p:-none}, $opts options)"
+    for g in '!web/**,{a/**,z.php}' '!{a,b},c' '!x,{y,z}/**' 'src/**/*.php,{web,docs}/**' '*.md,{a,b}/x' \
+             'a,{b,c}' '}x,{a,b}' '{a,b}},c'; do
+      assert_eq "1" "$(grep_rc "$p" "$g" "${O[@]}")" "the kept-whole glob $g with a comma outside its braces is refused (path ${p:-none}, $opts options)"
     done
-    for g in '!{vendor,node_modules}/**' '!web/{a,b}/**' 'src/**/*.php,!vendor/**'; do
+    for g in '!{vendor,node_modules}/**' '!web/{a,b}/**' 'src/**/*.php,!vendor/**' '{a,b}/x' 'web/{a,b}/*.php'; do
       assert_eq "0" "$(grep_rc "$p" "$g" "${O[@]}")" "the Grep glob $g passes (path ${p:-none}, $opts options)"
     done
   done
   assert_eq "1" "$(grep_rc '' 'src/**/*.php,!{vendor,node_modules}/**' "${O[@]}")" "a negated brace group after a comma is refused ($opts options)"
+  assert_eq "1" "$(grep_rc web/modules/custom 'src/**/*.php,!{vendor,node_modules}/**' "${O[@]}")" "and refused in a subfolder too ($opts options)"
 done
 
 # Closed input fields. Each tool's input may hold only the fields of its own
@@ -454,7 +457,8 @@ label_is Read '{"file_path":"/w/repo/.git/config"}' "path under .git (field file
 label_is Read '{"file_path":"~/x"}' "path starts with ~ (field file_path)" "label: starts with ~"
 label_is Glob '{"pattern":"/w/repo/*.php"}' "Glob pattern is absolute (field pattern)" "label: absolute"
 label_is Grep '{"pattern":"x","glob":"*"}' "Grep glob can reach .git (field glob)" "label: can reach .git"
-label_is Grep '{"pattern":"x","glob":"!web/**,{a/**,z.php}"}' "Grep glob negates a brace list with a comma outside its braces (field glob)" "label: kept-whole negation with an outer comma"
+label_is Grep '{"pattern":"x","glob":"!web/**,{a/**,z.php}"}' "Grep glob holds a brace group and a comma outside it (field glob)" "label: kept-whole negation with an outer comma"
+label_is Grep '{"pattern":"x","glob":"src/**/*.php,{web,docs}/**"}' "Grep glob holds a brace group and a comma outside it (field glob)" "label: kept-whole glob with an outer comma"
 label_is Grep '{"pattern":"x","glob":"**"}' "Grep glob can reach .git (field glob)" "label: no path, glob **"
 label_is Grep '{"pattern":"x","path":"/w/repo","glob":"**"}' "Grep glob can reach .git (field glob)" "label: workspace path, glob **"
 label_is Grep '{"pattern":"x","path":"/rt/head","glob":"../**"}' "Grep glob holds a .. segment (field glob)" "label: head path, .. glob"
