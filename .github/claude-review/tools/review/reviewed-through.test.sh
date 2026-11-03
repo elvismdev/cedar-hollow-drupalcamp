@@ -77,6 +77,15 @@ assert_contains "$(run "$gone")" "state=full" "a sha absent from the checkout fa
 assert_contains "$(run "$(feed "$C2" security)" bugs)" "state=full" "another angle's review is not this angle's"
 assert_contains "$(run "$(feed "$C2" security)" security)" "since=$C2" "and its own angle is read"
 
+# A review is an angle's only when its body starts with that angle's header.
+# post-findings.sh puts finding titles in the body, so another angle's header
+# can appear later in it.
+mixed='printf "[{\"user\":{\"login\":\"github-actions[bot]\"},\"commit_id\":\"'"$C2"'\",\"submitted_at\":\"2026-01-01T00:00:00Z\",\"body\":\"Claude security review: 1 finding(s). - nit Claude bugs review\"}]"'
+assert_contains "$(run "$mixed" bugs)" "state=full" "another angle's header later in the body does not count"
+assert_contains "$(run "$mixed" security)" "since=$C2" "the header the body starts with does"
+late='printf "[{\"user\":{\"login\":\"github-actions[bot]\"},\"commit_id\":\"'"$C2"'\",\"submitted_at\":\"2026-01-01T00:00:00Z\",\"body\":\"Note. Claude bugs review: ok\"}]"'
+assert_contains "$(run "$late" bugs)" "state=full" "nor does a header that is not at the start"
+
 # Only the bot's reviews count. A human's approval is not a review round, and
 # taking its commit_id would silently shrink the next review's surface.
 human='printf "[{\"user\":{\"login\":\"repo-owner\"},\"commit_id\":\"'"$C2"'\",\"submitted_at\":\"2026-01-01T00:00:00Z\",\"body\":\"Claude bugs review: looks fine\"}]"'

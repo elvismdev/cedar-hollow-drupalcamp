@@ -1,11 +1,13 @@
 #!/usr/bin/env bash
 # Count the reviews one angle has already posted on a pull request.
 #
-# A review counts when its author is the bot, by exact login, and its body names
-# the angle ("Claude <angle> review"). The login is matched exactly, as
-# reviewed-through.sh and findings-gate.sh do: an app whose name merely contains
-# the bot's is not the bot, and counting its reviews would spend this angle's
-# rounds.
+# A review counts when its author is the bot, by exact login, and its body
+# starts with the angle's header ("Claude <angle> review:"), as post-findings.sh
+# writes it. Another angle's review can mention the header later in its body,
+# in a finding title, and must not spend this angle's rounds. The login is
+# matched exactly, as reviewed-through.sh and findings-gate.sh do: an app whose
+# name merely contains the bot's is not the bot, and counting its reviews would
+# spend this angle's rounds.
 #
 # An unreadable feed exits non-zero rather than printing 0, because 0 is a
 # plausible count and would hand out a fresh round on every failure.
@@ -54,13 +56,13 @@ except Exception as exc:
     print(f'review-rounds: the reviews feed is not readable JSON ({exc})', file=sys.stderr)
     sys.exit(1)
 
-marker = f'Claude {angle} review'
+header = f'Claude {angle} review:'
 count = 0
 for r in reviews:
     login = ((r.get('user') or {}).get('login') or '')
     if login != bot and login != f'{bot}[bot]':
         continue
-    if marker in (r.get('body') or ''):
+    if (r.get('body') or '').startswith(header):
         count += 1
 print(count)
 PY

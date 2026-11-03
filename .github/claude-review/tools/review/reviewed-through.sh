@@ -88,7 +88,9 @@ except Exception as exc:
           file=sys.stderr)
     sys.exit(1)
 
-marker = f'Claude {angle} review'
+# The header post-findings.sh starts every review body with. A substring match
+# would count another angle's review whose findings mention this header.
+header = f'Claude {angle} review:'
 mine = []
 for r in reviews:
     # Exact login, not a substring, for the same reason the gate matches
@@ -96,7 +98,7 @@ for r in reviews:
     login = ((r.get('user') or {}).get('login') or '')
     if login != bot and login != f'{bot}[bot]':
         continue
-    if marker not in (r.get('body') or ''):
+    if not (r.get('body') or '').startswith(header):
         continue
     if not r.get('commit_id'):
         continue
