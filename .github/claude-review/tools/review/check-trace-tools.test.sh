@@ -380,6 +380,22 @@ for opts in none audit; do
   done
 done
 
+# A glob holding a brace group is kept whole, so a ! at its start negates
+# all of it and a comma outside its braces is a literal character to
+# ripgrep: such a glob is refused rather than excluding nothing.
+for opts in none audit; do
+  if [ "$opts" = audit ]; then O=("${AUDIT_OPTS[@]}"); else O=(); fi
+  for p in '' /w/repo /rt/head; do
+    for g in '!web/**,{a/**,z.php}' '!{a,b},c' '!x,{y,z}/**'; do
+      assert_eq "1" "$(grep_rc "$p" "$g" "${O[@]}")" "the kept-whole negation $g is refused (path ${p:-none}, $opts options)"
+    done
+    for g in '!{vendor,node_modules}/**' '!web/{a,b}/**' 'src/**/*.php,!vendor/**'; do
+      assert_eq "0" "$(grep_rc "$p" "$g" "${O[@]}")" "the Grep glob $g passes (path ${p:-none}, $opts options)"
+    done
+  done
+  assert_eq "1" "$(grep_rc '' 'src/**/*.php,!{vendor,node_modules}/**' "${O[@]}")" "a negated brace group after a comma is refused ($opts options)"
+done
+
 # Closed input fields. Each tool's input may hold only the fields of its own
 # schema in Claude Code 2.1.309. Claude Code reads aliases and stray fields
 # (Grep reads file_path as path when path is absent), so any other key is
@@ -438,6 +454,7 @@ label_is Read '{"file_path":"/w/repo/.git/config"}' "path under .git (field file
 label_is Read '{"file_path":"~/x"}' "path starts with ~ (field file_path)" "label: starts with ~"
 label_is Glob '{"pattern":"/w/repo/*.php"}' "Glob pattern is absolute (field pattern)" "label: absolute"
 label_is Grep '{"pattern":"x","glob":"*"}' "Grep glob can reach .git (field glob)" "label: can reach .git"
+label_is Grep '{"pattern":"x","glob":"!web/**,{a/**,z.php}"}' "Grep glob negates a brace list with a comma outside its braces (field glob)" "label: kept-whole negation with an outer comma"
 label_is Grep '{"pattern":"x","glob":"**"}' "Grep glob can reach .git (field glob)" "label: no path, glob **"
 label_is Grep '{"pattern":"x","path":"/w/repo","glob":"**"}' "Grep glob can reach .git (field glob)" "label: workspace path, glob **"
 label_is Grep '{"pattern":"x","path":"/rt/head","glob":"../**"}' "Grep glob holds a .. segment (field glob)" "label: head path, .. glob"
