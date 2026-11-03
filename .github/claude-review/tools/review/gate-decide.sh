@@ -156,9 +156,20 @@ check_ack() {
   # 128 KiB, which a long-lived pull request's comments feed passes. Not local:
   # the trap reads it when the script exits.
   feed_file=$(mktemp) || red "Pull request comments could not be read." hint
-  trap 'rm -f "$feed_file"' EXIT
-  comments_feed > "$feed_file"; frc=$?
-  [ "$frc" -eq 0 ] || red "Pull request comments could not be read." hint
+  err_file=$(mktemp) || red "Pull request comments could not be read." hint
+  trap 'rm -f "$feed_file" "$err_file"' EXIT
+  comments_feed > "$feed_file" 2> "$err_file"; frc=$?
+  # The read's own error stays in the log.
+  cat "$err_file" >&2
+  if [ "$frc" -ne 0 ]; then
+    # GitHub refuses a token that lacks a permission with "Resource not
+    # accessible by integration" (type FORBIDDEN). Pull request conversation
+    # comments are issue comments, so the gate job needs issues: read.
+    if grep -qE 'Resource not accessible|FORBIDDEN|HTTP 403' "$err_file"; then
+      red "Pull request comments could not be read: the token was refused. The Review gate job needs issues: read and pull-requests: read." hint
+    fi
+    red "Pull request comments could not be read." hint
+  fi
   shas=$(python3 - "$OWNER" "$feed_file" <<'PY'
 import json, re, sys
 owner = sys.argv[1]

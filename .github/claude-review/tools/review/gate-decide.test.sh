@@ -199,6 +199,14 @@ assert_contains "$(run TIER=High HEAD_SHA="$H3" REVIEW_COMMENTS_CMD="$ack_head")
 
 # Comments that cannot be read are not "no acknowledgement".
 assert_contains "$(run TIER=High REVIEW_COMMENTS_CMD='exit 4')" "Pull request comments could not be read." "an unreadable comments feed is named"
+# A token without the permission is named as such, and still fails closed.
+denied='echo "GraphQL: Resource not accessible by integration (repository.pullRequest.comments)" >&2; exit 1'
+out=$(run TIER=High REVIEW_COMMENTS_CMD="$denied")
+assert_contains "$out" "Pull request comments could not be read: the token was refused. The Review gate job needs issues: read and pull-requests: read." "a permission error names the missing permission"
+assert_contains "$out" "Resource not accessible by integration" "and GitHub's own error stays in the log"
+assert_eq "1" "$(rc TIER=High REVIEW_COMMENTS_CMD="$denied")" "and is red"
+assert_eq "1" "$(rc BUGS_STATE=capped REVIEW_COMMENTS_CMD="$denied")" "for the round cap too"
+case "$(run TIER=High REVIEW_COMMENTS_CMD='exit 4')" in *"token was refused"*) echo "FAIL: a failure without a permission error is reported as one" >&2; exit 1;; esac
 assert_eq "1" "$(rc TIER=High REVIEW_COMMENTS_CMD='printf "not json"')" "and is red"
 assert_eq "0" "$(rc REVIEW_COMMENTS_CMD='exit 4')" "but is not read when nothing needs an acknowledgement"
 
