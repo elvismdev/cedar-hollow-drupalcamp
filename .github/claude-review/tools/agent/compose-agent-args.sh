@@ -106,9 +106,35 @@ root_rules() { # tools root...
 # and install directories. RUNNER_TEMP is not among them: it holds the head and
 # the input directory the agent is given with --add-dir, and a deny rule beats
 # that grant.
+review_roots() {
+  REVIEW_ROOTS=(/proc /sys "$GITHUB_WORKSPACE/.git" "$HOME/.*" "${RUNNER_TEMP%/*}/_actions" "$HOME/runners" "$HOME/actions-runner")
+}
+
 review_rules() {
-  root_rules "Read Glob Grep" /proc /sys "$GITHUB_WORKSPACE/.git" "$HOME/.*" \
-    "${RUNNER_TEMP%/*}/_actions" "$HOME/runners" "$HOME/actions-runner"
+  review_roots
+  root_rules "Read Glob Grep" "${REVIEW_ROOTS[@]}"
+}
+
+# A denied root that is, or holds, RUNNER_TEMP, GITHUB_WORKSPACE or an --add-dir
+# would deny the reviewer everything there, since a deny rule beats the grant:
+# a self-hosted runner installed at ~/actions-runner keeps its workspace and
+# temporary directory inside it. Names the first such variable on stderr and
+# returns 1. A root is matched as a pattern, so $HOME/.* covers every
+# dot-directory in the home; validated paths hold no other pattern character.
+review_roots_clear() {
+  local v val root
+  review_roots
+  for v in RUNNER_TEMP GITHUB_WORKSPACE REVIEW_HEAD_DIR REVIEW_INPUT_DIR; do
+    val="${!v:-}"
+    [ -n "$val" ] || continue
+    for root in "${REVIEW_ROOTS[@]}"; do
+      # shellcheck disable=SC2254
+      case "$val/" in $root/*)
+        echo "compose-agent-args: $v ($val) is inside the denied root $root, so the reviewer could not read it" >&2
+        return 1 ;;
+      esac
+    done
+  done
 }
 
 # The deny list is single-quoted, so claude-code-action keeps its rules, which
@@ -224,6 +250,7 @@ fi
 
 [ "$#" -eq 0 ] || { echo "usage: compose-agent-args.sh [--audit | --audit-models <step>]" >&2; exit 2; }
 runner_paths_ok || exit 1
+review_roots_clear || exit 1
 
 printf 'AGENT_ARGS_REVIEW=%s\n' \
   "$(args "${AGENT_MODEL_REVIEW:-}" "${AGENT_TURNS_REVIEW:-60}" "$TOOLS_READ")"

@@ -6,6 +6,8 @@ R="$ROOT/tools/agent/compose-agent-args.sh"
 REQUIRED_DENY="Agent Task ListAgents ScheduleWakeup SendMessage Monitor TaskCreate CronCreate Bash Edit Write MultiEdit NotebookEdit WebFetch WebSearch Skill"
 # Rule lists hold * and are split on commas below, so no pathname expansion.
 set -f
+tmp_err=$(mktemp)
+trap 'rm -f "$tmp_err"' EXIT
 PARSE="$ROOT/tools/agent/test/helpers/parse-claude-args.py"
 # Every review and audit line is composed with the runner's paths, which the
 # deny rules are written from.
@@ -154,6 +156,30 @@ out=$(env -u GITHUB_WORKSPACE HOME=/home/runner RUNNER_TEMP=/home/runner/work/_t
 assert_exit 1 $? "the review line refuses an unset GITHUB_WORKSPACE"
 assert_eq "" "$out" "and prints nothing"
 
+# A denied root that is or holds a path the reviewer needs would deny it
+# everything there, since a deny rule beats the grant: a self-hosted runner
+# installed at ~/actions-runner keeps its workspace and temporary directory
+# inside it. The line is refused, naming the variable, rather than composed.
+SELF_HOSTED=(HOME=/home/runner RUNNER_TEMP=/home/runner/actions-runner/_work/_temp GITHUB_WORKSPACE=/home/runner/actions-runner/_work/ddemo/ddemo)
+for setup in "RUNNER_TEMP ${SELF_HOSTED[*]}" \
+             "GITHUB_WORKSPACE HOME=/home/runner RUNNER_TEMP=/home/runner/work/_temp GITHUB_WORKSPACE=/home/runner/runners/w" \
+             "GITHUB_WORKSPACE HOME=/home/runner RUNNER_TEMP=/home/runner/work/_temp GITHUB_WORKSPACE=/home/runner/.cache/w" \
+             "REVIEW_HEAD_DIR ${RUNNER_ENV[*]} REVIEW_HEAD_DIR=/home/runner/.config/head" \
+             "REVIEW_INPUT_DIR ${RUNNER_ENV[*]} REVIEW_INPUT_DIR=/proc" \
+             "REVIEW_INPUT_DIR ${RUNNER_ENV[*]} REVIEW_INPUT_DIR=/home/runner/work/_actions/x"; do
+  # shellcheck disable=SC2086
+  set -- $setup
+  want=$1; shift
+  out=$(env "$@" bash "$R" 2>"$tmp_err")
+  rc=$?
+  assert_exit 1 "$rc" "the review line refuses a denied root over $want ($*)"
+  assert_eq "" "$out" "and prints nothing ($*)"
+  assert_contains "$(cat "$tmp_err")" "$want" "and names $want on stderr"
+done
+# The hosted layout with the head and input under RUNNER_TEMP composes.
+env "${RUNNER_ENV[@]}" REVIEW_HEAD_DIR=/home/runner/work/_temp/head REVIEW_INPUT_DIR=/home/runner/work/_temp/review-input bash "$R" >/dev/null
+assert_exit 0 $? "the hosted layout composes"
+
 # ---------------------------------------------------------------------------
 # The security audit's variables (--audit) and models (--audit-models). The
 # checks above, which require Agent and Task denied, apply to the review
@@ -264,7 +290,7 @@ assert_exit 1 $? "--audit refuses an unset RUNNER_TEMP"
 
 # --audit-models: the step's model three times, read as the runner reads $GITHUB_ENV.
 tmp=$(mktemp -d)
-trap 'rm -rf "$tmp"' EXIT
+trap 'rm -rf "$tmp" "$tmp_err"' EXIT
 for spec in "source claude-opus-5-5" "repair claude-opus-5-5" "poc_write claude-opus-5-5" \
             "poc_decide claude-opus-5-5" "cross_check claude-fable-5-1" "tie_break claude-sonnet-5-5"; do
   # shellcheck disable=SC2086
