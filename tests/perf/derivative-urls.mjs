@@ -15,3 +15,12 @@ export function derivativeUrls(html, base) {
   }
   return [...urls];
 }
+
+// Returns the fetch options for url: the headers only when url is on base's
+// origin, and then with redirects not followed, because Node's fetch sends
+// custom headers on to whatever host a redirect names. A redirect answers
+// with its 3xx status instead.
+export function requestInit(url, base, headers) {
+  if (Object.keys(headers).length === 0 || new URL(url).origin !== new URL(base).origin) return {};
+  return { headers, redirect: 'manual' };
+}

@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { derivativeUrls } from './derivative-urls.mjs';
+import { derivativeUrls, requestInit } from './derivative-urls.mjs';
 
 const base = 'https://dev-cedar-hollow.example.test';
 
@@ -27,4 +27,19 @@ test('drops a protocol-relative derivative URL on another host', () => {
 test('ignores src values that are not derivatives', () => {
   const html = '<script src="/core/misc/drupal.js"></script><img src="/sites/default/files/a.jpg">';
   assert.deepEqual(derivativeUrls(html, base), []);
+});
+
+const bypass = { 'Deterrence-Bypass': '1', 'x-pantheon-bot-bypass': 'token' };
+
+test('sends the bypass headers to the base origin without following redirects', () => {
+  assert.deepEqual(requestInit(`${base}/sessions`, base, bypass), { headers: bypass, redirect: 'manual' });
+});
+
+test('sends no headers to another origin', () => {
+  assert.deepEqual(requestInit('https://attacker.test/files/styles/x/a.jpg', base, bypass), {});
+  assert.deepEqual(requestInit('http://dev-cedar-hollow.example.test/sessions', base, bypass), {});
+});
+
+test('leaves requests unchanged when there are no headers to send', () => {
+  assert.deepEqual(requestInit(`${base}/sessions`, base, {}), {});
 });
