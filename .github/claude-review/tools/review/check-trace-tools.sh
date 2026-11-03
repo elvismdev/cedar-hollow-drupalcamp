@@ -478,8 +478,9 @@ def away_from_workspace(path):
     if not exps:
         return False
     for v in VIEWS:
-        # An added root counts only where it cannot reach the workspace.
-        away = v.away_roots + [r for r in v.extra_roots if not under(r, v.ws) and not under(v.ws, r)]
+        # The head, the input directory and an added root count only where
+        # they cannot reach the workspace, which a link can make them do.
+        away = [r for r in v.away_roots + v.extra_roots if not under(r, v.ws) and not under(v.ws, r)]
         # Every brace expansion of the path must lie in one of them.
         if not all(any(under(v.f(resolve(e, ws)), r) for r in away) for e in exps):
             return False

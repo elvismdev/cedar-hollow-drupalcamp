@@ -342,6 +342,14 @@ for p in head/wslink input/wslink head/uplink; do
   assert_contains "$out" "Grep glob can reach .git (field glob)" "$p with * is refused"
 done
 assert_contains "$(REVIEW_HEAD_DIR="$zr/head" REVIEW_INPUT_DIR="$zr/input" zgrep "$zr/real/repo" "$zr/head" '*')" "rc=0" "the head itself still takes *"
+# The head or the input directory that is itself a link to the checkout or
+# its parent is not away from it, so the glob rule holds there too.
+ln -s "$zr/real/repo" "$zr/headlink"
+ln -s "$zr/real" "$zr/inputlink"
+out=$(REVIEW_HEAD_DIR="$zr/headlink" REVIEW_INPUT_DIR="$zr/input" zgrep "$zr/real/repo" "$zr/headlink" '*')
+assert_contains "$out" "Grep glob can reach .git (field glob)" "a head that is a link to the checkout keeps the glob rule"
+out=$(REVIEW_HEAD_DIR="$zr/head" REVIEW_INPUT_DIR="$zr/inputlink" zgrep "$zr/real/repo" "$zr/inputlink" '*')
+assert_contains "$out" "Grep glob can reach .git (field glob)" "an input directory that is a link to the checkout's parent keeps the glob rule"
 # A Grep path must be in normal form where the glob rule applies: ripgrep
 # matches a glob against the path as written.
 for p in './/web' 'web//x' "//$zr/real/repo" "///$zr/real/repo" "$zr/real/repo/." 'web/./x' 'web/.'; do
