@@ -131,7 +131,7 @@ ok_path Grep '{"pattern":"x","glob":"*.{php,module}"}' "a Grep glob *.{php,modul
 ok_path Grep '{"pattern":"x","glob":"src/**/*.ts"}' "a Grep glob src/**/*.ts passes"
 ok_path Grep '{"pattern":"x","glob":"*.php,*.inc"}' "comma-separated extension globs pass"
 no_path Grep '{"pattern":"x","glob":""}' "an empty Grep glob is refused"
-no_path Grep '{"pattern":"x","glob":"!*.php"}' "a ! outside the allowlist is refused"
+ok_path Grep '{"pattern":"x","glob":"!*.php"}' "a negated part passes from any path"
 ok_path Grep '{"pattern":"x","glob":"**/{a,b}.php"}' "a brace group of names before the extension passes after **/"
 ok_path Grep '{"pattern":"x","glob":"{a,b}.php"}' "a brace group of names before the extension passes on its own"
 ok_path Grep '{"pattern":"x","glob":"src/**/*.{php,module}"}' "a brace group of extensions passes after a directory"
@@ -197,7 +197,7 @@ for opts in none audit; do
   assert_eq "0" "$(grep_rc '' '*gitignore*' "${O[@]}")" "*gitignore* with no path passes ($opts options)"
   assert_eq "0" "$(grep_rc /w/repo '{.gitignore,composer.json}' "${O[@]}")" "{.gitignore,composer.json} at the workspace passes ($opts options)"
   for p in '' /w/repo; do
-    for g in '**' '{a,**}' '*' '*.git' '.git*/x' '{.git,a}' '*.{git,php}' '!x' '../x' 'a/../*' \
+    for g in '**' '{a,**}' '*' '*.git' '.git*/x' '{.git,a}' '*.{git,php}' '../x' 'a/../*' \
              'a,**' '*.*' '**/*' '.g*' '**/.git' '.git/config' '**/.git/**' '{a,*}' '{x,**}' '*/' '/.git' \
              '.git/' '**/'; do
       assert_eq "1" "$(grep_rc "$p" "$g" "${O[@]}")" "the Grep glob $g is refused (path ${p:-none}, $opts options)"
@@ -360,6 +360,45 @@ for p in './web' 'web/' '.' "$zr/real/repo/web/"; do
   assert_contains "$(zgrep "$zr/real/repo" "$p" '*.php')" "rc=0" "the Grep path $p still passes"
 done
 
+# A part that starts with ! is an exclusion to ripgrep and only removes files,
+# so it passes from any path; every other part is judged as before. A ! not at
+# the start of a part is a literal character to ripgrep, and is refused. The
+# first three are the negated globs Grep calls in audit run 41554500456 used
+# with no path.
+for opts in none audit; do
+  if [ "$opts" = audit ]; then O=("${AUDIT_OPTS[@]}"); else O=(); fi
+  for p in '' /w/repo /w/repo/web /rt/head; do
+    for g in '!web/**' '!.github/workflows/**' '!.github/**' '!**/node_modules/**' '!*' '!**' '!.git' '!{a,b}' \
+             '!web/**,*.php' '!*,!**' '!{.git,*}'; do
+      assert_eq "0" "$(grep_rc "$p" "$g" "${O[@]}")" "the negated Grep glob $g passes (path ${p:-none}, $opts options)"
+    done
+  done
+  for p in '' /w/repo; do
+    for g in '!web/**,*' '*,!web/**' '{!a,*}' '{!a,b}' '{a,!b}' 'a/!b' '!!a' '!../x' '!a/../b' '! a' '!' '!,*'; do
+      assert_eq "1" "$(grep_rc "$p" "$g" "${O[@]}")" "the Grep glob $g is refused (path ${p:-none}, $opts options)"
+    done
+  done
+done
+
+# A glob holding a brace group is kept whole, so a comma outside its braces
+# is a literal character to ripgrep and the glob matches nothing the agent
+# meant: such a glob is refused, whatever its first character, in every
+# mode. A } before its { is refused too.
+for opts in none audit; do
+  if [ "$opts" = audit ]; then O=("${AUDIT_OPTS[@]}"); else O=(); fi
+  for p in '' /w/repo /rt/head; do
+    for g in '!web/**,{a/**,z.php}' '!{a,b},c' '!x,{y,z}/**' 'src/**/*.php,{web,docs}/**' '*.md,{a,b}/x' \
+             'a,{b,c}' '}x,{a,b}' '{a,b}},c'; do
+      assert_eq "1" "$(grep_rc "$p" "$g" "${O[@]}")" "the kept-whole glob $g with a comma outside its braces is refused (path ${p:-none}, $opts options)"
+    done
+    for g in '!{vendor,node_modules}/**' '!web/{a,b}/**' 'src/**/*.php,!vendor/**' '{a,b}/x' 'web/{a,b}/*.php'; do
+      assert_eq "0" "$(grep_rc "$p" "$g" "${O[@]}")" "the Grep glob $g passes (path ${p:-none}, $opts options)"
+    done
+  done
+  assert_eq "1" "$(grep_rc '' 'src/**/*.php,!{vendor,node_modules}/**' "${O[@]}")" "a negated brace group after a comma is refused ($opts options)"
+  assert_eq "1" "$(grep_rc web/modules/custom 'src/**/*.php,!{vendor,node_modules}/**' "${O[@]}")" "and refused in a subfolder too ($opts options)"
+done
+
 # Closed input fields. Each tool's input may hold only the fields of its own
 # schema in Claude Code 2.1.309. Claude Code reads aliases and stray fields
 # (Grep reads file_path as path when path is absent), so any other key is
@@ -418,6 +457,8 @@ label_is Read '{"file_path":"/w/repo/.git/config"}' "path under .git (field file
 label_is Read '{"file_path":"~/x"}' "path starts with ~ (field file_path)" "label: starts with ~"
 label_is Glob '{"pattern":"/w/repo/*.php"}' "Glob pattern is absolute (field pattern)" "label: absolute"
 label_is Grep '{"pattern":"x","glob":"*"}' "Grep glob can reach .git (field glob)" "label: can reach .git"
+label_is Grep '{"pattern":"x","glob":"!web/**,{a/**,z.php}"}' "Grep glob holds a brace group and a comma outside it (field glob)" "label: kept-whole negation with an outer comma"
+label_is Grep '{"pattern":"x","glob":"src/**/*.php,{web,docs}/**"}' "Grep glob holds a brace group and a comma outside it (field glob)" "label: kept-whole glob with an outer comma"
 label_is Grep '{"pattern":"x","glob":"**"}' "Grep glob can reach .git (field glob)" "label: no path, glob **"
 label_is Grep '{"pattern":"x","path":"/w/repo","glob":"**"}' "Grep glob can reach .git (field glob)" "label: workspace path, glob **"
 label_is Grep '{"pattern":"x","path":"/rt/head","glob":"../**"}' "Grep glob holds a .. segment (field glob)" "label: head path, .. glob"
@@ -525,7 +566,7 @@ grep_glob () { # path-json-or-empty glob expected-rc message [options...]
 grep_glob '"web/modules/custom"' '!**/node_modules/**' 0 "a negated glob with a subfolder path passes" "${G[@]}"
 grep_glob '"/w/repo/web"' '{web/modules/custom/**,tests/**,scripts/**}' 0 "a brace folder list with a subfolder path passes" "${G[@]}"
 grep_glob '"/mnt/a/out/agents"' '!*.json' 0 "a negated glob in an added root passes" "${G[@]}"
-grep_glob '' '!**/node_modules/**' 1 "the same negated glob with no path fails" "${G[@]}"
+grep_glob '' '!**/node_modules/**' 0 "the same negated glob with no path passes" "${G[@]}"
 grep_glob '".git"' '!**/node_modules/**' 1 "the same glob with path .git fails" "${G[@]}"
 grep_glob '".git/hooks"' '!**/node_modules/**' 1 "the same glob with path .git/hooks fails" "${G[@]}"
 grep_glob '"/w/repo"' '{web/modules/custom/**,tests/**}' 0 "a brace folder list with the checkout root as path passes" "${G[@]}"
@@ -542,7 +583,7 @@ grep_glob '"/w"' 'repo/**' 1 "and repo/**, which can match repo/.git, from above
 grep_glob '"/w/repo/.."' '**' 1 "as is ** from above the checkout reached with .." "${W[@]}"
 grep_glob '"/w/repo/.."' '**/.git/config' 1 "and so does one that climbs there with .." "${W[@]}"
 grep_glob '"/w/repo/web"' '!**/node_modules/**' 0 "a real subfolder under the same options still passes" "${W[@]}"
-grep_glob '"web/modules/custom"' '!**/node_modules/**' 1 "without the option the negated glob fails as before"
+grep_glob '"web/modules/custom"' '!**/node_modules/**' 0 "without the option the negated glob passes too"
 grep_glob '"web/modules/custom"' '{web/**,tests/**}' 0 "without the option a brace folder list in the workspace passes"
 grep_glob '"web/modules/custom"' '{web/**,**}' 1 "without the option a brace list holding ** in the workspace fails"
 
@@ -594,6 +635,12 @@ mkdir -p "$tmp/noexp"
 cp "$C" "$tmp/noexp/check-trace-tools.sh"
 printf '[%s]' "$(call Read '{"file_path":"/w/repo/a"}')" > "$tmp/b.json"
 assert_eq "1" "$(bash "$tmp/noexp/check-trace-tools.sh" "$tmp/b.json" >/dev/null 2>&1; echo $?)" "a missing expander fails closed"
+# Without the shared glob split it fails closed too.
+mkdir -p "$tmp/nosplit"
+cp "$C" "$(dirname "$C")/expand-braces.cjs" "$tmp/nosplit/"
+assert_eq "1" "$(bash "$tmp/nosplit/check-trace-tools.sh" "$tmp/b.json" >/dev/null 2>&1; echo $?)" "a missing glob split fails closed"
+cp "$(dirname "$C")/grep_glob_parts.py" "$tmp/nosplit/"
+assert_eq "0" "$(bash "$tmp/nosplit/check-trace-tools.sh" "$tmp/b.json" >/dev/null 2>&1; echo $?)" "and passes with it beside the script"
 
 # It fails closed on what it cannot read.
 assert_eq "1" "$(rc "$tmp/absent.json")" "a missing trace fails"

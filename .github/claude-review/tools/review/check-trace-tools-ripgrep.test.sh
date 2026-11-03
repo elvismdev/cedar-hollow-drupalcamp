@@ -63,6 +63,29 @@ import itertools, json, os, re, subprocess, sys
 from concurrent.futures import ThreadPoolExecutor
 
 check, suite, ws, token, plain, tmp, up = sys.argv[1:]
+
+def model_parts(glob):
+    """The canary's own model of how Claude Code turns a Grep glob into
+    ripgrep --glob arguments, kept apart from the check's: split on
+    whitespace, then split each piece on commas unless it holds both braces,
+    and drop empty pieces."""
+    out = []
+    for piece in glob.split():
+        out.extend([piece] if '{' in piece and '}' in piece else [t for t in piece.split(',') if t])
+    return out
+
+# The model and the check's grep_glob_parts.py must agree on a fixed corpus,
+# so a change to either shows here.
+sys.dont_write_bytecode = True
+sys.path.insert(0, os.path.dirname(check))
+from grep_glob_parts import parts as check_parts
+CORPUS = ['*.php', 'a,b', 'a,,b', ',a,', '{a,b}', 'a,{b,c}', '!x,{y,z}/**', 'a b', 'a,b c,{d,e} f',
+          '{', '}', 'a{b,c', 'a}b,c', '', ' ', '!web/**,*', '{a,b},c', 'src/**/*.php,!vendor/**',
+          '!{vendor,node_modules}/**', '{a,{b,c}}', 'x}{,y']
+drift = [g for g in CORPUS if model_parts(g) != check_parts(g)]
+if drift:
+    sys.exit('FAIL: the canary\'s split model and the check\'s disagree on: %s' % ' | '.join(repr(g) for g in drift))
+print('split model agrees with the check on %d corpus globs' % len(CORPUS))
 AUDIT = ['--tools', 'Read,Glob,Grep,Write,Edit,Agent,Task,SubagentHandback',
          '--root', '/mnt/audit/source/in', '--root', '/mnt/audit/source/out',
          '--write-root', '/mnt/audit/source/out', '--grep-any-glob-in-subfolders']
@@ -93,6 +116,19 @@ for f in FOLDER:
 for a, b in itertools.combinations(FOLDER, 2):
     globs.add('{%s,%s}' % (a, b))
     globs.add('%s,%s' % (a, b))
+# Negated shapes: a part starting with ! alone, beside every folder shape in
+# either order, two together, and a ! inside a brace group or after a /,
+# which ripgrep reads as a literal character.
+NEGATED = ['!*', '!**', '!.git', '!.git/**', '!**/.git', '!src/**', '!*/x.php', '!{a,*}', '!{.git,src}',
+           '!' + os.path.basename(ws) + '/**', '!**/*']
+for n in NEGATED:
+    globs.add(n)
+    for f in FOLDER:
+        globs.add('%s,%s' % (n, f))
+        globs.add('%s,%s' % (f, n))
+for a, b in itertools.combinations(NEGATED, 2):
+    globs.add('%s,%s' % (a, b))
+globs |= {'{!a,*}', '{!.git,src/*}', '{src/*,!*}', 'src/!a', '*/!*', '!!*'}
 # The globs of the three calls that leaked by their raw path: src/.. with
 # src/**, <checkout>/.. with */repo/** from the parent as a root, and a
 # folder linked to the checkout with src/**.
@@ -136,9 +172,8 @@ def search(glob, path, mode):
     for d in ('.git', '.svn', '.hg', '.bzr', '.jj', '.sl'):
         args += ['--glob', '!' + d]
     args += ['--max-columns', '500', '-l', '--null', token + '|' + plain]
-    for part in glob.split():
-        for p in ([part] if '{' in part and '}' in part else [t for t in part.split(',') if t]):
-            args += ['--glob', p]
+    for p in model_parts(glob):
+        args += ['--glob', p]
     cwd, target = spawn(path, mode)
     r = subprocess.run(args + [target], capture_output=True, cwd=cwd)
     return r.returncode, r.stdout.decode('utf-8', 'replace'), r.stderr.decode('utf-8', 'replace')
