@@ -62,6 +62,11 @@ final class UserRegistrationsViewAccessTest extends SessionTestBase {
     $this->drupalGet('user/' . $attendee->id() . '/registrations');
     $this->assertSession()->statusCodeEquals(200);
     $this->assertSession()->pageTextContains($title);
+
+    // The view has no pager or exposed form to refresh, so it takes no AJAX
+    // requests, not even from an administrator.
+    $this->requestRegistrations('all');
+    $this->assertDenied($title);
   }
 
   /**
