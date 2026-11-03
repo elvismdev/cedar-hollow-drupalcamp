@@ -33,7 +33,7 @@ Most of this repository is written by an AI coding agent working under one maint
 *   **Round**: one review of a pull request by one angle. Each angle has three rounds per pull request.
 *   **Gate**: the required "Review gate" check that turns the review jobs' results and the review threads into one pass or fail, with a named cause.
 *   **Answered**: an important finding is answered when a comment by the owner follows the reviewer's first comment in its thread. Resolving a thread, or the thread going outdated, does not answer it.
-*   **Acknowledgement**: one owner comment on the pull request starting "Accepted at <short sha>:" followed by a reason. It clears the High tier and the round cap for that commit, or for a later commit that only merges `main` into it.
+*   **Acknowledgement**: one owner comment on the pull request starting "Accepted at <sha>:", with the full 40-character sha, followed by a reason. It clears the High tier and the round cap for that commit, or for a later commit that only merges `main` into it.
 *   **Tier**: the pull request's risk, High or Normal, from the ticked box and the changed paths, whichever is higher.
 *   **Eval**: the advisory workflow that replays the reviewer against known cases after the reviewer changes.
 *   **Baseline**: the eval's recorded expected result per case, written by the owner from the first run. A known miss stays in it with its reason.
@@ -59,11 +59,11 @@ The gate prints one of these messages. `<angle>` is "bugs", "security", or "bugs
 | "Outside pull requests are not accepted; please open an issue." | Close the pull request. If the change is wanted, make it on a branch of this repository. |
 | "Draft pull request: the review runs when it is marked ready." | Mark the pull request ready for review; that starts the review. |
 | "Review did not run (<cause>) for <angle>." | Act on the cause below, then re-run the review jobs (Re-run failed jobs). |
-| "Round cap reached for <angle>." | Read the commits pushed since the last reviewed round. If they are right, post "Accepted at <short head sha>: <reason>" and re-run the gate. |
+| "Round cap reached for <angle>." | Read the commits pushed since the last reviewed round. If they are right, post "Accepted at <full head sha>: <reason>" and re-run the gate. Only the full 40-character sha counts: a short one can be moved to another commit by a tag named after it. |
 | "Review threads could not be read." | Usually a GitHub API failure. Re-run the gate. |
 | "100 or more review threads; the gate cannot decide." | Split the pull request. |
 | "<N> important findings unanswered." | Reply in each thread the gate lists: "Fixed in <sha>" after pushing the fix, or the reason the finding stands. A push starts a new round; a reply alone needs only a re-run of the gate. |
-| "High risk: waiting for 'Accepted at <sha>:'." | Read the change, then post "Accepted at <short sha>: <reason>" and re-run the gate. |
+| "High risk: waiting for 'Accepted at <full head sha>:' (the full 40-character sha)." | Read the change, then post "Accepted at <full head sha>: <reason>", copying the sha from the message, and re-run the gate. |
 
 Causes for "Review did not run":
 
