@@ -2,7 +2,7 @@ import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import http from 'node:http';
 import { randomBytes } from 'node:crypto';
-import { MAX_REDIRECTS, fetchSameOrigin } from './derivative-urls.mjs';
+import { MAX_REDIRECTS, fetchResult, fetchSameOrigin } from './derivative-urls.mjs';
 
 // Two loopback listeners on different ports are two origins: the site and
 // another host. Each records the path and the bypass header it received.
@@ -26,7 +26,7 @@ before(async () => {
   const otherBase = await listen(other);
   site = http.createServer((req, res) => {
     siteHits.push({ path: req.url, bypass: req.headers['x-pantheon-bot-bypass'] });
-    const location = { '/': '/home', '/home': '/final', '/away': `${otherBase}/x`, '/loop': '/loop' }[req.url];
+    const location = { '/': '/home', '/home': '/final', '/away': `${otherBase}/x`, '/loop': '/loop', '/malformed': 'http://[x/files/styles/a.jpg' }[req.url];
     if (location) res.writeHead(302, { location });
     res.end(location ? '' : 'ok');
   });
@@ -72,4 +72,20 @@ test('without headers, follows same-origin redirects and not another origin', as
   const refused = await fetchSameOrigin(`${base}/away`, base, {});
   assert.equal(refused.status, 302);
   assert.deepEqual(otherHits, []);
+});
+
+test('reports a URL fetch refuses, or a malformed Location, as a failed result', async () => {
+  const site = new URL(base);
+  for (const url of [
+    `${site.protocol}//user@${site.host}/sites/default/files/styles/x/public/a.jpg`,
+    `blob:${base}/sites/default/files/styles/x/public/a.jpg`,
+    `${base}/malformed`,
+  ]) {
+    const result = await fetchResult(url, base, headers);
+    assert.match(String(result.status), /^error \(.+\)$/, url);
+    assert.equal(result.response, null);
+  }
+  const ok = await fetchResult(`${base}/final`, base, headers);
+  assert.equal(ok.status, 200);
+  assert.equal(await ok.response.text(), 'ok');
 });
