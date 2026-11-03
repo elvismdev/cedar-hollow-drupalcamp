@@ -96,16 +96,17 @@ export function scoreClean(findings) {
 
 /**
  * The review's own arguments, split for argv. The only quoted values are the
- * --add-dir directories, each one double-quoted word; anything else quoted, a
- * single quote or a backslash makes the line unusable.
+ * --add-dir directories, each one double-quoted word, and the deny list, one
+ * single-quoted word; a quoted word holding a space, a quote that does not
+ * stand alone around a word, or a backslash makes the line unusable.
  */
 export function reviewArgs(line) {
   const value = String(line || '').replace(/^AGENT_ARGS_REVIEW=/, '').trim();
-  const words = value.match(/"[^"\s]*"|[^\s"]+/g) || [];
-  if (!value || /['\\]/.test(value) || words.join(' ') !== value.replace(/\s+/g, ' ')) {
+  const words = value.match(/"[^"\s]*"|'[^'\s]*'|[^\s"']+/g) || [];
+  if (!value || /\\/.test(value) || words.join(' ') !== value.replace(/\s+/g, ' ')) {
     throw new Error(`unusable reviewer arguments: ${value}`);
   }
-  return words.map((w) => (w.startsWith('"') ? w.slice(1, -1) : w));
+  return words.map((w) => (w.startsWith('"') || w.startsWith("'") ? w.slice(1, -1) : w));
 }
 
 /** Each case against its last measured result. Only a pass turning into a fail regresses. */

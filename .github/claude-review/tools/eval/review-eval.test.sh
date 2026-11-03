@@ -125,4 +125,16 @@ assert_exit 0 "$abs" "for an absolute directory, without quotes ($dir)"
 assert_contains "$(cat "$tmp/args.log")" "add-dir $dir patch" "which holds the review diff when the agent starts"
 assert_contains "$(cat "$tmp/args.log")" "prompt-names $dir" "and the prompt names the diff there"
 
+# reviewArgs splits the composed line as claude-code-action does for the
+# shapes it holds: a double-quoted directory and a single-quoted rule list are
+# each one word with the quotes removed. A word quoted around a space, an
+# unclosed quote or a backslash makes the line unusable.
+args_of() { LINE="$1" node --input-type=module -e "import { reviewArgs } from '$E'; try { console.log(JSON.stringify(reviewArgs(process.env.LINE))); } catch { console.log('unusable'); }"; }
+assert_eq '["--add-dir","/a","--max-turns","3","--disallowedTools","Bash,Read(//proc/**),Grep(//h/.*)"]' \
+  "$(args_of "AGENT_ARGS_REVIEW=--add-dir \"/a\" --max-turns 3 --disallowedTools 'Bash,Read(//proc/**),Grep(//h/.*)'")" \
+  "a single-quoted rule list is one word without its quotes"
+for bad in "--disallowedTools 'Bash Read'" "--disallowedTools 'Bash" "--disallowedTools Bash'x'" "--add-dir \"/a b\"" "--x a\\b"; do
+  assert_eq "unusable" "$(args_of "$bad")" "refused: $bad"
+done
+
 pass "review-eval.test.sh"
