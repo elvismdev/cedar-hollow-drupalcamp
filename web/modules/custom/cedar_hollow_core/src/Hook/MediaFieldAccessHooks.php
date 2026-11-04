@@ -22,16 +22,21 @@ use Drupal\Core\Session\AccountInterface;
 final class MediaFieldAccessHooks {
 
   /**
+   * The permission that may edit the administrator-only media fields.
+   */
+  public const ADMIN_PERMISSION = 'administer media';
+
+  /**
    * The media field that publishes an image on the credits page.
    */
   public const VERIFIED_FIELD = 'field_verified';
 
   /**
-   * The media base fields for author and published status.
+   * The media fields only an administrator may edit.
    *
    * @var list<string>
    */
-  public const ADMINISTERED_BASE_FIELDS = ['uid', 'status'];
+  public const ADMIN_ONLY_FIELDS = [self::VERIFIED_FIELD, 'uid', 'status'];
 
   /**
    * Implements hook_entity_field_access().
@@ -49,10 +54,10 @@ final class MediaFieldAccessHooks {
   public function entityFieldAccess(string $operation, FieldDefinitionInterface $field_definition, AccountInterface $account, ?FieldItemListInterface $items = NULL): AccessResultInterface {
     if ($operation !== 'edit'
       || $field_definition->getTargetEntityTypeId() !== 'media'
-      || !in_array($field_definition->getName(), [self::VERIFIED_FIELD, ...self::ADMINISTERED_BASE_FIELDS], TRUE)) {
+      || !in_array($field_definition->getName(), self::ADMIN_ONLY_FIELDS, TRUE)) {
       return AccessResult::neutral();
     }
-    return AccessResult::forbiddenIf(!$account->hasPermission('administer media'))->cachePerPermissions();
+    return AccessResult::forbiddenIf(!$account->hasPermission(self::ADMIN_PERMISSION))->cachePerPermissions();
   }
 
 }

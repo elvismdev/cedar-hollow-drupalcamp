@@ -101,10 +101,11 @@ final class DemoEditorAccessTest extends SessionTestBase {
     $this->drupalGet('/media/add/image');
     $this->assertSession()->fieldExists(MediaFieldAccessHooks::VERIFIED_FIELD . '[value]');
     $this->assertTrue($media->get(MediaFieldAccessHooks::VERIFIED_FIELD)->access('edit', $admin), 'An administrator may mark an image verified.');
+    $this->assertTrue($admin->hasPermission(MediaFieldAccessHooks::ADMIN_PERMISSION), 'The administrator holds the media administration permission.');
     $this->assertSession()->fieldExists(self::AUTHOR_WIDGET);
     $this->assertSession()->fieldExists(self::STATUS_WIDGET);
-    foreach (MediaFieldAccessHooks::ADMINISTERED_BASE_FIELDS as $field_name) {
-      $this->assertTrue($media->get($field_name)->access('edit', $admin), "An administrator may edit the image's $field_name field.");
+    foreach (MediaFieldAccessHooks::ADMIN_ONLY_FIELDS as $field_name) {
+      $this->assertTrue($media->get($field_name)->access('edit', $admin), "An administrator may edit the $field_name field of an image.");
     }
 
     $this->drupalLogin($editor);
@@ -134,10 +135,11 @@ final class DemoEditorAccessTest extends SessionTestBase {
     ]);
     $own->save();
     $this->assertFalse($own->get(MediaFieldAccessHooks::VERIFIED_FIELD)->access('edit', $editor), 'A demo editor may not mark their own image verified.');
-    foreach (MediaFieldAccessHooks::ADMINISTERED_BASE_FIELDS as $field_name) {
-      $this->assertFalse($media->get($field_name)->access('edit', $editor), "A demo editor may not edit another account's image $field_name field.");
-      $this->assertFalse($own->get($field_name)->access('edit', $editor), "A demo editor may not edit their own image $field_name field.");
-      $this->assertTrue($own->get($field_name)->access('view', $editor), "A demo editor may still view the image $field_name field.");
+    $this->assertFalse($editor->hasPermission(MediaFieldAccessHooks::ADMIN_PERMISSION), 'A demo editor does not hold the media administration permission.');
+    foreach (MediaFieldAccessHooks::ADMIN_ONLY_FIELDS as $field_name) {
+      $this->assertFalse($media->get($field_name)->access('edit', $editor), "A demo editor may not edit the $field_name field of another account's image.");
+      $this->assertFalse($own->get($field_name)->access('edit', $editor), "A demo editor may not edit the $field_name field of their own image.");
+      $this->assertTrue($own->get($field_name)->access('view', $editor), "A demo editor may still view the $field_name field of their own image.");
     }
   }
 
