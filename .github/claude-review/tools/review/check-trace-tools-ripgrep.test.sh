@@ -14,7 +14,9 @@
 # returns the token either way, if a glob ripgrep cannot parse holds no nested
 # brace group, if no refused glob returns the token in either spawn mode,
 # which would mean the search could not have found it, and if the check does
-# not refuse a call that leaked by its raw path with the label that names why.
+# not refuse a call that leaked by its raw path with the label that names why,
+# or accepts *{**/.git,**/*} or *{**/.git,**/*.php}, whose ** at the start of a
+# brace alternative ripgrep reads as recursive after the prefix.
 # It also lists, as Claude Code's Glob does, every absolute Glob pattern the
 # check accepts, and fails if one lists a file under .git or outside the
 # roots, or if no refused one lists the file planted under .git.
@@ -132,6 +134,18 @@ for n in NEGATED:
 for a, b in itertools.combinations(NEGATED, 2):
     globs.add('%s,%s' % (a, b))
 globs |= {'{!a,*}', '{!.git,src/*}', '{src/*,!*}', 'src/!a', '*/!*', '!!*'}
+# A ** that is not a whole segment: at the start of a brace alternative after
+# a prefix, where globset reads it as recursive and the prefix may match
+# nothing (*{**/.git,**/*} reopens .git), at the end of an alternative, and
+# beside other characters, with and without a second alternative.
+STAR_PREFIXES = ['', '*', 'a', '.', '.g', 're', '*/', 'src/']
+STAR_BODIES = ['**/.git', '**/*', '**/it', '**/git', '**/x.php', '**', '**/', '/**', 'x/**', '**.git',
+               '**/*.php', '**/po/.git']
+for pre, body, post in itertools.product(STAR_PREFIXES, STAR_BODIES, ['', '/*', 'it', '/info/*', '.php']):
+    globs.add('%s{%s,y}%s' % (pre, body, post))
+    globs.add('%s{%s}%s' % (pre, body, post))
+globs |= {'a**', '**a', 'a**/b', '**.git', '.git**', '.g**', '**git', '.g**/info/*', '*{**/.git,**/*}',
+          '*{**/.git,**/*.php}', '{**/x,.g}{**/it}/*', '!*{**/.git,**/*}', '*{**/{.git,x}}/*'}
 # Kept-whole shapes: a brace group with a comma outside it, which ripgrep
 # reads as one glob with that comma, and any later !, as literal characters.
 for f in FOLDER:
@@ -373,6 +387,15 @@ for path, g, options, label in REGRESSIONS:
     if not leaks(g, path, 'raw')[1]:
         sys.exit('FAIL: the regression call path %s glob %s no longer returns the token raw, so it proves nothing' % (path, g))
     print('regression call path %s glob %s: refused by the check, returns the token raw' % (path, g))
+# The globs whose recursive ** after a prefix in a brace group reopened .git
+# with no path: refused, and still returning the token in both spawn modes.
+for g in ('*{**/.git,**/*}', '*{**/.git,**/*.php}'):
+    if g in ok['no path']:
+        sys.exit('FAIL: the check accepted the regression glob %s with no path' % g)
+    for mode in MODES:
+        if not leaks(g, '', mode)[1]:
+            sys.exit('FAIL: the regression glob %s no longer returns the token (%s), so it proves nothing' % (g, mode))
+    print('regression glob %s with no path: refused by the check, returns the token' % g)
 
 # Absolute Glob patterns. Claude Code 2.1.316 ignores a Glob's path when its
 # pattern is absolute: it searches the directory before the last / ahead of
@@ -436,6 +459,7 @@ def glob_list(pattern, mode, strict=False):
 
 RELS = set(FOLDER) | {'/'.join(c) for d in (1, 2) for c in itertools.product(SEGS, repeat=d)}
 RELS |= {'*.json', 'x.php', '*.php', 'README.md', '.git/config', '{.git,x}/**', '{src,.gi*}/*', '.g*/' + gname, '*/' + gname}
+RELS |= {'*{**/.git,**/*}', '*{**/.git,**/*.php}', '.g{**/it/*}', 're{**/po/.git/*}', 'x{**/*.php}', '*{**/x.php,y}'}
 RELS = sorted(r for r in RELS if not r.endswith('/'))
 BASES = [ws, ws + '/src', ws + '/src/a', ws + '/a', up, real_up, link_up, link_up + '/repo', head, inp,
          os.path.join(head, 'wslink'), os.path.join(inp, 'wslink'), ws + '/src/link']
