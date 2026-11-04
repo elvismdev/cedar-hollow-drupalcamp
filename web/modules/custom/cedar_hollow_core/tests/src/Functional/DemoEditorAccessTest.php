@@ -107,6 +107,14 @@ final class DemoEditorAccessTest extends SessionTestBase {
     $this->assertSession()->fieldNotExists('field_verified[value]');
     $this->assertFalse($media->get('field_verified')->access('edit', $editor), 'A demo editor may not mark an image verified.');
     $this->assertTrue($media->get('field_verified')->access('view', $editor), 'A demo editor may still view the verified flag.');
+    $own = Media::create([
+      'bundle' => 'image',
+      'name' => 'The editor\'s own image',
+      'uid' => $editor->id(),
+      'field_media_image' => ['target_id' => $file->id(), 'alt' => 'A test image'],
+    ]);
+    $own->save();
+    $this->assertFalse($own->get('field_verified')->access('edit', $editor), 'A demo editor may not mark their own image verified.');
   }
 
   /**
