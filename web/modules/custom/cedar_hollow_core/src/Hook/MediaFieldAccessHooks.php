@@ -12,17 +12,31 @@ use Drupal\Core\Hook\Attribute\Hook;
 use Drupal\Core\Session\AccountInterface;
 
 /**
- * Lets only media administrators mark an image verified.
+ * Lets only media administrators edit media authoring and publishing fields.
  *
- * The credits page lists verified images only, so an account that may upload
- * images but not administer media must not set the flag on any form or API.
+ * The credits page lists verified images only, and an uploader keeps the
+ * current user as author, the creation time and the bundle's published
+ * default, so an account that may upload images but not administer media must
+ * not change any of these fields on any form or API.
  */
 final class MediaFieldAccessHooks {
+
+  /**
+   * The permission that may edit the administrator-only media fields.
+   */
+  public const ADMIN_PERMISSION = 'administer media';
 
   /**
    * The media field that publishes an image on the credits page.
    */
   public const VERIFIED_FIELD = 'field_verified';
+
+  /**
+   * The media fields only an administrator may edit.
+   *
+   * @var list<string>
+   */
+  public const ADMIN_ONLY_FIELDS = [self::VERIFIED_FIELD, 'uid', 'status', 'created'];
 
   /**
    * Implements hook_entity_field_access().
@@ -40,10 +54,10 @@ final class MediaFieldAccessHooks {
   public function entityFieldAccess(string $operation, FieldDefinitionInterface $field_definition, AccountInterface $account, ?FieldItemListInterface $items = NULL): AccessResultInterface {
     if ($operation !== 'edit'
       || $field_definition->getTargetEntityTypeId() !== 'media'
-      || $field_definition->getName() !== self::VERIFIED_FIELD) {
+      || !in_array($field_definition->getName(), self::ADMIN_ONLY_FIELDS, TRUE)) {
       return AccessResult::neutral();
     }
-    return AccessResult::forbiddenIf(!$account->hasPermission('administer media'))->cachePerPermissions();
+    return AccessResult::forbiddenIf(!$account->hasPermission(self::ADMIN_PERMISSION))->cachePerPermissions();
   }
 
 }

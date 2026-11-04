@@ -28,6 +28,26 @@ final class DemoEditorAccessTest extends SessionTestBase {
   private const ROLE_CONFIG = '/../config/user.role.demo_editor.yml';
 
   /**
+   * The media form's "Authored by" input.
+   */
+  private const AUTHOR_WIDGET = 'uid[0][target_id]';
+
+  /**
+   * The media form's "Published" checkbox.
+   */
+  private const STATUS_WIDGET = 'status[value]';
+
+  /**
+   * The media form's "Authored on" date input.
+   */
+  private const CREATED_WIDGET = 'created[0][value][date]';
+
+  /**
+   * The image form's "Creator" input, which every uploader must fill in.
+   */
+  private const CREATOR_WIDGET = 'field_creator[0][value]';
+
+  /**
    * {@inheritdoc}
    */
   protected function setUp(): void {
@@ -91,6 +111,13 @@ final class DemoEditorAccessTest extends SessionTestBase {
     $this->drupalGet('/media/add/image');
     $this->assertSession()->fieldExists(MediaFieldAccessHooks::VERIFIED_FIELD . '[value]');
     $this->assertTrue($media->get(MediaFieldAccessHooks::VERIFIED_FIELD)->access('edit', $admin), 'An administrator may mark an image verified.');
+    $this->assertTrue($admin->hasPermission(MediaFieldAccessHooks::ADMIN_PERMISSION), 'The administrator holds the media administration permission.');
+    $this->assertSession()->fieldExists(self::AUTHOR_WIDGET);
+    $this->assertSession()->fieldExists(self::STATUS_WIDGET);
+    $this->assertSession()->fieldExists(self::CREATED_WIDGET);
+    foreach (MediaFieldAccessHooks::ADMIN_ONLY_FIELDS as $field_name) {
+      $this->assertTrue($media->get($field_name)->access('edit', $admin), "An administrator may edit the $field_name field of an image.");
+    }
 
     $this->drupalLogin($editor);
     foreach ($refused as $path) {
@@ -106,6 +133,12 @@ final class DemoEditorAccessTest extends SessionTestBase {
     $this->assertSession()->statusCodeEquals(200);
     // The credits page lists verified images, so an editor cannot verify one.
     $this->assertSession()->fieldNotExists(MediaFieldAccessHooks::VERIFIED_FIELD . '[value]');
+    // An upload keeps the current user as author, the creation time and the
+    // published default. The creator input proves the image form rendered.
+    $this->assertSession()->fieldExists(self::CREATOR_WIDGET);
+    $this->assertSession()->fieldNotExists(self::AUTHOR_WIDGET);
+    $this->assertSession()->fieldNotExists(self::STATUS_WIDGET);
+    $this->assertSession()->fieldNotExists(self::CREATED_WIDGET);
     $this->assertFalse($media->get(MediaFieldAccessHooks::VERIFIED_FIELD)->access('edit', $editor), 'A demo editor may not mark an image verified.');
     $this->assertTrue($media->get(MediaFieldAccessHooks::VERIFIED_FIELD)->access('view', $editor), 'A demo editor may still view the verified flag.');
     $own = Media::create([
@@ -116,6 +149,13 @@ final class DemoEditorAccessTest extends SessionTestBase {
     ]);
     $own->save();
     $this->assertFalse($own->get(MediaFieldAccessHooks::VERIFIED_FIELD)->access('edit', $editor), 'A demo editor may not mark their own image verified.');
+    $this->assertFalse($editor->hasPermission(MediaFieldAccessHooks::ADMIN_PERMISSION), 'A demo editor does not hold the media administration permission.');
+    foreach (MediaFieldAccessHooks::ADMIN_ONLY_FIELDS as $field_name) {
+      $this->assertFalse($media->get($field_name)->access('edit', $editor), "A demo editor may not edit the $field_name field of another account's image.");
+      $this->assertFalse($own->get($field_name)->access('edit', $editor), "A demo editor may not edit the $field_name field of their own image.");
+      $this->assertTrue($media->get($field_name)->access('view', $editor), "A demo editor may still view the $field_name field of another account's image.");
+      $this->assertTrue($own->get($field_name)->access('view', $editor), "A demo editor may still view the $field_name field of their own image.");
+    }
   }
 
   /**
