@@ -381,22 +381,88 @@ for opts in none audit; do
 done
 
 # A glob holding a brace group is kept whole, so a comma outside its braces
-# is a literal character to ripgrep and the glob matches nothing the agent
-# meant: such a glob is refused, whatever its first character, in every
-# mode. A } before its { is refused too.
+# is a literal character to ripgrep and the glob may match nothing the agent
+# meant: such a glob passes with one warning line, whatever its first
+# character, in every mode, and the other rules still judge it as ripgrep
+# reads it. A } before its { cannot be expanded and is refused.
+WARN='glob holds a brace group and a comma outside it, so ripgrep reads it as one pattern and it may match nothing (warning)'
+grep_out () { # path-or-empty glob [option...]: the check's output and status for one Grep
+  local input
+  if [ -n "$1" ]; then input="{\"pattern\":\"x\",\"path\":\"$1\",\"glob\":\"$2\"}"
+  else input="{\"pattern\":\"x\",\"glob\":\"$2\"}"; fi
+  printf '[%s]' "$(call Grep "$input")" > "$tmp/x.json"; shift 2
+  bash "$C" "$tmp/x.json" "$@" 2>&1; echo "rc=$?"
+}
+warned () { # path-or-empty glob message [option...]: the Grep passes with the warning
+  local out p="$1" g="$2" msg="$3"; shift 3
+  out=$(grep_out "$p" "$g" "$@")
+  assert_contains "$out" "check-trace-tools: Grep call 1: $WARN" "$msg warns"
+  assert_contains "$out" "all inside the allowed roots" "$msg reads as passing"
+  assert_contains "$out" "rc=0" "$msg passes"
+}
 for opts in none audit; do
   if [ "$opts" = audit ]; then O=("${AUDIT_OPTS[@]}"); else O=(); fi
   for p in '' /w/repo /rt/head; do
-    for g in '!web/**,{a/**,z.php}' '!{a,b},c' '!x,{y,z}/**' 'src/**/*.php,{web,docs}/**' '*.md,{a,b}/x' \
-             'a,{b,c}' '}x,{a,b}' '{a,b}},c'; do
-      assert_eq "1" "$(grep_rc "$p" "$g" "${O[@]}")" "the kept-whole glob $g with a comma outside its braces is refused (path ${p:-none}, $opts options)"
+    for g in '!web/**,{a/**,z.php}' '!{a,b},c' '!x,{y,z}/**' 'src/**/*.php,{web,docs}/**' '*.md,{a,b}/x' 'a,{b,c}'; do
+      warned "$p" "$g" "the kept-whole glob $g with a comma outside its braces (path ${p:-none}, $opts options)" "${O[@]}"
+    done
+    for g in '}x,{a,b}' '{a,b}},c'; do
+      out=$(grep_out "$p" "$g" "${O[@]}")
+      assert_contains "$out" "Grep call 1: braces cannot be expanded (field glob)" "the glob $g is refused (path ${p:-none}, $opts options)"
+      case "$out" in *"(warning)"*) echo "FAIL: the refused glob $g also printed a warning" >&2; exit 1;; esac
     done
     for g in '!{vendor,node_modules}/**' '!web/{a,b}/**' 'src/**/*.php,!vendor/**' '{a,b}/x' 'web/{a,b}/*.php'; do
-      assert_eq "0" "$(grep_rc "$p" "$g" "${O[@]}")" "the Grep glob $g passes (path ${p:-none}, $opts options)"
+      out=$(grep_out "$p" "$g" "${O[@]}")
+      assert_contains "$out" "rc=0" "the Grep glob $g passes (path ${p:-none}, $opts options)"
+      case "$out" in *"(warning)"*) echo "FAIL: the glob $g printed a warning" >&2; exit 1;; esac
     done
   done
-  assert_eq "1" "$(grep_rc '' 'src/**/*.php,!{vendor,node_modules}/**' "${O[@]}")" "a negated brace group after a comma is refused ($opts options)"
-  assert_eq "1" "$(grep_rc web/modules/custom 'src/**/*.php,!{vendor,node_modules}/**' "${O[@]}")" "and refused in a subfolder too ($opts options)"
+done
+# In such a glob a ! after the first character is a literal character to
+# ripgrep, and passes as one; anywhere else it is still refused.
+warned '' 'src/**/*.php,!{vendor,node_modules}/**' "a negated brace group after a comma, no options"
+for g in 'a/!b' 'x,a/!b' 'a!b,*.php' '{!a,b}' '{a,!b}/x'; do
+  out=$(grep_out '' "$g")
+  assert_contains "$out" "Grep call 1: character outside the allowlist (field glob)" "the glob $g with a mid-glob ! is still refused"
+done
+warned web/modules/custom 'src/**/*.php,!{vendor,node_modules}/**' "a negated brace group after a comma in a subfolder, audit options" "${AUDIT_OPTS[@]}"
+# The warning is on stderr: stdout holds only the summary, so nothing that
+# reads stdout can take it for a refusal.
+printf '[%s,%s]' "$(call Grep '{"pattern":"x","glob":"a,{b,c}"}')" "$(call Grep '{"pattern":"x","glob":"*.php"}')" > "$tmp/x.json"
+assert_eq "check-trace-tools: 2 tool call(s), all Read, Glob or Grep, all inside the allowed roots" \
+  "$(bash "$C" "$tmp/x.json" 2>/dev/null)" "the warning stays off stdout"
+assert_eq "1" "$(bash "$C" "$tmp/x.json" 2>&1 >/dev/null | grep -c '(warning)')" "one warning line per warned call"
+# The three globs the eighth audit run refused for a comma outside their
+# braces (run 41728378524, calls 203, 519 and 801), each with its path, with
+# and without the audit's options.
+for o in none audit; do
+  if [ "$o" = audit ]; then O=("${AUDIT_OPTS[@]}"); else O=(); fi
+  warned web '{modules/custom/**,themes/custom/**},!**/node_modules/**' "the audit's glob with path web ($o options)" "${O[@]}"
+  warned '' '{config/**,recipes/**,scripts/**,tests/**,web/modules/custom/**,web/themes/custom/**},!**/node_modules/**' \
+    "the audit's glob with no path ($o options)" "${O[@]}"
+  warned web/themes/custom/cedar_hollow/components \
+    '{organisms,layouts}/**,atoms/{tag,date,readtime}/**,molecules/{filter-group,speaker-byline,session-meta,hero,breadcrumb}/**' \
+    "the audit's component glob in a subfolder ($o options)" "${O[@]}"
+done
+# A kept-whole glob that can reach .git as ripgrep reads it is still refused,
+# with no warning: from above a checkout named re,po, {re,x},po/** matches
+# re,po/.git/config with ripgrep 13.0.0 and Claude Code's 14.1.1.
+for o in none audit; do
+  if [ "$o" = audit ]; then O=("${AUDIT_OPTS[@]}" --root /w); else O=(--root /w); fi
+  for g in '{re,x},po/**' '{*,x},po/**' '{re,*},po/.git/config'; do
+    out=$(zgrep /w/re,po /w "$g" "${O[@]}")
+    assert_contains "$out" "Grep call 1: Grep glob can reach .git (field glob)" "$g from above a checkout named re,po is refused ($o options)"
+    case "$out" in *"(warning)"*) echo "FAIL: the refused glob $g also printed a warning" >&2; exit 1;; esac
+  done
+  out=$(zgrep /w/re,po /w '{re,x},po/*.php' "${O[@]}")
+  assert_contains "$out" "rc=0" "{re,x},po/*.php from above a checkout named re,po passes ($o options)"
+  # Its ! is literal, so the glob is not an exclusion: from above a checkout
+  # named !re,po, {!re,x},po/** matches !re,po/.git/config with both rg
+  # versions, and is refused. !{re,x},po/** starts with ! and only excludes.
+  out=$(zgrep '/w/!re,po' /w '{!re,x},po/**' "${O[@]}")
+  assert_contains "$out" "Grep call 1: Grep glob can reach .git (field glob)" "{!re,x},po/** from above a checkout named !re,po is refused ($o options)"
+  out=$(zgrep '/w/!re,po' /w '!{re,x},po/**' "${O[@]}")
+  assert_contains "$out" "rc=0" "!{re,x},po/** from above a checkout named !re,po passes ($o options)"
 done
 
 # Closed input fields. Each tool's input may hold only the fields of its own
@@ -457,8 +523,8 @@ label_is Read '{"file_path":"/w/repo/.git/config"}' "path under .git (field file
 label_is Read '{"file_path":"~/x"}' "path starts with ~ (field file_path)" "label: starts with ~"
 label_is Glob '{"pattern":"/w/repo/*.php"}' "Glob pattern is absolute (field pattern)" "label: absolute"
 label_is Grep '{"pattern":"x","glob":"*"}' "Grep glob can reach .git (field glob)" "label: can reach .git"
-label_is Grep '{"pattern":"x","glob":"!web/**,{a/**,z.php}"}' "Grep glob holds a brace group and a comma outside it (field glob)" "label: kept-whole negation with an outer comma"
-label_is Grep '{"pattern":"x","glob":"src/**/*.php,{web,docs}/**"}' "Grep glob holds a brace group and a comma outside it (field glob)" "label: kept-whole glob with an outer comma"
+label_is Grep '{"pattern":"x","glob":"!web/**,{a/**,z.php}"}' "$WARN" "warning: kept-whole negation with an outer comma"
+label_is Grep '{"pattern":"x","glob":"src/**/*.php,{web,docs}/**"}' "$WARN" "warning: kept-whole glob with an outer comma"
 label_is Grep '{"pattern":"x","glob":"**"}' "Grep glob can reach .git (field glob)" "label: no path, glob **"
 label_is Grep '{"pattern":"x","path":"/w/repo","glob":"**"}' "Grep glob can reach .git (field glob)" "label: workspace path, glob **"
 label_is Grep '{"pattern":"x","path":"/rt/head","glob":"../**"}' "Grep glob holds a .. segment (field glob)" "label: head path, .. glob"
