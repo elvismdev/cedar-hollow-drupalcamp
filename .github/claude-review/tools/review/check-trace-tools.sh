@@ -638,7 +638,21 @@ def subfolder_search(path):
     exps = expansions(path)
     return bool(exps) and all(not under(v.ws, v.f(resolve(e, ws))) for e in exps for v in VIEWS)
 
+# The warning for a Grep glob kept whole with a comma outside its braces.
+KEPT_COMMA_WARNING = ('glob holds a brace group and a comma outside it, so ripgrep reads it as one '
+                      'pattern and it may match nothing (warning)')
+
 def refusal(call):
+    """(refusal, warning): the refusal is (label, field or None) for the first
+    rule that refuses the call, else None; the warning is KEPT_COMMA_WARNING
+    for a Grep that is not refused and whose glob is kept whole with a comma
+    outside its braces, else None."""
+    r = first_refusal(call)
+    args = call.get('input')
+    g = args.get('glob') if call.get('name') == 'Grep' and isinstance(args, dict) else None
+    return r, (KEPT_COMMA_WARNING if r is None and isinstance(g, str) and comma_outside_kept_braces(g) else None)
+
+def first_refusal(call):
     """(label, field or None) for the first rule that refuses the call, else None.
     A field name is returned only when it is in the tool's own field set."""
     name, args = call.get('name'), call.get('input')
@@ -787,7 +801,7 @@ results = top_results(trace)
 earlier = set()
 refused = []
 for i, c in enumerate(calls(trace), 1):
-    r = refusal(c)
+    r, warning = refusal(c)
     if r and r[0] == 'path outside the allowed roots' and denied_saved_output(c, earlier, results):
         print(f"check-trace-tools: Read call {i}: a denied read of the tool result Claude Code saved for an "
               "earlier call; reported, not refused", file=sys.stderr)
@@ -799,11 +813,9 @@ for i, c in enumerate(calls(trace), 1):
         label, field = r
         print(f"check-trace-tools: {c.get('name')} call {i}: {label}"
               + (f" (field {field})" if field else ''), file=sys.stderr)
-    elif c.get('name') == 'Grep' and isinstance(c.get('input'), dict) \
-            and isinstance(c['input'].get('glob'), str) and comma_outside_kept_braces(c['input']['glob']):
+    elif warning:
         # On stderr like every other line: stdout carries only the refused calls.
-        print(f"check-trace-tools: Grep call {i}: glob holds a brace group and a comma outside it, so ripgrep "
-              "reads it as one pattern and it may match nothing (warning)", file=sys.stderr)
+        print(f"check-trace-tools: Grep call {i}: {warning}", file=sys.stderr)
 print(', '.join(refused))
 PY
 ) || {
