@@ -15,6 +15,9 @@
 # brace group, if no refused glob returns the token in either spawn mode,
 # which would mean the search could not have found it, and if the check does
 # not refuse a call that leaked by its raw path with the label that names why.
+# It also lists, as Claude Code's Glob does, every absolute Glob pattern the
+# check accepts, and fails if one lists a file under .git or outside the
+# roots, or if no refused one lists the file planted under .git.
 # ripgrep is required: without it the test fails.
 #
 # The spawn and the argument order were read from the Claude Code 2.1.309
@@ -370,6 +373,103 @@ for path, g, options, label in REGRESSIONS:
     if not leaks(g, path, 'raw')[1]:
         sys.exit('FAIL: the regression call path %s glob %s no longer returns the token raw, so it proves nothing' % (path, g))
     print('regression call path %s glob %s: refused by the check, returns the token raw' % (path, g))
+
+# Absolute Glob patterns. Claude Code 2.1.316 ignores a Glob's path when its
+# pattern is absolute: it searches the directory before the last / ahead of
+# the first *, ?, [ or { (the dirname when there is none), with the rest as
+# the glob, running ripgrep --files --null --glob <rest> --sort=modified
+# --no-ignore --hidden, and nothing excludes .git. That was read from the
+# binary and measured with a real Glob call, which listed a file planted
+# under .git for <checkout>/*.json and <checkout>/*/cn*, and from the
+# parent for <parent>/*/.git/cn*. Every absolute pattern the check accepts is
+# listed both ways (in the folder the directory resolves to, with '.' as the
+# target, and from the checkout with the directory as written as the target)
+# and must list nothing under .git, where a file named with a random token
+# sits, and nothing outside the roots it was accepted with.
+gname = 'Gn' + os.urandom(12).hex() + '.php'
+with open(os.path.join(ws, '.git', gname), 'w') as fh:
+    fh.write('x\n')
+with open(os.path.join(inp, 'x.json'), 'w') as fh:
+    fh.write(plain + '\n')
+
+def glob_split(pattern):
+    """The canary's own model of Claude Code's split of an absolute Glob
+    pattern into the directory searched and the glob, kept apart from the
+    check's."""
+    m = re.search(r'[*?\[{]', pattern)
+    if m is None:
+        return os.path.dirname(pattern), os.path.basename(pattern)
+    cut = pattern.rfind('/', 0, m.start())
+    return pattern[:cut] or '/', pattern[cut + 1:]
+
+def glob_list(pattern, mode):
+    """The files ripgrep lists for an absolute Glob pattern, as real paths."""
+    base, g = glob_split(pattern)
+    if not os.path.isdir(base):
+        return []
+    cwd, target = (os.path.realpath(base), '.') if mode == 'fd' else (ws, base)
+    r = subprocess.run(['rg', '--files', '--null', '--glob', g, '--sort=modified', '--no-ignore', '--hidden', target],
+                       capture_output=True, cwd=cwd)
+    if r.returncode == 2 and not r.stdout:
+        return []
+    return [os.path.realpath(os.path.join(cwd, f)) for f in r.stdout.decode('utf-8', 'replace').split('\0') if f]
+
+RELS = set(FOLDER) | {'/'.join(c) for d in (1, 2) for c in itertools.product(SEGS, repeat=d)}
+RELS |= {'*.json', 'x.php', '*.php', 'README.md', '.git/config', '{.git,x}/**', '{src,.gi*}/*', '.g*/' + gname, '*/' + gname}
+RELS = sorted(r for r in RELS if not r.endswith('/'))
+BASES = [ws, ws + '/src', ws + '/src/a', ws + '/a', up, real_up, link_up, link_up + '/repo', head, inp,
+         os.path.join(head, 'wslink'), os.path.join(inp, 'wslink'), ws + '/src/link']
+patterns = {b + '/' + r for b in BASES for r in RELS}
+patterns |= {'%s/{%s,x}/%s' % (up, os.path.basename(ws), r) for r in RELS}
+patterns |= {'%s/{src,a}/%s' % (ws, r) for r in RELS} | {'%s/{src,.git}/%s' % (ws, r) for r in ('x.php', '*')}
+patterns |= {ws + '/src/../' + r for r in ('*', '.git/config')} | {ws + '/./' + r for r in ('*', 'x.php')}
+patterns |= {inp + '/*.json', ws + '/src/x.php', ws + '/' + gname}
+patterns = sorted(patterns)
+GOPTS = [('none', []), ('audit', AUDIT), ('parent root', ['--root', up]), ('audit, parent root', AUDIT + ['--root', up]),
+         ('real parent root', ['--root', real_up]), ('linked parent root', ['--root', link_up])]
+print('absolute Glob patterns %d' % len(patterns))
+
+def glob_accepted(options):
+    calls = [{'type': 'tool_use', 'id': 'g%d' % i, 'name': 'Glob', 'input': {'pattern': p}} for i, p in enumerate(patterns)]
+    trace = os.path.join(tmp, 'glob.json')
+    json.dump(calls, open(trace, 'w'))
+    r = subprocess.run(['bash', check, trace] + options, capture_output=True, text=True)
+    refused = {int(m.group(1)) for m in (re.match(r'check-trace-tools: Glob call (\d+): ', l) for l in r.stderr.splitlines()) if m}
+    if r.returncode not in (0, 1) or (r.returncode == 1 and not refused):
+        sys.exit('FAIL: the trace check did not run on the absolute Glob patterns: %s' % r.stderr[-400:])
+    return [p for i, p in enumerate(patterns, 1) if i not in refused]
+
+real_git = os.path.realpath(os.path.join(ws, '.git'))
+inside_git = lambda f: f == real_git or f.startswith(real_git + '/')
+found_plain = False
+for label, options in GOPTS:
+    roots = [os.path.realpath(r) for r in [ws, head, inp] + [options[i + 1] for i, o in enumerate(options) if o == '--root']]
+    ok_patterns = glob_accepted(options)
+    jobs = [(p, mode) for p in ok_patterns for mode in MODES]
+    with ThreadPoolExecutor(max_workers=os.cpu_count() or 4) as pool:
+        listed = list(pool.map(lambda j: (j, glob_list(*j)), jobs))
+    git_leaks = sorted({'%s (%s)' % j for j, files in listed if any(inside_git(f) or gname in f for f in files)})
+    root_leaks = sorted({'%s (%s)' % j for j, files in listed
+                         if any(not any(f == r or f.startswith(r + '/') for r in roots) for f in files)})
+    found_plain = found_plain or any(j[0] == inp + '/*.json' and os.path.join(os.path.realpath(inp), 'x.json') in files
+                                     for j, files in listed)
+    print('absolute Glob, %-18s: accepted %4d, listed under .git %d, listed outside the roots %d'
+          % (label, len(ok_patterns), len(git_leaks), len(root_leaks)))
+    if git_leaks:
+        sys.exit('FAIL: accepted absolute Glob pattern(s) listed a file under .git: %s' % ' '.join(git_leaks[:20]))
+    if root_leaks:
+        sys.exit('FAIL: accepted absolute Glob pattern(s) listed a file outside the roots: %s' % ' '.join(root_leaks[:20]))
+if not found_plain:
+    sys.exit('FAIL: the accepted absolute Glob <input>/*.json listed no ordinary file, so a clean result proves nothing')
+# Some refused pattern must list the planted file, in both modes, or the
+# listing could not have found it.
+refused = sorted(set(patterns) - set(glob_accepted([])))
+for mode in MODES:
+    with ThreadPoolExecutor(max_workers=os.cpu_count() or 4) as pool:
+        reached = [p for p, files in pool.map(lambda p: (p, glob_list(p, mode)), refused) if any(gname in f for f in files)]
+    if not reached:
+        sys.exit('FAIL: no refused absolute Glob pattern listed the planted .git file (%s), so the canary cannot fail' % mode)
+    print('absolute Glob refused (%s): %d listed the planted .git file' % (mode, len(reached)))
 PY
 status=0
 for l in plain linked; do
