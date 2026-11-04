@@ -311,6 +311,7 @@ EXPANDED = json.load(open(sys.argv[5]))
 sys.dont_write_bytecode = True
 sys.path.insert(0, sys.argv[6])
 from grep_glob_parts import parts as grep_parts
+from glob_search_split import split as glob_search_split
 
 def expansions(value):
     """The brace expansions of a path-bearing value, or None when they could
@@ -583,20 +584,10 @@ def through_symlink(p):
         posixpath.join(os.path.realpath(root), posixpath.relpath(p, root)))
 
 # Claude Code 2.1.316 searches an absolute Glob pattern from its own split of
-# it and ignores the call's path: the directory is the pattern up to the last
-# / before its first *, ?, [ or { (or its dirname when it has none), and the
-# rest is the glob. It runs ripgrep --files --hidden --no-ignore there with
-# that glob and no exclusion of .git, so hidden files and .git are listed,
-# and a glob with no / matches names at any depth.
-GLOB_META = re.compile(r'[*?\[{]')
-
-def glob_search_split(pattern):
-    """(directory searched, glob) for an absolute Glob pattern."""
-    m = GLOB_META.search(pattern)
-    if m is None:
-        return posixpath.dirname(pattern), posixpath.basename(pattern)
-    cut = pattern.rfind('/', 0, m.start())
-    return pattern[:cut] or '/', pattern[cut + 1:]
+# it (glob_search_split.py) and ignores the call's path. It runs ripgrep
+# --files --hidden --no-ignore in that folder with the rest as the glob and no
+# exclusion of .git, so hidden files and .git are listed, and a glob with no
+# / matches names at any depth.
 
 def normal_absolute(p):
     """True for an absolute path in normal form: no empty, . or .. segment

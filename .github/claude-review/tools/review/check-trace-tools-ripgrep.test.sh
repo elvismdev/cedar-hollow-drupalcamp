@@ -398,9 +398,21 @@ def glob_split(pattern):
     check's."""
     m = re.search(r'[*?\[{]', pattern)
     if m is None:
-        return os.path.dirname(pattern), os.path.basename(pattern)
+        # Node's dirname and basename, which ignore trailing slashes.
+        trimmed = pattern.rstrip('/') or '/'
+        return os.path.dirname(trimmed), os.path.basename(trimmed)
     cut = pattern.rfind('/', 0, m.start())
     return pattern[:cut] or '/', pattern[cut + 1:]
+
+# The model and the check's glob_search_split.py must both reproduce every
+# split measured from the Claude Code 2.1.316 binary.
+from glob_search_split import split as check_split
+SPLITS = json.load(open(os.path.join(os.path.dirname(check), 'glob-split-corpus.json')))['splits']
+split_drift = [r[0] for r in SPLITS if list(glob_split(r[0])) != r[1:] or list(check_split(r[0])) != r[1:]]
+if len(SPLITS) < 8 or split_drift:
+    sys.exit('FAIL: the absolute Glob split corpus (%d rows) disagrees with the canary or the check on: %s'
+             % (len(SPLITS), ' '.join(split_drift)))
+print('absolute Glob split: the canary and the check agree with %d measured splits' % len(SPLITS))
 
 def glob_list(pattern, mode):
     """The files ripgrep lists for an absolute Glob pattern, as real paths."""

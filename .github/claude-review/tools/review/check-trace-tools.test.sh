@@ -495,6 +495,20 @@ no_path Glob '{"pattern":"/proc/self/{environ,x/../../../w/repo/y}"}' "an absolu
 no_path Glob '{"pattern":"/w/repo/**/*.php"}' "an absolute Glob pattern whose ** reaches .git is refused"
 no_path Glob '{"pattern":"/proc/self/{environ,x}"}' "an absolute Glob pattern /proc/self/{environ,x} is refused"
 no_path Glob '{"pattern":"{..,x}/../../proc/*"}' "a relative Glob pattern climbing through a brace group is refused"
+# The check's split of an absolute pattern matches every split measured from
+# the Claude Code 2.1.316 binary in glob-split-corpus.json.
+split_out=$(python3 -I - "$(dirname "$C")" <<'PY'
+import json, os, sys
+sys.dont_write_bytecode = True
+sys.path.insert(0, sys.argv[1])
+from glob_search_split import split
+rows = json.load(open(os.path.join(sys.argv[1], 'glob-split-corpus.json')))['splits']
+bad = [r[0] for r in rows if list(split(r[0])) != r[1:]]
+print('%d rows, %d mismatched%s' % (len(rows), len(bad), (': ' + ' '.join(bad)) if bad else ''))
+PY
+)
+assert_contains "$split_out" ", 0 mismatched" "the absolute Glob split matches the measured corpus"
+case "$split_out" in [0-7]" rows"*) echo "FAIL: the measured split corpus has fewer than 8 rows" >&2; exit 1;; esac
 # The ninth audit run's poc-write call: its own input directory, a root.
 PW=(--tools "Read,Glob,Grep,Write,Agent,Task,SubagentHandback" --root /mnt/audit/poc-write/out --root /mnt/audit/poc-write/in --write-root /mnt/audit/poc-write/out --grep-any-glob-in-subfolders)
 glob_abs () { # input-json expected-rc message [options...]
@@ -763,7 +777,9 @@ mkdir -p "$tmp/nosplit"
 cp "$C" "$(dirname "$C")/expand-braces.cjs" "$tmp/nosplit/"
 assert_eq "1" "$(bash "$tmp/nosplit/check-trace-tools.sh" "$tmp/b.json" >/dev/null 2>&1; echo $?)" "a missing glob split fails closed"
 cp "$(dirname "$C")/grep_glob_parts.py" "$tmp/nosplit/"
-assert_eq "0" "$(bash "$tmp/nosplit/check-trace-tools.sh" "$tmp/b.json" >/dev/null 2>&1; echo $?)" "and passes with it beside the script"
+assert_eq "1" "$(bash "$tmp/nosplit/check-trace-tools.sh" "$tmp/b.json" >/dev/null 2>&1; echo $?)" "a missing absolute Glob split fails closed"
+cp "$(dirname "$C")/glob_search_split.py" "$tmp/nosplit/"
+assert_eq "0" "$(bash "$tmp/nosplit/check-trace-tools.sh" "$tmp/b.json" >/dev/null 2>&1; echo $?)" "and passes with both beside the script"
 
 # A Read of the tool result Claude Code saved for an earlier call, denied by
 # the permission settings, is reported, not refused; every condition matters.
