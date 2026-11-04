@@ -534,14 +534,19 @@ def grep_path_refusal(path):
         return ('Grep path is not in normal form', 'path')
     for e in expansions(path) or [path]:
         p = resolve(e, ws)
-        if p is None:
-            continue
-        holders = [r for r in roots if under(p, r)]
-        root = max(holders, key=len) if holders else '/'
-        if os.path.realpath(p) != posixpath.normpath(
-                posixpath.join(os.path.realpath(root), posixpath.relpath(p, root))):
+        if p is not None and through_symlink(p):
             return ('Grep path passes through a symlink', 'path')
     return None
+
+def through_symlink(p):
+    """True when an existing component of the absolute path p, below the
+    allowed root that holds it (the longest), is a symlink on disk now. The
+    root itself and its ancestors are not judged; a path in no root is
+    judged whole."""
+    holders = [r for r in roots if under(p, r)]
+    root = max(holders, key=len) if holders else '/'
+    return os.path.realpath(p) != posixpath.normpath(
+        posixpath.join(os.path.realpath(root), posixpath.relpath(p, root)))
 
 def inside(p):
     return p is not None and all(
