@@ -87,6 +87,9 @@ final class DemoEditorAccessTest extends SessionTestBase {
       $this->assertSession()->statusCodeEquals(200);
     }
     $this->assertTrue($this->mayCreateCodeComponent($admin), 'An administrator may create code components.');
+    $this->drupalGet('/media/add/image');
+    $this->assertSession()->fieldExists('field_verified[value]');
+    $this->assertTrue($media->get('field_verified')->access('edit', $admin), 'An administrator may mark an image verified.');
 
     $this->drupalLogin($editor);
     foreach ($refused as $path) {
@@ -100,6 +103,10 @@ final class DemoEditorAccessTest extends SessionTestBase {
     // Canvas's media picker uploads through Media Library's add form.
     $this->drupalGet('/media/add/image');
     $this->assertSession()->statusCodeEquals(200);
+    // The credits page lists verified images, so an editor cannot verify one.
+    $this->assertSession()->fieldNotExists('field_verified[value]');
+    $this->assertFalse($media->get('field_verified')->access('edit', $editor), 'A demo editor may not mark an image verified.');
+    $this->assertTrue($media->get('field_verified')->access('view', $editor), 'A demo editor may still view the verified flag.');
   }
 
   /**
