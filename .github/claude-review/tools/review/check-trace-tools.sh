@@ -61,7 +61,9 @@
 #     its path, normalised for .. (a brace group's .. included, as segments),
 #     and held to the same roots.
 #   - A Grep glob: the same set as a Glob pattern, plus ! as the first
-#     character of a part, with no .. segment. Claude
+#     character of a part (and, in a part kept whole with a comma outside its
+#     braces, anywhere: there ripgrep reads a later ! as a literal character,
+#     and so does this check), with no .. segment. Claude
 #     Code passes it to ripgrep after its own !.git exclusion, where it
 #     overrides that exclusion, which matters only where the search can reach
 #     the workspace's .git/config. So the rule below applies when the Grep has
@@ -340,7 +342,7 @@ def under(p, root):
 # trailing newline cannot slip past $. ASCII only, no whitespace, no ~.
 PATH_CHARS = re.compile(r'[A-Za-z0-9._/@+-]+')
 GLOB_CHARS = re.compile(r'[A-Za-z0-9._/@+*{},-]+')
-SUBFOLDER_GLOB_CHARS = re.compile(r'[A-Za-z0-9._/@+*{},!-]+')
+GLOB_BANG_CHARS = re.compile(r'[A-Za-z0-9._/@+*{},!-]+')
 
 def path_ok(value):
     return isinstance(value, str) and PATH_CHARS.fullmatch(value) is not None
@@ -453,12 +455,17 @@ def grep_glob_chars_ok(value):
     an exclusion, which can only remove files from the search; a ! anywhere
     else (inside a brace group, after a /) is a literal character to it, so a
     glob holding one would be judged as a positive glob naming a !, and is
-    refused instead."""
+    refused instead. The exception is a part kept whole with a comma outside
+    its braces, which is warned about rather than refused: there a later ! is
+    accepted as the literal character ripgrep reads it as, and
+    grep_glob_allowed judges it so."""
     if not isinstance(value, str) or re.search(r'\s', value):
         return False
     parts = grep_parts(value)
-    return bool(parts) and all(GLOB_CHARS.fullmatch(t[1:] if t.startswith('!') else t) is not None
-                               for t in parts)
+    return bool(parts) and all(
+        (GLOB_BANG_CHARS if comma_outside_kept_braces(t) else GLOB_CHARS).fullmatch(
+            t[1:] if t.startswith('!') else t) is not None
+        for t in parts)
 
 def comma_outside_kept_braces(value):
     """True for a glob Claude Code keeps whole because it holds a brace group
@@ -485,12 +492,16 @@ def grep_glob_allowed(value, exps, path):
     """True when no part or expansion of a Grep glob can reopen the
     workspace's .git for a Grep with this path. A part that starts with !
     only excludes, so it passes, and so do its expansions, which all start
-    with ! too; every other part is judged."""
+    with ! too; every other part is judged. A part kept whole is one glob to
+    ripgrep, so an expansion of it that starts with ! ({!a,b},c gives !a,c)
+    is a positive glob naming a literal !, and is judged unless the part
+    itself starts with !."""
     if not grep_glob_chars_ok(value):
         return False
     targets = git_targets(path)
+    kept = grep_parts(value) == [value] and '{' in value and '}' in value
     for t in grep_parts(value) + exps:
-        if t.startswith('!'):
+        if t.startswith('!') and (value.startswith('!') or not kept):
             continue
         if '..' in t.split('/') or can_reach_git(t, targets):
             return False
@@ -652,7 +663,7 @@ def refusal(call):
         subfolder = subfolder_search(args.get('path'))
         # The character allowlist depends on the mode; the refusals after it
         # apply in every mode.
-        if not (SUBFOLDER_GLOB_CHARS.fullmatch(g) is not None if subfolder else grep_glob_chars_ok(g)):
+        if not (GLOB_BANG_CHARS.fullmatch(g) is not None if subfolder else grep_glob_chars_ok(g)):
             return ('character outside the allowlist', 'glob')
         if '..' in re.split(r'[/{},!]', g):
             return ('Grep glob holds a .. segment', 'glob')

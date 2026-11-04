@@ -418,7 +418,13 @@ for opts in none audit; do
     done
   done
 done
-assert_eq "1" "$(grep_rc '' 'src/**/*.php,!{vendor,node_modules}/**')" "a negated brace group after a comma is refused for its literal !"
+# In such a glob a ! after the first character is a literal character to
+# ripgrep, and passes as one; anywhere else it is still refused.
+warned '' 'src/**/*.php,!{vendor,node_modules}/**' "a negated brace group after a comma, no options"
+for g in 'a/!b' 'x,a/!b' 'a!b,*.php' '{!a,b}' '{a,!b}/x'; do
+  out=$(grep_out '' "$g")
+  assert_contains "$out" "Grep call 1: character outside the allowlist (field glob)" "the glob $g with a mid-glob ! is still refused"
+done
 warned web/modules/custom 'src/**/*.php,!{vendor,node_modules}/**' "a negated brace group after a comma in a subfolder, audit options" "${AUDIT_OPTS[@]}"
 # The warning is on stderr: stdout holds only the summary, so nothing that
 # reads stdout can take it for a refusal.
@@ -427,11 +433,13 @@ assert_eq "check-trace-tools: 2 tool call(s), all Read, Glob or Grep, all inside
   "$(bash "$C" "$tmp/x.json" 2>/dev/null)" "the warning stays off stdout"
 assert_eq "1" "$(bash "$C" "$tmp/x.json" 2>&1 >/dev/null | grep -c '(warning)')" "one warning line per warned call"
 # The three globs the eighth audit run refused for a comma outside their
-# braces (run 41728378524, calls 203, 519 and 801), with the subfolder path,
-# under the audit's options.
-warned web '{modules/custom/**,themes/custom/**},!**/node_modules/**' "the audit's glob with path web" "${AUDIT_OPTS[@]}"
+# braces (run 41728378524, calls 203, 519 and 801), each with its path, with
+# and without the audit's options.
 for o in none audit; do
   if [ "$o" = audit ]; then O=("${AUDIT_OPTS[@]}"); else O=(); fi
+  warned web '{modules/custom/**,themes/custom/**},!**/node_modules/**' "the audit's glob with path web ($o options)" "${O[@]}"
+  warned '' '{config/**,recipes/**,scripts/**,tests/**,web/modules/custom/**,web/themes/custom/**},!**/node_modules/**' \
+    "the audit's glob with no path ($o options)" "${O[@]}"
   warned web/themes/custom/cedar_hollow/components \
     '{organisms,layouts}/**,atoms/{tag,date,readtime}/**,molecules/{filter-group,speaker-byline,session-meta,hero,breadcrumb}/**' \
     "the audit's component glob in a subfolder ($o options)" "${O[@]}"
@@ -448,6 +456,13 @@ for o in none audit; do
   done
   out=$(zgrep /w/re,po /w '{re,x},po/*.php' "${O[@]}")
   assert_contains "$out" "rc=0" "{re,x},po/*.php from above a checkout named re,po passes ($o options)"
+  # Its ! is literal, so the glob is not an exclusion: from above a checkout
+  # named !re,po, {!re,x},po/** matches !re,po/.git/config with both rg
+  # versions, and is refused. !{re,x},po/** starts with ! and only excludes.
+  out=$(zgrep '/w/!re,po' /w '{!re,x},po/**' "${O[@]}")
+  assert_contains "$out" "Grep call 1: Grep glob can reach .git (field glob)" "{!re,x},po/** from above a checkout named !re,po is refused ($o options)"
+  out=$(zgrep '/w/!re,po' /w '!{re,x},po/**' "${O[@]}")
+  assert_contains "$out" "rc=0" "!{re,x},po/** from above a checkout named !re,po passes ($o options)"
 done
 
 # Closed input fields. Each tool's input may hold only the fields of its own

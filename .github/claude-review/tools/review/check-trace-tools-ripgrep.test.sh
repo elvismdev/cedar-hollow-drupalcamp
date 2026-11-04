@@ -129,6 +129,15 @@ for n in NEGATED:
 for a, b in itertools.combinations(NEGATED, 2):
     globs.add('%s,%s' % (a, b))
 globs |= {'{!a,*}', '{!.git,src/*}', '{src/*,!*}', 'src/!a', '*/!*', '!!*'}
+# Kept-whole shapes: a brace group with a comma outside it, which ripgrep
+# reads as one glob with that comma, and any later !, as literal characters.
+for f in FOLDER:
+    globs.add('{%s,x.php},src/**' % f)
+    globs.add('src/**,{%s,x.php}' % f)
+    globs.add('{%s,x.php},%s' % (f, f))
+    for n in NEGATED:
+        globs.add('{%s,x.php},%s' % (f, n))
+        globs.add('%s,{%s,a}' % (n, f))
 # The globs of the three calls that leaked by their raw path: src/.. with
 # src/**, <checkout>/.. with */repo/** from the parent as a root, and a
 # folder linked to the checkout with src/**.
@@ -296,6 +305,47 @@ for name, path, _ in (VARIANTS[0], VARIANTS[5], VARIANTS[8], VARIANTS[9]):
         if not reached:
             sys.exit('FAIL: no glob refused with path %s (%s) returned the .git token, so the canary cannot fail' % (name, mode))
         print('refused with path %s (%s): %d returned the .git token, e.g. %s' % (name, mode, len(reached), ' '.join(reached[:5])))
+
+# Kept-whole globs searched from above checkouts named re,po and !re,po,
+# where the literal comma and ! can match .git's path: every accepted glob
+# must return no token in either spawn mode, and some refused glob must.
+for name in ('re,po', '!re,po'):
+    cws = os.path.join(up, name)
+    ctoken = 'Ct' + os.urandom(12).hex()
+    subprocess.run(['git', 'init', '-q', cws], check=True)
+    subprocess.run(['git', '-C', cws, 'config', 'canary.token', ctoken], check=True)
+    with open(os.path.join(cws, 'x.php'), 'w') as fh:
+        fh.write(plain + '\n')
+    cglobs = ['{re,x},po/**', '{!re,x},po/**', '{*,x},po/**', '!{re,x},po/**', '{re,x},po/*.php',
+              '{x,y},po/**', '{!re,x},po/*.php', '{re,*},po/.git/config', '{*,x},po/*', 'x,{*,y},po/**']
+    env = dict(os.environ, GITHUB_WORKSPACE=cws)
+    calls = [{'type': 'tool_use', 'id': 'k%d' % i, 'name': 'Grep', 'input': {'pattern': 'x', 'path': up, 'glob': g}}
+             for i, g in enumerate(cglobs)]
+    trace = os.path.join(tmp, 'kept.json')
+    json.dump(calls, open(trace, 'w'))
+    for options in (['--root', up], AUDIT + ['--root', up]):
+        r = subprocess.run(['bash', check, trace] + options, capture_output=True, text=True, env=env)
+        refused = {int(m.group(1)) for m in (re.match(r'check-trace-tools: Grep call (\d+): ', l) for l in r.stderr.splitlines())
+                   if m and not m.string.endswith(' (warning)')}
+        if r.returncode not in (0, 1):
+            sys.exit('FAIL: the trace check did not run: %s' % r.stderr[-400:])
+        reached, bad = [], []
+        for i, g in enumerate(cglobs, 1):
+            for mode in MODES:
+                args = ['rg', '--hidden'] + [x for d in ('.git', '.svn', '.hg', '.bzr', '.jj', '.sl') for x in ('--glob', '!' + d)]
+                args += ['--max-columns', '500', '-l', '--null', ctoken]
+                for p in model_parts(g):
+                    args += ['--glob', p]
+                cwd, target = (os.path.realpath(up), '.') if mode == 'fd' else (cws, up)
+                out = subprocess.run(args + [target], capture_output=True, cwd=cwd).stdout
+                if out:
+                    (reached if i in refused else bad).append('%s (%s)' % (g, mode))
+        print('kept-whole from above %s %s: accepted %d, refused %d, leaked %d, refused that returned the token %d'
+              % (name, 'audit' if len(options) > 2 else 'none', len(cglobs) - len(refused), len(refused), len(bad), len(reached)))
+        if bad:
+            sys.exit('FAIL: accepted kept-whole glob(s) returned the .git token from above %s: %s' % (name, ' '.join(bad)))
+        if not reached:
+            sys.exit('FAIL: no refused kept-whole glob returned the .git token from above %s, so the check proves nothing' % name)
 
 # The calls the whole-glob rule accepted that returned the token by their raw
 # path: the check must refuse each, and in the plain layout each must still
