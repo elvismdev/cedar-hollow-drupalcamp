@@ -433,7 +433,8 @@ done
 
 # A part that starts with ! is an exclusion to ripgrep and only removes files,
 # so it passes from any path; every other part is judged as before. A ! not at
-# the start of a part is a literal character to ripgrep, and is refused. The
+# the start of a part Claude Code splits off is a literal character to
+# ripgrep, and is refused; a kept-whole glob holding one is warned about. The
 # first three are the negated globs Grep calls in audit run 41554500456 used
 # with no path.
 for opts in none audit; do
@@ -445,7 +446,7 @@ for opts in none audit; do
     done
   done
   for p in '' /w/repo; do
-    for g in '!web/**,*' '*,!web/**' '{!a,*}' '{!a,b}' '{a,!b}' 'a/!b' '!!a' '!../x' '!a/../b' '! a' '!' '!,*'; do
+    for g in '!web/**,*' '*,!web/**' '{!a,*}' 'a/!b' '!!a' '!../x' '!a/../b' '! a' '!' '!,*'; do
       assert_eq "1" "$(grep_rc "$p" "$g" "${O[@]}")" "the Grep glob $g is refused (path ${p:-none}, $opts options)"
     done
   done
@@ -490,9 +491,10 @@ for opts in none audit; do
   done
 done
 # In such a glob a ! after the first character is a literal character to
-# ripgrep, and passes as one; anywhere else it is still refused.
+# ripgrep, and passes as one; in a part Claude Code splits off it is still
+# refused.
 warned '' 'src/**/*.php,!{vendor,node_modules}/**' "a negated brace group after a comma, no options"
-for g in 'a/!b' 'x,a/!b' 'a!b,*.php' '{!a,b}' '{a,!b}/x'; do
+for g in 'a/!b' 'x,a/!b' 'a!b,*.php'; do
   out=$(grep_out '' "$g")
   assert_contains "$out" "Grep call 1: character outside the allowlist (field glob)" "the glob $g with a mid-glob ! is still refused"
 done
@@ -535,6 +537,118 @@ for o in none audit; do
   out=$(zgrep '/w/!re,po' /w '!{re,x},po/**' "${O[@]}")
   assert_contains "$out" "rc=0" "!{re,x},po/** from above a checkout named !re,po passes ($o options)"
 done
+
+# A kept-whole glob is one glob to ripgrep, so a ! after its first character
+# is a literal character there and excludes nothing: {a/**,!b/**} matches
+# a/x and a file under a folder named !b, and not b/x, with ripgrep 13.0.0 and
+# Claude Code's 14.1.1. Such a glob passes with one warning line, and the .git
+# rule judges it as ripgrep reads it, each brace expansion a positive glob
+# with its ! in place. A ! after the first character of a part Claude Code
+# splits off is still refused.
+BANG_WARN="glob is kept whole and holds '!' after its first character, which ripgrep reads as a literal character, so it excludes nothing (warning)"
+# A kept-whole glob that starts with ! is an exclusion, so its warning calls
+# only the later ! literal and never says the glob excludes nothing.
+NEG_BANG_WARN="glob is kept whole, starts with '!' and holds another '!' after it, which ripgrep reads as a literal character (warning)"
+bang_warned () { # path-or-empty glob message [option...]: the Grep passes with the ! warning
+  local out p="$1" g="$2" msg="$3" w="$BANG_WARN"; shift 3
+  case "$g" in '!'*) w="$NEG_BANG_WARN";; esac
+  out=$(grep_out "$p" "$g" "$@")
+  assert_contains "$out" "check-trace-tools: Grep call 1: $w" "$msg warns"
+  case "$g" in '!'*) case "$out" in *"excludes nothing"*)
+    echo "FAIL: $msg says a glob that starts with ! excludes nothing" >&2; exit 1;; esac;; esac
+  assert_contains "$out" "all inside the allowed roots" "$msg reads as passing"
+  assert_contains "$out" "rc=0" "$msg passes"
+}
+# The six globs the tenth audit run refused as a character outside the
+# allowlist, all with no path, with and without the audit's options.
+for o in none audit; do
+  if [ "$o" = audit ]; then O=("${AUDIT_OPTS[@]}"); else O=(); fi
+  for g in '{web/modules/custom/**,web/themes/custom/**,!**/node_modules/**,!**/storybook-static/**}' \
+           '{config/**,recipes/**,scripts/**,tests/**,web/modules/custom/**,web/themes/custom/**,.github/workflows/**,.github/claude-review/**,!**/node_modules/**}' \
+           '{config/**,web/modules/custom/**,web/themes/custom/**,tests/**,recipes/**,!**/node_modules/**,!**/storybook-static/**,!**/dist/**}' \
+           '{.github/workflows/**,.github/claude-review/**,scripts/**,web/themes/custom/**,!**/node_modules/**,!**/*.test.sh}' \
+           '{web/themes/custom/cedar_hollow/{agenda-builder,components,js,src}/**,tests/**,scripts/**,!**/node_modules/**}' \
+           '{web/themes/custom/**,tests/**,scripts/**,!**/node_modules/**,!**/storybook/**}'; do
+    bang_warned '' "$g" "the audit's kept-whole glob $g ($o options)" "${O[@]}"
+  done
+  for p in '' /w/repo /w/repo/web /rt/head; do
+    for g in '{!a,b}' '{a,!b}' '{a,!b}/x' '{a/**,!b/**}' 'src/{x,!y}/*.php' '{a,b}/!c' 'x,{a,b}/!c' \
+             '!{a,!b}' '!!{a,b}' '!{a,b}/!c'; do
+      bang_warned "$p" "$g" "the kept-whole glob $g (path ${p:-none}, $o options)" "${O[@]}"
+    done
+  done
+  # A glob with both shapes gets both warning lines.
+  out=$(grep_out '' 'src/**/*.php,!{vendor,node_modules}/**' "${O[@]}")
+  assert_contains "$out" "Grep call 1: $WARN" "a glob with an outer comma and a later ! names the comma ($o options)"
+  assert_contains "$out" "Grep call 1: $BANG_WARN" "a glob with an outer comma and a later ! names the ! ($o options)"
+  # A kept-whole glob with no ! after its first character has no ! warning.
+  for g in '!{a,b}' '{a,b}/x' '!web/{a,b}/**'; do
+    out=$(grep_out '' "$g" "${O[@]}")
+    case "$out" in *"(warning)"*) echo "FAIL: the glob $g printed a warning ($o options)" >&2; exit 1;; esac
+  done
+  # A ! after the first character of a split part is still refused.
+  for g in 'a/!b' 'x,a/!b' 'a!b,*.php' '*.php,src/!x/**' 'a,!!b'; do
+    out=$(grep_out '' "$g" "${O[@]}")
+    assert_contains "$out" "Grep call 1: character outside the allowlist (field glob)" "the split glob $g with a mid-glob ! is still refused ($o options)"
+  done
+  # Read as ripgrep reads it, a kept-whole glob with a literal ! can reach .git:
+  # from above a checkout named !re, {x/**,!re/**}, {x,!r*}/**, {!re/**} and
+  # {a/**,!*/**} match !re/.git/config with both rg versions, through an
+  # alternative that starts with ! and no other. Each is refused with no
+  # warning; {x/**,!re/*.php} and !{x,!re}/** pass.
+  if [ "$o" = audit ]; then O=("${AUDIT_OPTS[@]}" --root /w); else O=(--root /w); fi
+  for g in '{x/**,!re/**}' '{x,!r*}/**' '{!re/**}' '{a/**,!*/**}' '{x,!re}/.git/config'; do
+    out=$(zgrep '/w/!re' /w "$g" "${O[@]}")
+    assert_contains "$out" "Grep call 1: Grep glob can reach .git (field glob)" "$g from above a checkout named !re is refused ($o options)"
+    case "$out" in *"(warning)"*) echo "FAIL: the refused glob $g also printed a warning" >&2; exit 1;; esac
+  done
+  for g in '{x/**,!re/*.php}' '!{x,!re}/**'; do
+    out=$(zgrep '/w/!re' /w "$g" "${O[@]}")
+    assert_contains "$out" "rc=0" "$g from above a checkout named !re passes ($o options)"
+  done
+done
+# The refusals above rest on the check judging an expansion that starts with
+# ! as a positive glob: a copy of the check that skips every such expansion
+# accepts {a/**,!*/**} and {x/**,!re/**} from above !re.
+mkdir -p "$tmp/mutant"
+cp "$(dirname "$C")"/{check-trace-tools.sh,grep_glob_parts.py,glob_search_split.py,expand-braces.cjs} "$tmp/mutant/"
+exempt="if t.startswith('!') and (value.startswith('!') or not kept):"
+assert_eq "1" "$(grep -cF "$exempt" "$tmp/mutant/check-trace-tools.sh")" "the mutant finds the check's ! exemption once"
+sed -i "s/$exempt/if t.startswith('!'):/" "$tmp/mutant/check-trace-tools.sh"
+for g in '{a/**,!*/**}' '{x/**,!re/**}'; do
+  out=$(C="$tmp/mutant/check-trace-tools.sh" zgrep '/w/!re' /w "$g" --root /w)
+  assert_contains "$out" "rc=0" "the mutant accepts $g from above !re, so the test above can fail"
+done
+
+# A kept-whole glob with a ! after its first character still goes through
+# the brace-edge refusal and the /** rewrite. *{**/.git,**/.git/*,!x} returned
+# .git/config with no path, and from above a checkout at a/b/repo
+# {!x,a/**}repo/{.git,.git/*} returned a/b/repo/.git/config, with rg 13.0.0
+# and Claude Code's 14.1.1; the first is refused for its ** at a brace edge,
+# the second as able to reach .git, which a copy of the check without the
+# /** rewrite accepts. Neither prints a warning.
+for o in none audit; do
+  if [ "$o" = audit ]; then O=("${AUDIT_OPTS[@]}"); else O=(); fi
+  for g in '*{**/.git,**/.git/*,!x}' '*{**/.git,!x,**/*}' 'r*{**/o/.git,**/o/.git/*,!x}'; do
+    out=$(edge_out '' "$g" "${O[@]}")
+    assert_contains "$out" "Grep call 1: $EDGE" "the kept-whole glob $g with a ! is refused for a ** at a brace edge ($o options)"
+    case "$out" in *"(warning)"*) echo "FAIL: the refused glob $g also printed a warning" >&2; exit 1;; esac
+  done
+  if [ "$o" = audit ]; then O=("${AUDIT_OPTS[@]}" --root /w); else O=(--root /w); fi
+  for g in '{!x,a/**}repo/{.git,.git/*}' '{a/**,!x}repo/{.git,.git/*}'; do
+    out=$(zgrep /w/a/b/repo /w "$g" "${O[@]}")
+    assert_contains "$out" "Grep call 1: Grep glob can reach .git (field glob)" "$g from above a/b/repo is refused ($o options)"
+    case "$out" in *"(warning)"*) echo "FAIL: the refused glob $g also printed a warning" >&2; exit 1;; esac
+  done
+done
+mkdir -p "$tmp/norewrite"
+cp "$(dirname "$C")"/{check-trace-tools.sh,grep_glob_parts.py,glob_search_split.py,expand-braces.cjs} "$tmp/norewrite/"
+rewrite="g = SUFFIX_STAR.sub('**/*', glob.rstrip('/'))"
+assert_eq "1" "$(grep -cF "$rewrite" "$tmp/norewrite/check-trace-tools.sh")" "the copy finds the /** rewrite once"
+python3 -c 'import sys; p=sys.argv[1]; s=open(p).read(); open(p,"w").write(s.replace(sys.argv[2], "g = glob.rstrip(\"/\")"))' \
+  "$tmp/norewrite/check-trace-tools.sh" "$rewrite"
+out=$(C="$tmp/norewrite/check-trace-tools.sh" zgrep /w/a/b/repo /w '{!x,a/**}repo/{.git,.git/*}' --root /w)
+assert_contains "$out" "rc=0" "a copy without the /** rewrite accepts {!x,a/**}repo/{.git,.git/*}, so the test above can fail"
 
 # Closed input fields. Each tool's input may hold only the fields of its own
 # schema in Claude Code 2.1.309. Claude Code reads aliases and stray fields

@@ -81,9 +81,9 @@
 #     allowed roots", and one under .git or able to reach it "path under
 #     .git".
 #   - A Grep glob: the same set as a Glob pattern, plus ! as the first
-#     character of a part (and, in a part kept whole with a comma outside its
-#     braces, anywhere: there ripgrep reads a later ! as a literal character,
-#     and so does this check), with no .. segment. Claude
+#     character of a part (and, in a glob kept whole, anywhere: there
+#     ripgrep reads a later ! as a literal character, and so does this
+#     check), with no .. segment. Claude
 #     Code passes it to ripgrep after its own !.git exclusion, where it
 #     overrides that exclusion, which matters only where the search can reach
 #     the workspace's .git/config. So the rule below applies when the Grep has
@@ -97,9 +97,10 @@
 #     part that starts with ! is an exclusion to ripgrep and only removes
 #     files, so it passes from any path (!web/**, !{a,b}); a ! anywhere else
 #     is a literal character to ripgrep, measured with rg 13.0.0 and Claude
-#     Code's rg 14.1.1, and is refused ({!a,b}, a/!b), except in a whole
-#     glob with a comma outside its braces, where it is a literal character
-#     and the glob is only warned about. Every other part and brace expansion
+#     Code's rg 14.1.1, and is refused in a part split off (a/!b, x,a/!b),
+#     while a glob kept whole that holds one ({a/**,!b/**}) is judged with
+#     each brace expansion a positive glob naming that literal ! (unless the
+#     glob itself starts with !) and only warned about. Every other part and brace expansion
 #     must have no .. segment and is judged whole, as ripgrep matches it: with
 #     no / (a trailing / aside) against the name .git, and with a / against .git's
 #     path, which is .git from the workspace and, from a root above it, also
@@ -124,7 +125,8 @@
 #     refused for that: it is judged by these rules as ripgrep reads it, its
 #     brace expansions with the comma in place, and when it passes the check
 #     prints a warning line naming the call (on stderr, like every other line)
-#     and does not fail.
+#     and does not fail. A glob kept whole with a ! after its first character
+#     gets its own warning line, for a ! ripgrep reads as a literal character.
 #
 # One Read outside the roots is reported instead of refused: a denied read of
 # the tool result Claude Code saved for an earlier call. Claude Code saves a
@@ -547,15 +549,14 @@ def grep_glob_chars_ok(value):
     an exclusion, which can only remove files from the search; a ! anywhere
     else (inside a brace group, after a /) is a literal character to it, so a
     glob holding one would be judged as a positive glob naming a !, and is
-    refused instead. The exception is a part kept whole with a comma outside
-    its braces, which is warned about rather than refused: there a later ! is
-    accepted as the literal character ripgrep reads it as, and
-    grep_glob_allowed judges it so."""
+    refused instead. The exception is a glob kept whole, which is warned
+    about rather than refused: there a later ! is accepted as the literal
+    character ripgrep reads it as, and grep_glob_allowed judges it so."""
     if not isinstance(value, str) or re.search(r'\s', value):
         return False
     parts = grep_parts(value)
     return bool(parts) and all(
-        (GLOB_BANG_CHARS if comma_outside_kept_braces(t) else GLOB_CHARS).fullmatch(
+        (GLOB_BANG_CHARS if kept_whole(t) else GLOB_CHARS).fullmatch(
             t[1:] if t.startswith('!') else t) is not None
         for t in parts)
 
@@ -563,6 +564,13 @@ def kept_whole(value):
     """True for a Grep glob Claude Code passes to ripgrep as one glob: it
     holds a brace group, so Claude Code does not split it on commas."""
     return grep_parts(value) == [value] and '{' in value and '}' in value
+
+def bang_in_kept_whole(value):
+    """True for a glob Claude Code keeps whole that holds a ! after its first
+    character: ripgrep reads that ! as a literal character, so it excludes
+    nothing. Such a glob is reported as a warning, not refused; the rules
+    below judge it as ripgrep reads it."""
+    return kept_whole(value) and '!' in value[1:]
 
 def comma_outside_kept_braces(value):
     """True for a glob Claude Code keeps whole because it holds a brace group
@@ -795,19 +803,32 @@ def subfolder_search(path):
     exps = expansions(path)
     return bool(exps) and all(not under(v.ws, v.f(resolve(e, ws))) for e in exps for v in VIEWS)
 
-# The warning for a Grep glob kept whole with a comma outside its braces.
+# The warnings for a Grep glob kept whole with a comma outside its braces,
+# and for one kept whole with a ! after its first character.
 KEPT_COMMA_WARNING = ('glob holds a brace group and a comma outside it, so ripgrep reads it as one '
                       'pattern and it may match nothing (warning)')
+KEPT_BANG_WARNING = ("glob is kept whole and holds '!' after its first character, which ripgrep reads "
+                     'as a literal character, so it excludes nothing (warning)')
+# A kept-whole glob that starts with ! is an exclusion, so only its later !
+# is called literal.
+KEPT_NEGATED_BANG_WARNING = ("glob is kept whole, starts with '!' and holds another '!' after it, which "
+                             'ripgrep reads as a literal character (warning)')
 
 def refusal(call):
-    """(refusal, warning): the refusal is (label, field or None) for the first
-    rule that refuses the call, else None; the warning is KEPT_COMMA_WARNING
-    for a Grep that is not refused and whose glob is kept whole with a comma
-    outside its braces, else None."""
+    """(refusal, warnings): the refusal is (label, field or None) for the
+    first rule that refuses the call, else None; the warnings, for a Grep
+    that is not refused, are KEPT_COMMA_WARNING when its glob is kept whole
+    with a comma outside its braces and KEPT_BANG_WARNING (or, for a glob
+    that starts with !, KEPT_NEGATED_BANG_WARNING) when it is kept whole
+    with a ! after its first character, in that order."""
     r = first_refusal(call)
     args = call.get('input')
     g = args.get('glob') if call.get('name') == 'Grep' and isinstance(args, dict) else None
-    return r, (KEPT_COMMA_WARNING if r is None and isinstance(g, str) and comma_outside_kept_braces(g) else None)
+    if r is not None or not isinstance(g, str):
+        return r, []
+    return r, [w for w, on in ((KEPT_COMMA_WARNING, comma_outside_kept_braces(g)),
+                               (KEPT_NEGATED_BANG_WARNING if g.startswith('!') else KEPT_BANG_WARNING,
+                                bang_in_kept_whole(g))) if on]
 
 def first_refusal(call):
     """(label, field or None) for the first rule that refuses the call, else None.
@@ -959,7 +980,7 @@ results = top_results(trace)
 earlier = set()
 refused = []
 for i, c in enumerate(calls(trace), 1):
-    r, warning = refusal(c)
+    r, warnings = refusal(c)
     if r and r[0] == 'path outside the allowed roots' and denied_saved_output(c, earlier, results):
         print(f"check-trace-tools: Read call {i}: a denied read of the tool result Claude Code saved for an "
               "earlier call; reported, not refused", file=sys.stderr)
@@ -971,9 +992,10 @@ for i, c in enumerate(calls(trace), 1):
         label, field = r
         print(f"check-trace-tools: {c.get('name')} call {i}: {label}"
               + (f" (field {field})" if field else ''), file=sys.stderr)
-    elif warning:
+    else:
         # On stderr like every other line: stdout carries only the refused calls.
-        print(f"check-trace-tools: Grep call {i}: {warning}", file=sys.stderr)
+        for warning in warnings:
+            print(f"check-trace-tools: Grep call {i}: {warning}", file=sys.stderr)
 print(', '.join(refused))
 PY
 ) || {

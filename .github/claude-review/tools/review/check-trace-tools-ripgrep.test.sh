@@ -66,7 +66,7 @@ layout () { # plain|linked
 }
 
 cat > "$tmp/canary.py" <<'PY'
-import itertools, json, os, re, subprocess, sys
+import itertools, json, os, re, shutil, subprocess, sys
 from concurrent.futures import ThreadPoolExecutor
 
 check, suite, ws, token, plain, tmp, up = sys.argv[1:]
@@ -172,6 +172,17 @@ for f in FOLDER:
     for n in NEGATED:
         globs.add('{%s,x.php},%s' % (f, n))
         globs.add('%s,{%s,a}' % (n, f))
+# Kept-whole shapes with a ! after the first character and no comma outside
+# the braces, which ripgrep reads as one glob with that ! as a literal
+# character: a negated shape beside each folder shape inside one brace group,
+# a ! inside a folder shape's group, and a ! after a / in a kept-whole glob.
+for f in FOLDER:
+    globs.add('{%s,!x.php}' % f)
+    globs.add('{!%s,x.php}' % f)
+    globs.add('{x.php,%s}/!a' % f)
+    for n in NEGATED:
+        globs.add('{%s,%s}' % (f, n))
+        globs.add('!{%s,%s}' % (f, n))
 # The globs of the three calls that leaked by their raw path: src/.. with
 # src/**, <checkout>/.. with */repo/** from the parent as a root, and a
 # folder linked to the checkout with src/**.
@@ -340,25 +351,33 @@ for name, path, _ in (VARIANTS[0], VARIANTS[5], VARIANTS[8], VARIANTS[9]):
             sys.exit('FAIL: no glob refused with path %s (%s) returned the .git token, so the canary cannot fail' % (name, mode))
         print('refused with path %s (%s): %d returned the .git token, e.g. %s' % (name, mode, len(reached), ' '.join(reached[:5])))
 
-# Kept-whole globs searched from above checkouts named re,po and !re,po,
-# where the literal comma and ! can match .git's path: every accepted glob
-# must return no token in either spawn mode, and some refused glob must.
-for name in ('re,po', '!re,po'):
+# Kept-whole globs searched from above checkouts named re,po, !re,po and
+# !re, where the literal comma and ! can match .git's path: every accepted
+# glob must return no token in either spawn mode, and some refused glob must.
+CGLOBS = ['{re,x},po/**', '{!re,x},po/**', '{*,x},po/**', '!{re,x},po/**', '{re,x},po/*.php',
+          '{x,y},po/**', '{!re,x},po/*.php', '{re,*},po/.git/config', '{*,x},po/*', 'x,{*,y},po/**',
+          '{x/**,!re/**}', '{x/**,!re/*.php}', '{x,!r*}/**', '{!re/**}', '{x,!re}/.git/config', '!{x,!re}/**',
+          '{x/**,!**/node_modules/**}', '{x/**,!*/**}', '{!*,x}/*.php', '{x/**,!re,po/**}', '{!re,po/**,x}']
+
+def kept_from_above(name, checker, exit_on_fail=True):
+    """Searches CGLOBS from above a checkout named name, with the check at
+    checker deciding which are accepted, in both option sets. Returns the
+    accepted globs that returned the token."""
     cws = os.path.join(up, name)
+    if not os.path.isdir(cws):
+        subprocess.run(['git', 'init', '-q', cws], check=True)
+        with open(os.path.join(cws, 'x.php'), 'w') as fh:
+            fh.write(plain + '\n')
     ctoken = 'Ct' + os.urandom(12).hex()
-    subprocess.run(['git', 'init', '-q', cws], check=True)
     subprocess.run(['git', '-C', cws, 'config', 'canary.token', ctoken], check=True)
-    with open(os.path.join(cws, 'x.php'), 'w') as fh:
-        fh.write(plain + '\n')
-    cglobs = ['{re,x},po/**', '{!re,x},po/**', '{*,x},po/**', '!{re,x},po/**', '{re,x},po/*.php',
-              '{x,y},po/**', '{!re,x},po/*.php', '{re,*},po/.git/config', '{*,x},po/*', 'x,{*,y},po/**']
     env = dict(os.environ, GITHUB_WORKSPACE=cws)
     calls = [{'type': 'tool_use', 'id': 'k%d' % i, 'name': 'Grep', 'input': {'pattern': 'x', 'path': up, 'glob': g}}
-             for i, g in enumerate(cglobs)]
+             for i, g in enumerate(CGLOBS)]
     trace = os.path.join(tmp, 'kept.json')
     json.dump(calls, open(trace, 'w'))
+    leaked = []
     for options in (['--root', up], AUDIT + ['--root', up]):
-        r = subprocess.run(['bash', check, trace] + options, capture_output=True, text=True, env=env)
+        r = subprocess.run(['bash', checker, trace] + options, capture_output=True, text=True, env=env)
         refused = {int(m.group(1)) for m in (re.match(r'check-trace-tools: Grep call (\d+): ', l) for l in r.stderr.splitlines())
                    if m and not m.string.endswith(' (warning)')}
         # Exit 1 with no refused call is the check failing to run, not a verdict.
@@ -366,7 +385,7 @@ for name in ('re,po', '!re,po'):
             sys.exit('FAIL: the trace check did not run for the kept-whole globs from above %s: %s'
                      % (name, r.stderr[-400:]))
         reached, bad = [], []
-        for i, g in enumerate(cglobs, 1):
+        for i, g in enumerate(CGLOBS, 1):
             for mode in MODES:
                 args = ['rg', '--hidden'] + [x for d in ('.git', '.svn', '.hg', '.bzr', '.jj', '.sl') for x in ('--glob', '!' + d)]
                 args += ['--max-columns', '500', '-l', '--null', ctoken]
@@ -376,12 +395,40 @@ for name in ('re,po', '!re,po'):
                 out = subprocess.run(args + [target], capture_output=True, cwd=cwd).stdout
                 if out:
                     (reached if i in refused else bad).append('%s (%s)' % (g, mode))
+        leaked += bad
+        if not exit_on_fail:
+            continue
         print('kept-whole from above %s %s: accepted %d, refused %d, leaked %d, refused that returned the token %d'
-              % (name, 'audit' if len(options) > 2 else 'none', len(cglobs) - len(refused), len(refused), len(bad), len(reached)))
+              % (name, 'audit' if len(options) > 2 else 'none', len(CGLOBS) - len(refused), len(refused), len(bad), len(reached)))
         if bad:
             sys.exit('FAIL: accepted kept-whole glob(s) returned the .git token from above %s: %s' % (name, ' '.join(bad)))
         if not reached:
             sys.exit('FAIL: no refused kept-whole glob returned the .git token from above %s, so the check proves nothing' % name)
+    return leaked
+
+for name in ('re,po', '!re,po', '!re'):
+    kept_from_above(name, check)
+
+# The same search with a copy of the check whose exemption is widened wrongly,
+# skipping every expansion that starts with ! as an exclusion even in a glob
+# kept whole: it must leak from above a checkout named !re, or the search
+# above could not have caught that mistake.
+# The copy holds only the files the check runs: itself, the two Python
+# modules it imports and the brace expander.
+mutant_dir = os.path.join(tmp, 'mutant')
+os.makedirs(mutant_dir)
+for f in ('check-trace-tools.sh', 'grep_glob_parts.py', 'glob_search_split.py', 'expand-braces.cjs'):
+    shutil.copy(os.path.join(os.path.dirname(check), f), mutant_dir)
+mutant = os.path.join(mutant_dir, os.path.basename(check))
+src = open(mutant, encoding='utf-8').read()
+EXEMPT = "if t.startswith('!') and (value.startswith('!') or not kept):"
+if src.count(EXEMPT) != 1:
+    sys.exit('FAIL: the check\'s ! exemption was not found once, so the canary cannot widen it')
+open(mutant, 'w', encoding='utf-8').write(src.replace(EXEMPT, "if t.startswith('!'):"))
+widened = kept_from_above('!re', mutant, exit_on_fail=False)
+if not widened:
+    sys.exit('FAIL: a check that skips a kept-whole glob\'s ! expansions leaked nothing from above !re, so the canary cannot catch it')
+print('kept-whole with the ! exemption widened, from above !re: leaked %d, e.g. %s' % (len(widened), ' '.join(widened[:3])))
 
 # The calls the whole-glob rule accepted that returned the token by their raw
 # path: the check must refuse each, and in the plain layout each must still
