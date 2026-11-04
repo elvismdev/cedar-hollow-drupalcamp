@@ -362,7 +362,8 @@ done
 
 # A part that starts with ! is an exclusion to ripgrep and only removes files,
 # so it passes from any path; every other part is judged as before. A ! not at
-# the start of a part is a literal character to ripgrep, and is refused. The
+# the start of a part Claude Code splits off is a literal character to
+# ripgrep, and is refused; a kept-whole glob holding one is warned about. The
 # first three are the negated globs Grep calls in audit run 41554500456 used
 # with no path.
 for opts in none audit; do
@@ -374,7 +375,7 @@ for opts in none audit; do
     done
   done
   for p in '' /w/repo; do
-    for g in '!web/**,*' '*,!web/**' '{!a,*}' '{!a,b}' '{a,!b}' 'a/!b' '!!a' '!../x' '!a/../b' '! a' '!' '!,*'; do
+    for g in '!web/**,*' '*,!web/**' '{!a,*}' 'a/!b' '!!a' '!../x' '!a/../b' '! a' '!' '!,*'; do
       assert_eq "1" "$(grep_rc "$p" "$g" "${O[@]}")" "the Grep glob $g is refused (path ${p:-none}, $opts options)"
     done
   done
@@ -419,9 +420,10 @@ for opts in none audit; do
   done
 done
 # In such a glob a ! after the first character is a literal character to
-# ripgrep, and passes as one; anywhere else it is still refused.
+# ripgrep, and passes as one; in a part Claude Code splits off it is still
+# refused.
 warned '' 'src/**/*.php,!{vendor,node_modules}/**' "a negated brace group after a comma, no options"
-for g in 'a/!b' 'x,a/!b' 'a!b,*.php' '{!a,b}' '{a,!b}/x'; do
+for g in 'a/!b' 'x,a/!b' 'a!b,*.php'; do
   out=$(grep_out '' "$g")
   assert_contains "$out" "Grep call 1: character outside the allowlist (field glob)" "the glob $g with a mid-glob ! is still refused"
 done
@@ -463,6 +465,71 @@ for o in none audit; do
   assert_contains "$out" "Grep call 1: Grep glob can reach .git (field glob)" "{!re,x},po/** from above a checkout named !re,po is refused ($o options)"
   out=$(zgrep '/w/!re,po' /w '!{re,x},po/**' "${O[@]}")
   assert_contains "$out" "rc=0" "!{re,x},po/** from above a checkout named !re,po passes ($o options)"
+done
+
+# A kept-whole glob is one glob to ripgrep, so a ! after its first character
+# is a literal character there and excludes nothing: {a/**,!b/**} matches
+# a/x and a file under a folder named !b, and not b/x, with ripgrep 13.0.0 and
+# Claude Code's 14.1.1. Such a glob passes with one warning line, and the .git
+# rule judges it as ripgrep reads it, each brace expansion a positive glob
+# with its ! in place. A ! after the first character of a part Claude Code
+# splits off is still refused.
+BANG_WARN="glob is kept whole and holds '!' after its first character, which ripgrep reads as a literal character, so it excludes nothing (warning)"
+bang_warned () { # path-or-empty glob message [option...]: the Grep passes with the ! warning
+  local out p="$1" g="$2" msg="$3"; shift 3
+  out=$(grep_out "$p" "$g" "$@")
+  assert_contains "$out" "check-trace-tools: Grep call 1: $BANG_WARN" "$msg warns"
+  assert_contains "$out" "all inside the allowed roots" "$msg reads as passing"
+  assert_contains "$out" "rc=0" "$msg passes"
+}
+# The six globs the tenth audit run refused as a character outside the
+# allowlist, all with no path, with and without the audit's options.
+for o in none audit; do
+  if [ "$o" = audit ]; then O=("${AUDIT_OPTS[@]}"); else O=(); fi
+  for g in '{web/modules/custom/**,web/themes/custom/**,!**/node_modules/**,!**/storybook-static/**}' \
+           '{config/**,recipes/**,scripts/**,tests/**,web/modules/custom/**,web/themes/custom/**,.github/workflows/**,.github/claude-review/**,!**/node_modules/**}' \
+           '{config/**,web/modules/custom/**,web/themes/custom/**,tests/**,recipes/**,!**/node_modules/**,!**/storybook-static/**,!**/dist/**}' \
+           '{.github/workflows/**,.github/claude-review/**,scripts/**,web/themes/custom/**,!**/node_modules/**,!**/*.test.sh}' \
+           '{web/themes/custom/cedar_hollow/{agenda-builder,components,js,src}/**,tests/**,scripts/**,!**/node_modules/**}' \
+           '{web/themes/custom/**,tests/**,scripts/**,!**/node_modules/**,!**/storybook/**}'; do
+    bang_warned '' "$g" "the audit's kept-whole glob $g ($o options)" "${O[@]}"
+  done
+  for p in '' /w/repo /w/repo/web /rt/head; do
+    for g in '{!a,b}' '{a,!b}' '{a,!b}/x' '{a/**,!b/**}' 'src/{x,!y}/*.php' '{a,b}/!c' '!{a,!b}' '!!{a,b}'; do
+      bang_warned "$p" "$g" "the kept-whole glob $g (path ${p:-none}, $o options)" "${O[@]}"
+    done
+  done
+  # A glob with both shapes gets both warning lines.
+  out=$(grep_out '' 'src/**/*.php,!{vendor,node_modules}/**' "${O[@]}")
+  assert_contains "$out" "Grep call 1: $WARN" "a glob with an outer comma and a later ! names the comma ($o options)"
+  assert_contains "$out" "Grep call 1: $BANG_WARN" "a glob with an outer comma and a later ! names the ! ($o options)"
+  # A kept-whole glob with no ! after its first character has no ! warning.
+  for g in '!{a,b}' '{a,b}/x' '!web/{a,b}/**'; do
+    out=$(grep_out '' "$g" "${O[@]}")
+    case "$out" in *"(warning)"*) echo "FAIL: the glob $g printed a warning ($o options)" >&2; exit 1;; esac
+  done
+  # A ! after the first character of a split part is still refused.
+  for g in 'a/!b' 'x,a/!b' 'a!b,*.php' '*.php,src/!x/**' 'a,!!b'; do
+    out=$(grep_out '' "$g" "${O[@]}")
+    assert_contains "$out" "Grep call 1: character outside the allowlist (field glob)" "the split glob $g with a mid-glob ! is still refused ($o options)"
+  done
+  # Read as ripgrep reads it, a kept-whole glob with a literal ! can reach .git:
+  # from above a checkout named !re, {x/**,!re/**}, {x,!r*}/** and {!re/**}
+  # match !re/.git/config with both rg versions, and with no path {a,!*,**}
+  # does through its **. Each is refused with no warning; {x/**,!re/*.php}
+  # and !{x,!re}/** pass.
+  if [ "$o" = audit ]; then O=("${AUDIT_OPTS[@]}" --root /w); else O=(--root /w); fi
+  for g in '{x/**,!re/**}' '{x,!r*}/**' '{!re/**}' '{x,!re}/.git/config'; do
+    out=$(zgrep '/w/!re' /w "$g" "${O[@]}")
+    assert_contains "$out" "Grep call 1: Grep glob can reach .git (field glob)" "$g from above a checkout named !re is refused ($o options)"
+    case "$out" in *"(warning)"*) echo "FAIL: the refused glob $g also printed a warning" >&2; exit 1;; esac
+  done
+  for g in '{x/**,!re/*.php}' '!{x,!re}/**'; do
+    out=$(zgrep '/w/!re' /w "$g" "${O[@]}")
+    assert_contains "$out" "rc=0" "$g from above a checkout named !re passes ($o options)"
+  done
+  out=$(zgrep /w/repo /w/repo '{a,!*,**}' "${O[@]}")
+  assert_contains "$out" "Grep call 1: Grep glob can reach .git (field glob)" "{a,!*,**} at the workspace is refused ($o options)"
 done
 
 # Closed input fields. Each tool's input may hold only the fields of its own
