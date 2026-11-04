@@ -479,10 +479,10 @@ found_plain = False
 accepted_by = {}
 for label, options in GOPTS:
     roots = [os.path.realpath(r) for r in [ws, head, inp] + [options[i + 1] for i, o in enumerate(options) if o == '--root']]
-    ok_patterns = glob_accepted(options)
+    ok_patterns = accepted_by[label] = glob_accepted(options)
     jobs = [(p, mode) for p in ok_patterns for mode in MODES]
     with ThreadPoolExecutor(max_workers=os.cpu_count() or 4) as pool:
-        listed = list(pool.map(lambda j: (j, glob_list(*j)), jobs))
+        listed = list(pool.map(lambda j: (j, glob_list(*j, strict=True)), jobs))
     git_leaks = sorted({'%s (%s)' % j for j, files in listed if any(inside_git(f) or gname in f for f in files)})
     root_leaks = sorted({'%s (%s)' % j for j, files in listed
                          if any(not any(f == r or f.startswith(r + '/') for r in roots) for f in files)})
