@@ -72,7 +72,8 @@
 #     above it) no expansion's glob may be able to match .git or any path
 #     below it, so with no / it is refused there (*.php, README.md), and with
 #     a / it is refused when it can (*/config, **, .g*/config, */.git/config
-#     from above). The run's /mnt/audit/poc-write/in/*.json, a root of its
+#     from above); a brace alternative with ** at an edge is refused as for
+#     a Grep glob. The run's /mnt/audit/poc-write/in/*.json, a root of its
 #     own, passes. An absolute pattern not in normal form, or through a
 #     symlink to a folder inside the roots, keeps the label "Glob pattern is
 #     absolute"; one outside the roots, a symlink leading outside them
@@ -104,13 +105,15 @@
 #     path, which is .git from the workspace and, from a root above it, also
 #     its path from there (repo/.git). A glob with a / that names .git on the
 #     way to a path inside it (.git/config, **/.git/**) is refused as well.
-#     A ** that is not a whole segment of an expansion is judged as every
-#     reading ripgrep's globset may give it: it compiles a brace group as an
-#     alternation, so a ** starting an alternative before a / spans folders
-#     or vanishes whatever precedes the group, and *{**/.git,**/*} (expanded
-#     ***/.git) reopens .git; so such a ** with a / beside it may match
-#     within one segment, across folders, or, before a /, nothing with that
-#     /. One with no / beside it stays within its segment.
+#     A brace alternative that starts with **/ is refused unless its group
+#     starts the glob or follows a /, with the label "glob holds ** at the
+#     edge of a brace alternative that is not a whole path segment":
+#     ripgrep's globset compiles a brace group as an alternation, so such a
+#     ** is recursive whatever precedes the group, and *{**/.git,**/*}
+#     reopens .git with the * matching nothing, which the expansion
+#     ***/.git does not show. An alternative that ends with /** is /.* to
+#     globset, so in an expansion a ** after a / and before anything but a /
+#     is judged as **/* ({/x/**,z}repo/.git as /x/**/*repo/.git).
 #     Matching ignores letter case. So *gitignore*, {.gitignore,composer.json},
 #     {scripts/*,web/modules/custom/**}, */x.php and src/** pass, and *, **,
 #     **/*, .g*, */ and **/.git do not; from above the workspace repo/* and
@@ -308,7 +311,7 @@ if ! jq -c '[.. | objects | select(.type? == "tool_use") | .input? | objects
 fi
 
 outside_roots=$(python3 -I - "$TRACE" "$ROOT_ARGS" "$WRITE_ROOT_ARGS" "$any_glob_in_subfolders" "$EXPANSIONS" "$HERE" <<'PY'
-import itertools, json, os, posixpath, re, sys
+import json, os, posixpath, re, sys
 
 ws = posixpath.normpath(os.environ['GITHUB_WORKSPACE'])
 git_dir = posixpath.join(ws, '.git')
@@ -389,10 +392,9 @@ def resolve(p, base):
 # matches an override glob as a gitignore line: a trailing / limits it to
 # directories, a glob with no other / is matched against the file name at any
 # depth, and a glob with a / (a leading one only anchors it) is matched against
-# the path relative to ripgrep's working directory, the workspace, where *
-# stays within one segment and a whole ** segment spans any number of them (a
-# ** that is not a whole segment of a brace expansion may span them too, as
-# globset_readings below says). For a path outside the working directory, such as a
+# the path relative to ripgrep's working directory, the workspace, where * and
+# a ** inside a segment stay within one segment and a whole ** segment spans
+# any number of them. For a path outside the working directory, such as a
 # search root above the workspace, it is matched against the file name. So
 # each part and expansion is refused when it can match the name .git, or when
 # it holds a / and can match .git's path: .git, and searched from above the
@@ -444,51 +446,7 @@ def _matches_below(gsegs, psegs):
         return _matches_below(gsegs[1:], psegs) or _matches_below(gsegs, psegs[1:])
     return _segment_matches(gsegs[0], psegs[0]) and _matches_below(gsegs[1:], psegs[1:])
 
-# ripgrep's globset (the same parser in rg 13.0.0's 0.4.8 and Claude Code's
-# 14.1.1's 0.4.15) compiles a brace group as a regex alternation of its raw
-# tokens, so a ** keeps the reading its own alternative gives it: at the start
-# of an alternative and before a / it is recursive, (?:/?|.*/) with that /
-# consumed, whatever precedes the group; after a / at the end of an
-# alternative it is /.*; elsewhere, when not a whole segment, it is two *
-# within one segment. Both recursive readings need a / beside the **. A
-# brace expansion splices the alternative onto what precedes it, so
-# *{**/.git} becomes ***/.git, whose first segment reads as one folder, while
-# ripgrep matches .git with the * matching nothing. So each run of two or
-# more * that is not a whole segment of an expansion but has a / beside it is
-# judged as every reading globset may give it: * within one segment,
-# characters with / among them (*/**/*), and, before a /, nothing with that /
-# consumed. A whole-segment run spans folders, as **. A run with no / beside
-# it is one *.
-STAR_RUN = re.compile(r'\*{2,}')
-MAX_READINGS = 256
-
-def globset_readings(glob):
-    """Globs in the segment notation the matchers above read that together
-    match every path globset may match for this expansion, or None when
-    there are more than MAX_READINGS of them."""
-    runs = list(STAR_RUN.finditer(glob))
-    options = []
-    for m in runs:
-        s, e = m.span()
-        if (s == 0 or glob[s - 1] == '/') and (e == len(glob) or glob[e] == '/'):
-            options.append([('**', 0)])
-        elif glob[s - 1:s] != '/' and glob[e:e + 1] != '/':
-            options.append([('*', 0)])
-        else:
-            options.append([('*', 0), ('*/**/*', 0)] + ([('', 1)] if glob[e:e + 1] == '/' else []))
-    total = 1
-    for o in options:
-        total *= len(o)
-    if total > MAX_READINGS:
-        return None
-    out = []
-    for combo in itertools.product(*options):
-        parts, pos = [], 0
-        for m, (rep, skip) in zip(runs, combo):
-            parts += [glob[pos:m.start()], rep]
-            pos = m.end() + skip
-        out.append(''.join(parts) + glob[pos:])
-    return out
+SUFFIX_STAR = re.compile(r'(?<=/)\*{2,}(?=[^/])')
 
 def can_reach_git(glob, targets, listed=False):
     """True when one ripgrep glob can match the checkout's .git: its name, or,
@@ -496,21 +454,56 @@ def can_reach_git(glob, targets, listed=False):
     one with .git itself named. With listed, nothing excludes .git from the
     walk (Claude Code's Glob), so a glob reaches it when it can match any
     path below a target, and a glob with no / matches names at any depth, so
-    it reaches .git whenever there is a target at all. Every globset reading
-    of its ** runs is judged, and a glob with too many readings reaches .git."""
-    g = glob.rstrip('/')
+    it reaches .git whenever there is a target at all. A ** after a / and
+    before anything but a / is judged as **/*, as a brace alternative ending
+    with /** reads."""
+    g = SUFFIX_STAR.sub('**/*', glob.rstrip('/'))
     if '/' not in g:
         if listed:
             return bool(targets)
-        return g == '' or any(_segment_matches(r, '.git') for r in globset_readings(g))
-    readings = globset_readings(g)
-    if readings is None:
-        return True
+        return g == '' or _segment_matches(g, '.git')
+    segs = [x for x in g.split('/') if x]
     below = _matches_below if listed else _names_below
-    for r in readings:
-        segs = [x for x in r.split('/') if x]
-        if not segs or any(_path_matches(segs, t.split('/')) or below(segs, t.split('/'))
-                           for t in targets):
+    return not segs or any(_path_matches(segs, t.split('/')) or below(segs, t.split('/'))
+                           for t in targets)
+
+# ripgrep's globset (the same parser in rg 13.0.0's 0.4.8 and Claude Code's
+# 14.1.1's 0.4.15) compiles a brace group as a regex alternation of its raw
+# tokens. An alternative that starts with **/ reads it as (?:/?|.*/) and one
+# that ends with /** reads it as /.*, whatever surrounds the group; any other
+# ** that is not a whole segment is two * within one segment. A brace
+# expansion splices the alternative onto its neighbours, so
+# *{**/git,**/config} expands to ***/git and ***/config, single segments
+# here, while ripgrep matches .git (the * taking .g) and .git/config. With
+# the group at the start of the glob or after a /, a leading **/ is a whole
+# segment of every expansion and the matchers above read it as ripgrep
+# does; elsewhere it is refused. A trailing /** spliced onto what follows
+# the group is /.*, which is exactly **/* in the matchers' notation, so
+# can_reach_git rewrites it so.
+STAR_EDGE = 'glob holds ** at the edge of a brace alternative that is not a whole path segment'
+
+def star_at_group_edge(glob):
+    """True when a brace alternative starts with **/ and its group neither
+    starts the glob nor follows a /. Every group counts, nested ones too."""
+    for i, c in enumerate(glob):
+        if c != '{':
+            continue
+        depth, j = 0, i
+        while j < len(glob):
+            depth += {'{': 1, '}': -1}.get(glob[j], 0)
+            if depth == 0:
+                break
+            j += 1
+        if j == len(glob):
+            continue
+        alts, depth, start = [], 0, i + 1
+        for k in range(i + 1, j):
+            depth += {'{': 1, '}': -1}.get(glob[k], 0)
+            if glob[k] == ',' and depth == 0:
+                alts.append(glob[start:k])
+                start = k + 1
+        alts.append(glob[start:j])
+        if not (i == 0 or glob[i - 1] == '/') and any(a.startswith('**/') for a in alts):
             return True
     return False
 
@@ -690,6 +683,8 @@ def absolute_glob_refusal(pattern, exps):
     field = 'pattern'
     if not all(normal_absolute(e) for e in exps):
         return ('Glob pattern is absolute', field)
+    if star_at_group_edge(pattern):
+        return (STAR_EDGE, field)
     base = glob_search_split(pattern)[0]
     dirs = [base] + [glob_search_split(e)[0] for e in exps]
     for p in dirs + exps:
@@ -856,6 +851,10 @@ def first_refusal(call):
             return ('Grep glob holds a .. segment', 'glob')
         if not subfolder:
             if not away_from_workspace(args.get('path')):
+                kept = kept_whole(g)
+                if any(star_at_group_edge(t) for t in grep_parts(g)
+                       if not (t.startswith('!') and (g.startswith('!') or not kept))):
+                    return (STAR_EDGE, 'glob')
                 if not grep_glob_allowed(g, exps, args.get('path')):
                     return ('Grep glob can reach .git', 'glob')
                 # A path outside every root is refused as such before the
