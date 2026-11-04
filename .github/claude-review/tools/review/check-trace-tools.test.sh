@@ -231,6 +231,36 @@ for opts in none audit; do
   done
 done
 
+# A ** that starts a brace alternative and is followed by a / is recursive to
+# ripgrep's globset, whatever precedes the group: it compiles the group as an
+# alternation and reads such a ** as zero or more whole folders, or nothing,
+# so *{**/.git,**/*} reopens .git (the preceding * matching nothing) and
+# returned .git/config with rg 13.0.0 and Claude Code's 14.1.1. Its brace
+# expansion ***/.git reads as one segment, so a ** that is not a whole segment
+# of an expansion is judged as matching any characters, a / included, or,
+# before a /, as vanishing with that /. Measured with both ripgreps: the
+# refused globs below reopen .git and the accepted ones do not.
+for opts in none audit; do
+  if [ "$opts" = audit ]; then O=("${AUDIT_OPTS[@]}"); else O=(); fi
+  for p in '' /w/repo; do
+    for g in '*{**/.git,**/*}' '*{**/.git,**/*.php}' '*{**/.git}' '.{**/git}' '*.{**/git}' '{.g,x}{**/it,y}' \
+             '*{**/.gi*,y}' '{**/x,.g}{**/it}' '.git{**/,}' '.{**,x}' '*{**}' '{**,y}' '.git**' '**.git' '.g**' '**git'; do
+      assert_eq "1" "$(grep_rc "$p" "$g" "${O[@]}")" "the Grep glob $g is refused (path ${p:-none}, $opts options)"
+    done
+    for g in 'a{**/.git,y}' 'x/{**/.git}' '{x,y}{**/.git}' '*{**/x}/*' '{x,**}/config' '{x/**,y}.git' 'a**/.git' \
+             'src/{**/*.php,x}' 'src{**/*.php,x}' '*{**/x.php,y}'; do
+      assert_eq "0" "$(grep_rc "$p" "$g" "${O[@]}")" "the Grep glob $g passes (path ${p:-none}, $opts options)"
+    done
+  done
+  if [ "$opts" = audit ]; then O=("${AUDIT_OPTS[@]}" --root /w); else O=(--root /w); fi
+  for g in 're{**/po/.git}' 're{**/po}/*' 'r{**/epo/.git/x}'; do
+    assert_eq "1" "$(grep_rc /w "$g" "${O[@]}")" "the Grep glob $g from above the checkout is refused ($opts options)"
+  done
+  for g in 'x{**/repo/.git}' 'repo/{**/*.php,x}'; do
+    assert_eq "0" "$(grep_rc /w "$g" "${O[@]}")" "the Grep glob $g from above the checkout passes ($opts options)"
+  done
+done
+
 # ripgrep matches a glob against the path as written, and follows a symlinked
 # folder, so where the glob rule applies a Grep path that holds a .. segment or
 # passes through a symlink is refused: web/.. with web/** and a link to the
@@ -548,6 +578,10 @@ done
 glob_abs '{"pattern":"/w/other/*.php"}' 0 "a folder beside the workspace in an added root passes" --root /w
 glob_abs '{"pattern":"/w/repo/src/*/x.php"}' 0 "a wildcard below a workspace subfolder passes" --root /w
 glob_abs '{"pattern":"/w/repo/{src,web}/**"}' 0 "** below workspace subfolders passes"
+# The same globset reading of a ** that starts a brace alternative holds for
+# the listed glob: re{**/po/.git/config} from above lists repo/.git/config.
+glob_abs '{"pattern":"/w/re{**/po/.git/config}"}' 1 "a recursive ** after a prefix in a brace group from above the workspace is refused" --root /w
+glob_abs '{"pattern":"/w/repo/src/x{**/*.php}"}' 0 "a recursive ** after a prefix in a workspace subfolder passes"
 # A symlink below its root is refused, as elsewhere: a link inside a root can
 # lead anywhere.
 sg="$(realpath "$tmp")/sglob"

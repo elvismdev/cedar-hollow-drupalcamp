@@ -104,6 +104,12 @@
 #     path, which is .git from the workspace and, from a root above it, also
 #     its path from there (repo/.git). A glob with a / that names .git on the
 #     way to a path inside it (.git/config, **/.git/**) is refused as well.
+#     A ** that is not a whole segment of an expansion is judged as every
+#     reading ripgrep's globset may give it: it compiles a brace group as an
+#     alternation, so a ** starting an alternative before a / spans folders
+#     or vanishes whatever precedes the group, and *{**/.git,**/*} (expanded
+#     ***/.git) reopens .git; so such a ** may match within one segment,
+#     across folders, or, before a /, nothing with that /.
 #     Matching ignores letter case. So *gitignore*, {.gitignore,composer.json},
 #     {scripts/*,web/modules/custom/**}, */x.php and src/** pass, and *, **,
 #     **/*, .g*, */ and **/.git do not; from above the workspace repo/* and
@@ -301,7 +307,7 @@ if ! jq -c '[.. | objects | select(.type? == "tool_use") | .input? | objects
 fi
 
 outside_roots=$(python3 -I - "$TRACE" "$ROOT_ARGS" "$WRITE_ROOT_ARGS" "$any_glob_in_subfolders" "$EXPANSIONS" "$HERE" <<'PY'
-import json, os, posixpath, re, sys
+import itertools, json, os, posixpath, re, sys
 
 ws = posixpath.normpath(os.environ['GITHUB_WORKSPACE'])
 git_dir = posixpath.join(ws, '.git')
@@ -382,9 +388,10 @@ def resolve(p, base):
 # matches an override glob as a gitignore line: a trailing / limits it to
 # directories, a glob with no other / is matched against the file name at any
 # depth, and a glob with a / (a leading one only anchors it) is matched against
-# the path relative to ripgrep's working directory, the workspace, where * and
-# a ** inside a segment stay within one segment and a whole ** segment spans
-# any number of them. For a path outside the working directory, such as a
+# the path relative to ripgrep's working directory, the workspace, where *
+# stays within one segment and a whole ** segment spans any number of them (a
+# ** that is not a whole segment of a brace expansion may span them too, as
+# globset_readings below says). For a path outside the working directory, such as a
 # search root above the workspace, it is matched against the file name. So
 # each part and expansion is refused when it can match the name .git, or when
 # it holds a / and can match .git's path: .git, and searched from above the
@@ -436,22 +443,74 @@ def _matches_below(gsegs, psegs):
         return _matches_below(gsegs[1:], psegs) or _matches_below(gsegs, psegs[1:])
     return _segment_matches(gsegs[0], psegs[0]) and _matches_below(gsegs[1:], psegs[1:])
 
+# ripgrep's globset (the same parser in rg 13.0.0's 0.4.8 and Claude Code's
+# 14.1.1's 0.4.15) compiles a brace group as a regex alternation of its raw
+# tokens, so a ** keeps the reading its own alternative gives it: at the start
+# of an alternative and before a / it is recursive, (?:/?|.*/) with that /
+# consumed, whatever precedes the group; after a / at the end of an
+# alternative it is /.*; elsewhere, when not a whole segment, it is two *
+# within one segment. A brace expansion splices the alternative onto what
+# precedes it, so *{**/.git} becomes ***/.git, whose first segment reads as
+# one folder, while ripgrep matches .git with the * matching nothing. So each
+# run of two or more * that is not a whole segment of an expansion holding a
+# / is judged as every reading globset may give it: * within one segment,
+# characters with / among them (*/**/*), and, before a /, nothing with that /
+# consumed. A whole-segment run spans folders, as **. With no / there is no
+# recursive reading, and a run is one *.
+STAR_RUN = re.compile(r'\*{2,}')
+MAX_READINGS = 256
+
+def globset_readings(glob):
+    """Globs in the segment notation the matchers above read that together
+    match every path globset may match for this expansion, or None when
+    there are more than MAX_READINGS of them."""
+    runs = list(STAR_RUN.finditer(glob))
+    options = []
+    for m in runs:
+        s, e = m.span()
+        if (s == 0 or glob[s - 1] == '/') and (e == len(glob) or glob[e] == '/'):
+            options.append([('**', 0)])
+        elif '/' not in glob:
+            options.append([('*', 0)])
+        else:
+            options.append([('*', 0), ('*/**/*', 0)] + ([('', 1)] if glob[e:e + 1] == '/' else []))
+    total = 1
+    for o in options:
+        total *= len(o)
+    if total > MAX_READINGS:
+        return None
+    out = []
+    for combo in itertools.product(*options):
+        parts, pos = [], 0
+        for m, (rep, skip) in zip(runs, combo):
+            parts += [glob[pos:m.start()], rep]
+            pos = m.end() + skip
+        out.append(''.join(parts) + glob[pos:])
+    return out
+
 def can_reach_git(glob, targets, listed=False):
     """True when one ripgrep glob can match the checkout's .git: its name, or,
     for a glob holding a /, any of targets (paths of .git), or a path below
     one with .git itself named. With listed, nothing excludes .git from the
     walk (Claude Code's Glob), so a glob reaches it when it can match any
     path below a target, and a glob with no / matches names at any depth, so
-    it reaches .git whenever there is a target at all."""
+    it reaches .git whenever there is a target at all. Every globset reading
+    of its ** runs is judged, and a glob with too many readings reaches .git."""
     g = glob.rstrip('/')
     if '/' not in g:
         if listed:
             return bool(targets)
-        return g == '' or _segment_matches(g, '.git')
-    segs = [x for x in g.split('/') if x]
+        return g == '' or any(_segment_matches(r, '.git') for r in globset_readings(g))
+    readings = globset_readings(g)
+    if readings is None:
+        return True
     below = _matches_below if listed else _names_below
-    return not segs or any(_path_matches(segs, t.split('/')) or below(segs, t.split('/'))
-                           for t in targets)
+    for r in readings:
+        segs = [x for x in r.split('/') if x]
+        if not segs or any(_path_matches(segs, t.split('/')) or below(segs, t.split('/'))
+                           for t in targets):
+            return True
+    return False
 
 def git_targets(path):
     """The paths of the workspace's .git that ripgrep may match a glob
