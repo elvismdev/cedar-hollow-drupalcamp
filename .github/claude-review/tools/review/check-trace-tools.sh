@@ -827,12 +827,10 @@ def first_refusal(call):
         if not glob_ok(pattern):
             return ('character outside the allowlist', 'pattern')
         exps = expansions(pattern)
-        if pattern.startswith('/'):
-            if exps is None:
-                return ('braces cannot be expanded', 'pattern')
-            return absolute_glob_refusal(pattern, exps)
         if exps is None:
             return ('braces cannot be expanded', 'pattern')
+        if pattern.startswith('/'):
+            return absolute_glob_refusal(pattern, exps)
         for e in exps:
             if e.startswith('/'):
                 return ('Glob pattern is absolute', 'pattern')
