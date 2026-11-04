@@ -26,6 +26,15 @@ final class MediaFieldAccessHooks {
 
   /**
    * Implements hook_entity_field_access().
+   *
+   * @param string $operation
+   *   The operation to check.
+   * @param \Drupal\Core\Field\FieldDefinitionInterface $field_definition
+   *   The field being checked.
+   * @param \Drupal\Core\Session\AccountInterface $account
+   *   The account to check.
+   * @param \Drupal\Core\Field\FieldItemListInterface<\Drupal\Core\Field\FieldItemInterface>|null $items
+   *   The field's values, when an entity is given.
    */
   #[Hook('entity_field_access')]
   public function entityFieldAccess(string $operation, FieldDefinitionInterface $field_definition, AccountInterface $account, ?FieldItemListInterface $items = NULL): AccessResultInterface {
