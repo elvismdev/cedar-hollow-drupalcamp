@@ -327,8 +327,10 @@ for name in ('re,po', '!re,po'):
         r = subprocess.run(['bash', check, trace] + options, capture_output=True, text=True, env=env)
         refused = {int(m.group(1)) for m in (re.match(r'check-trace-tools: Grep call (\d+): ', l) for l in r.stderr.splitlines())
                    if m and not m.string.endswith(' (warning)')}
-        if r.returncode not in (0, 1):
-            sys.exit('FAIL: the trace check did not run: %s' % r.stderr[-400:])
+        # Exit 1 with no refused call is the check failing to run, not a verdict.
+        if r.returncode not in (0, 1) or (r.returncode == 1 and not refused):
+            sys.exit('FAIL: the trace check did not run for the kept-whole globs from above %s: %s'
+                     % (name, r.stderr[-400:]))
         reached, bad = [], []
         for i, g in enumerate(cglobs, 1):
             for mode in MODES:
