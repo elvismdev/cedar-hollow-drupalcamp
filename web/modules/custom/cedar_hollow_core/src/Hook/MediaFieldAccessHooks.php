@@ -12,12 +12,12 @@ use Drupal\Core\Hook\Attribute\Hook;
 use Drupal\Core\Session\AccountInterface;
 
 /**
- * Lets only media administrators set media author, status and verified flag.
+ * Lets only media administrators edit media authoring and publishing fields.
  *
  * The credits page lists verified images only, and an uploader keeps the
- * current user as author and the bundle's published default, so an account
- * that may upload images but not administer media must not change any of
- * these fields on any form or API.
+ * current user as author, the creation time and the bundle's published
+ * default, so an account that may upload images but not administer media must
+ * not change any of these fields on any form or API.
  */
 final class MediaFieldAccessHooks {
 
@@ -36,7 +36,7 @@ final class MediaFieldAccessHooks {
    *
    * @var list<string>
    */
-  public const ADMIN_ONLY_FIELDS = [self::VERIFIED_FIELD, 'uid', 'status'];
+  public const ADMIN_ONLY_FIELDS = [self::VERIFIED_FIELD, 'uid', 'status', 'created'];
 
   /**
    * Implements hook_entity_field_access().
