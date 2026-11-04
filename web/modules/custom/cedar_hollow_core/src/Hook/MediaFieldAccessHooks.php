@@ -12,10 +12,12 @@ use Drupal\Core\Hook\Attribute\Hook;
 use Drupal\Core\Session\AccountInterface;
 
 /**
- * Lets only media administrators mark an image verified.
+ * Lets only media administrators set media author, status and verified flag.
  *
- * The credits page lists verified images only, so an account that may upload
- * images but not administer media must not set the flag on any form or API.
+ * The credits page lists verified images only, and an uploader keeps the
+ * current user as author and the bundle's published default, so an account
+ * that may upload images but not administer media must not change any of
+ * these fields on any form or API.
  */
 final class MediaFieldAccessHooks {
 
@@ -23,6 +25,13 @@ final class MediaFieldAccessHooks {
    * The media field that publishes an image on the credits page.
    */
   public const VERIFIED_FIELD = 'field_verified';
+
+  /**
+   * The media base fields for author and published status.
+   *
+   * @var list<string>
+   */
+  public const ADMINISTERED_BASE_FIELDS = ['uid', 'status'];
 
   /**
    * Implements hook_entity_field_access().
@@ -40,7 +49,7 @@ final class MediaFieldAccessHooks {
   public function entityFieldAccess(string $operation, FieldDefinitionInterface $field_definition, AccountInterface $account, ?FieldItemListInterface $items = NULL): AccessResultInterface {
     if ($operation !== 'edit'
       || $field_definition->getTargetEntityTypeId() !== 'media'
-      || $field_definition->getName() !== self::VERIFIED_FIELD) {
+      || !in_array($field_definition->getName(), [self::VERIFIED_FIELD, ...self::ADMINISTERED_BASE_FIELDS], TRUE)) {
       return AccessResult::neutral();
     }
     return AccessResult::forbiddenIf(!$account->hasPermission('administer media'))->cachePerPermissions();
