@@ -10,8 +10,10 @@ fails the whole review if one breaks these rules, so keep to them:
   `?`, `[`, `]` or a space, and use `!` only as the first character of a
   comma part: such a part (`!**/node_modules/**`) only excludes files and
   works from any `path`. A glob holding a brace group is not split on
-  commas, so it must not also have a comma outside its braces: write
-  `!{vendor,node_modules}/**` or `src/**/*.php,!vendor/**`, not
+  commas, so do not also put a comma outside its braces: ripgrep then reads
+  that comma, and any `!` after the first character, as a literal character,
+  and the glob matches nothing you meant (the check warns about it rather
+  than failing). Write `!{vendor,node_modules}/**` or `src/**/*.php,!vendor/**`, not
   `src/**/*.php,{web,docs}/**` or `src/**/*.php,!{vendor,node_modules}/**`.
 - A Grep with no `path`, or with a `path` in your working directory, takes
   folder and brace globs (`src/**/*.php`, `{scripts/*,web/modules/custom/**}`,
