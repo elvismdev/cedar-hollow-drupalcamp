@@ -521,12 +521,12 @@ for o in none audit; do
     assert_contains "$out" "Grep call 1: character outside the allowlist (field glob)" "the split glob $g with a mid-glob ! is still refused ($o options)"
   done
   # Read as ripgrep reads it, a kept-whole glob with a literal ! can reach .git:
-  # from above a checkout named !re, {x/**,!re/**}, {x,!r*}/** and {!re/**}
-  # match !re/.git/config with both rg versions, and with no path {a,!*,**}
-  # does through its **. Each is refused with no warning; {x/**,!re/*.php}
-  # and !{x,!re}/** pass.
+  # from above a checkout named !re, {x/**,!re/**}, {x,!r*}/**, {!re/**} and
+  # {a/**,!*/**} match !re/.git/config with both rg versions, through an
+  # alternative that starts with ! and no other. Each is refused with no
+  # warning; {x/**,!re/*.php} and !{x,!re}/** pass.
   if [ "$o" = audit ]; then O=("${AUDIT_OPTS[@]}" --root /w); else O=(--root /w); fi
-  for g in '{x/**,!re/**}' '{x,!r*}/**' '{!re/**}' '{x,!re}/.git/config'; do
+  for g in '{x/**,!re/**}' '{x,!r*}/**' '{!re/**}' '{a/**,!*/**}' '{x,!re}/.git/config'; do
     out=$(zgrep '/w/!re' /w "$g" "${O[@]}")
     assert_contains "$out" "Grep call 1: Grep glob can reach .git (field glob)" "$g from above a checkout named !re is refused ($o options)"
     case "$out" in *"(warning)"*) echo "FAIL: the refused glob $g also printed a warning" >&2; exit 1;; esac
@@ -535,8 +535,18 @@ for o in none audit; do
     out=$(zgrep '/w/!re' /w "$g" "${O[@]}")
     assert_contains "$out" "rc=0" "$g from above a checkout named !re passes ($o options)"
   done
-  out=$(zgrep /w/repo /w/repo '{a,!*,**}' "${O[@]}")
-  assert_contains "$out" "Grep call 1: Grep glob can reach .git (field glob)" "{a,!*,**} at the workspace is refused ($o options)"
+done
+# The refusals above rest on the check judging an expansion that starts with
+# ! as a positive glob: a copy of the check that skips every such expansion
+# accepts {a/**,!*/**} and {x/**,!re/**} from above !re.
+mkdir -p "$tmp/mutant"
+cp "$(dirname "$C")"/{check-trace-tools.sh,grep_glob_parts.py,glob_search_split.py,expand-braces.cjs} "$tmp/mutant/"
+exempt="if t.startswith('!') and (value.startswith('!') or not kept):"
+assert_eq "1" "$(grep -cF "$exempt" "$tmp/mutant/check-trace-tools.sh")" "the mutant finds the check's ! exemption once"
+sed -i "s/$exempt/if t.startswith('!'):/" "$tmp/mutant/check-trace-tools.sh"
+for g in '{a/**,!*/**}' '{x/**,!re/**}'; do
+  out=$(C="$tmp/mutant/check-trace-tools.sh" zgrep '/w/!re' /w "$g" --root /w)
+  assert_contains "$out" "rc=0" "the mutant accepts $g from above !re, so the test above can fail"
 done
 
 # Closed input fields. Each tool's input may hold only the fields of its own
