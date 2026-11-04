@@ -414,16 +414,24 @@ if len(SPLITS) < 8 or split_drift:
              % (len(SPLITS), ' '.join(split_drift)))
 print('absolute Glob split: the canary and the check agree with %d measured splits' % len(SPLITS))
 
-def glob_list(pattern, mode):
-    """The files ripgrep lists for an absolute Glob pattern, as real paths."""
+def glob_list(pattern, mode, strict=False):
+    """The files ripgrep lists for an absolute Glob pattern, as real paths.
+    strict, for an accepted pattern: a missing folder or a ripgrep error
+    fails the canary, since it would hide what the pattern lists."""
     base, g = glob_split(pattern)
     if not os.path.isdir(base):
+        if strict:
+            sys.exit('FAIL: the folder of the accepted absolute Glob pattern %s does not exist' % pattern)
         return []
     cwd, target = (os.path.realpath(base), '.') if mode == 'fd' else (ws, base)
     r = subprocess.run(['rg', '--files', '--null', '--glob', g, '--sort=modified', '--no-ignore', '--hidden', target],
                        capture_output=True, cwd=cwd)
-    if r.returncode == 2 and not r.stdout:
-        return []
+    if r.returncode not in (0, 1):
+        if strict:
+            sys.exit('FAIL: ripgrep exited %d on the accepted absolute Glob pattern %s (%s): %s'
+                     % (r.returncode, pattern, mode, r.stderr.decode('utf-8', 'replace').strip()[:300]))
+        if not r.stdout:
+            return []
     return [os.path.realpath(os.path.join(cwd, f)) for f in r.stdout.decode('utf-8', 'replace').split('\0') if f]
 
 RELS = set(FOLDER) | {'/'.join(c) for d in (1, 2) for c in itertools.product(SEGS, repeat=d)}
@@ -437,7 +445,21 @@ patterns |= {'%s/{src,a}/%s' % (ws, r) for r in RELS} | {'%s/{src,.git}/%s' % (w
 patterns |= {ws + '/src/../' + r for r in ('*', '.git/config')} | {ws + '/./' + r for r in ('*', 'x.php')}
 patterns |= {inp + '/*.json', ws + '/src/x.php', ws + '/' + gname}
 patterns = sorted(patterns)
-GOPTS = [('none', []), ('audit', AUDIT), ('parent root', ['--root', up]), ('audit, parent root', AUDIT + ['--root', up]),
+# Every folder a pattern in normal form names exists (head/.git, src/a/.git),
+# so an accepted pattern whose folder is missing is a fault in the canary. A
+# pattern whose folder is an existing file (x.php/*) lists nothing in Claude
+# Code and is left out.
+not_folders = set()
+for p in patterns:
+    d = glob_split(p)[0]
+    if all(s not in ('', '.', '..') for s in d[1:].split('/')):
+        try:
+            os.makedirs(d, exist_ok=True)
+        except (FileExistsError, NotADirectoryError):
+            not_folders.add(p)
+patterns = [p for p in patterns if p not in not_folders]
+print('absolute Glob patterns left out because their folder is a file: %d' % len(not_folders))
+GOPTS =[('none', []), ('audit', AUDIT), ('parent root', ['--root', up]), ('audit, parent root', AUDIT + ['--root', up]),
          ('real parent root', ['--root', real_up]), ('linked parent root', ['--root', link_up])]
 print('absolute Glob patterns %d' % len(patterns))
 
@@ -454,6 +476,7 @@ def glob_accepted(options):
 real_git = os.path.realpath(os.path.join(ws, '.git'))
 inside_git = lambda f: f == real_git or f.startswith(real_git + '/')
 found_plain = False
+accepted_by = {}
 for label, options in GOPTS:
     roots = [os.path.realpath(r) for r in [ws, head, inp] + [options[i + 1] for i, o in enumerate(options) if o == '--root']]
     ok_patterns = glob_accepted(options)
@@ -475,7 +498,7 @@ if not found_plain:
     sys.exit('FAIL: the accepted absolute Glob <input>/*.json listed no ordinary file, so a clean result proves nothing')
 # Some refused pattern must list the planted file, in both modes, or the
 # listing could not have found it.
-refused = sorted(set(patterns) - set(glob_accepted([])))
+refused = sorted(set(patterns) - set(accepted_by['none']))
 for mode in MODES:
     with ThreadPoolExecutor(max_workers=os.cpu_count() or 4) as pool:
         reached = [p for p, files in pool.map(lambda p: (p, glob_list(p, mode)), refused) if any(gname in f for f in files)]
