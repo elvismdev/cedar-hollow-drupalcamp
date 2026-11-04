@@ -36,12 +36,15 @@ fails the whole review if one breaks these rules, so keep to them:
   it (`**/*`, `**/.git`, `.git/config`, `**/.git/**`). Each other comma part
   and brace alternative is judged on its own, so `!web/**,*` is refused for
   its `*` part; `..` is refused, and so is a `!` anywhere but the start of a
-  part (`{!a,b}`), except in a whole glob with a comma outside its braces,
-  where it is a literal character and the glob is only warned about; and so
-  is a `path` that passes through a symbolic link or is not
-  in normal form (`//`, `/./`, a trailing `/.`): give a path inside the
-  checkout that does not pass through a symbolic link. To search every file
-  in one folder, put the folder in `path` and leave `glob` out.
+  comma part (`a/!b`, `x,a/!b`), and a `path` that passes through a symbolic
+  link or is not in normal form (`//`, `/./`, a trailing `/.`): give a path
+  inside the checkout that does not pass through a symbolic link. In a glob
+  holding a brace group, which is not split, a `!` after the first character
+  is a literal character that excludes nothing
+  (`{src/**,!**/node_modules/**}` searches node_modules too), and the check
+  only warns about it: write each exclusion as its own comma part starting
+  with `!` (`src/**,!**/node_modules/**`). To search every file in one
+  folder, put the folder in `path` and leave `glob` out.
 - Keep each search's output small: use `head_limit`, `output_mode`
   `files_with_matches`, or a narrower `path` or `glob`. An output over about
   20,000 characters is saved to a file you cannot read, so you lose it and
