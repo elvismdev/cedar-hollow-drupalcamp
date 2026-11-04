@@ -339,6 +339,16 @@ iso poc-write Glob "{\"pattern\":\"agents/*/scratch/poc.php\",\"path\":\"$OUT\"}
 iso poc-write Glob "{\"pattern\":\"../h02/scratch/*\",\"path\":\"$OUT/agents/h01\"}" 1 "in poc-write, a subagent Glob climbing to another agent fails"
 iso poc-write Glob "{\"pattern\":\"scratch/*/../../../h02/scratch/poc.php\",\"path\":\"$OUT/agents/h01\"}" 1 "in poc-write, a subagent Glob climbing after a wildcard fails"
 assert_contains "$(run poc-write "$tmp/t.json")" "cannot be judged" "and says its reach cannot be judged"
+# An absolute Glob pattern ignores its path in Claude Code, so it is judged by
+# the folder it names: rooted at the output root or agents/ it reaches the
+# other agent and fails with the isolation label; in its own directory it passes.
+for p in "$OUT/*.json" "$OUT/agents/*/scratch/poc.php" "$OUT/agents/{h01,h02}/scratch/*.php" "$OUT/agents/h02/scratch/*.php"; do
+  iso poc-write Glob "{\"pattern\":\"$p\",\"path\":\"$OUT/agents/h01\"}" 1 "in poc-write, the absolute Glob $p fails"
+  out=$(run poc-write "$tmp/t.json")
+  case "$out" in *"a subagent searches agents/ or above it"*|*"a subagent reads another agent's agents/<id>/"*) ;;
+    *) echo "FAIL: the absolute Glob $p was not refused by the isolation rule: $out" >&2; exit 1;; esac
+done
+iso poc-write Glob "{\"pattern\":\"$OUT/agents/h01/scratch/*.php\"}" 0 "in poc-write, an absolute Glob in its own directory passes"
 # Brace groups are expanded before judging, so a brace-spelled .. is a ..
 H01="$OUT/agents/h01"
 
@@ -356,6 +366,10 @@ for job in poc-decide cross-check; do
   peer "$job" Glob "{\"pattern\":\"*.json\",\"path\":\"$OUT/agents/h02/scratch\"}" 1 "in $job, a subagent Glob in another declared subagent's directory fails"
   peer "$job" Grep "{\"pattern\":\"x\",\"path\":\"$OUT\"}" 1 "in $job, a subagent Grep over the output root reaches the other subagent and fails"
   peer "$job" Glob "{\"pattern\":\"agents/*/scratch/entry.json\",\"path\":\"$OUT\"}" 1 "in $job, a subagent Glob across agents/ fails"
+  peer "$job" Glob "{\"pattern\":\"$OUT/agents/*/scratch/entry.json\"}" 1 "in $job, an absolute Glob across agents/ fails"
+  peer "$job" Glob "{\"pattern\":\"$OUT/*.json\"}" 1 "in $job, an absolute Glob rooted at the output root fails"
+  peer "$job" Glob "{\"pattern\":\"$OUT/agents/h02/scratch/*.json\"}" 1 "in $job, an absolute Glob in another declared subagent's directory fails"
+  peer "$job" Glob "{\"pattern\":\"$OUT/agents/h01/scratch/*.json\"}" 0 "in $job, an absolute Glob in its own directory passes"
   peer "$job" Read "{\"file_path\":\"$OUT/agents/h01/scratch/entry.json\"}" 0 "in $job, a subagent reading its own directory passes"
   peer "$job" Read "{\"file_path\":\"$OUT/agents/hunter-x/scratch/notes.md\"}" 0 "in $job, a subagent reading an undeclared (source job) agent's directory passes"
   peer "$job" Read "{\"file_path\":\"$IN/scripts/agents/poc-1-a/scratch/poc.php\"}" 0 "in $job, a subagent reading poc-write's script passes"
