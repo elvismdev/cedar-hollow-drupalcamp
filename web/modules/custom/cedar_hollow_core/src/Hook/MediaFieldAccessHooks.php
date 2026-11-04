@@ -22,7 +22,7 @@ final class MediaFieldAccessHooks {
   /**
    * The media field that publishes an image on the credits page.
    */
-  private const VERIFIED_FIELD = 'field_verified';
+  public const VERIFIED_FIELD = 'field_verified';
 
   /**
    * Implements hook_entity_field_access().
