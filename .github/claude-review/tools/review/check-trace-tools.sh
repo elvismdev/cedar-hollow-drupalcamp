@@ -468,6 +468,11 @@ def grep_glob_chars_ok(value):
             t[1:] if t.startswith('!') else t) is not None
         for t in parts)
 
+def kept_whole(value):
+    """True for a Grep glob Claude Code passes to ripgrep as one glob: it
+    holds a brace group, so Claude Code does not split it on commas."""
+    return grep_parts(value) == [value] and '{' in value and '}' in value
+
 def comma_outside_kept_braces(value):
     """True for a glob Claude Code keeps whole because it holds a brace group
     that also has a comma outside its braces (src/**/*.php,{web,docs}/**,
@@ -475,7 +480,7 @@ def comma_outside_kept_braces(value):
     so the glob may match nothing the agent meant. Such a glob is reported
     as a warning, not refused; the rules below judge it as ripgrep reads it.
     A } before its { counts too."""
-    if grep_parts(value) != [value] or '{' not in value or '}' not in value:
+    if not kept_whole(value):
         return False
     depth = 0
     for ch in value:
@@ -500,7 +505,7 @@ def grep_glob_allowed(value, exps, path):
     if not grep_glob_chars_ok(value):
         return False
     targets = git_targets(path)
-    kept = grep_parts(value) == [value] and '{' in value and '}' in value
+    kept = kept_whole(value)
     for t in grep_parts(value) + exps:
         if t.startswith('!') and (value.startswith('!') or not kept):
             continue
