@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Drupal\Tests\cedar_hollow_core\Functional;
 
 use Drupal\canvas\Entity\Page;
+use Drupal\cedar_hollow_core\Hook\MediaFieldAccessHooks;
 use Drupal\Component\Serialization\Yaml;
 use Drupal\Core\Session\AccountInterface;
 use Drupal\file\Entity\File;
@@ -87,6 +88,9 @@ final class DemoEditorAccessTest extends SessionTestBase {
       $this->assertSession()->statusCodeEquals(200);
     }
     $this->assertTrue($this->mayCreateCodeComponent($admin), 'An administrator may create code components.');
+    $this->drupalGet('/media/add/image');
+    $this->assertSession()->fieldExists(MediaFieldAccessHooks::VERIFIED_FIELD . '[value]');
+    $this->assertTrue($media->get(MediaFieldAccessHooks::VERIFIED_FIELD)->access('edit', $admin), 'An administrator may mark an image verified.');
 
     $this->drupalLogin($editor);
     foreach ($refused as $path) {
@@ -100,6 +104,18 @@ final class DemoEditorAccessTest extends SessionTestBase {
     // Canvas's media picker uploads through Media Library's add form.
     $this->drupalGet('/media/add/image');
     $this->assertSession()->statusCodeEquals(200);
+    // The credits page lists verified images, so an editor cannot verify one.
+    $this->assertSession()->fieldNotExists(MediaFieldAccessHooks::VERIFIED_FIELD . '[value]');
+    $this->assertFalse($media->get(MediaFieldAccessHooks::VERIFIED_FIELD)->access('edit', $editor), 'A demo editor may not mark an image verified.');
+    $this->assertTrue($media->get(MediaFieldAccessHooks::VERIFIED_FIELD)->access('view', $editor), 'A demo editor may still view the verified flag.');
+    $own = Media::create([
+      'bundle' => 'image',
+      'name' => 'The editor\'s own image',
+      'uid' => $editor->id(),
+      'field_media_image' => ['target_id' => $file->id(), 'alt' => 'A test image'],
+    ]);
+    $own->save();
+    $this->assertFalse($own->get(MediaFieldAccessHooks::VERIFIED_FIELD)->access('edit', $editor), 'A demo editor may not mark their own image verified.');
   }
 
   /**

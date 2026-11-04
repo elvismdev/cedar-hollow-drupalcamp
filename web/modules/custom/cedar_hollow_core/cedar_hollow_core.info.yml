@@ -1,6 +1,6 @@
 name: 'Cedar Hollow core'
 type: module
-description: 'Agenda JSON endpoint, logged mail and registration form text for the Cedar Hollow DrupalCamp demo.'
+description: 'Agenda JSON endpoint, logged mail, registration form text and the administrator-only media Verified flag for the Cedar Hollow DrupalCamp demo.'
 package: 'Cedar Hollow'
 core_version_requirement: ^11.3
 dependencies:
