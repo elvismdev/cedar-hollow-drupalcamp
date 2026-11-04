@@ -231,6 +231,54 @@ for opts in none audit; do
   done
 done
 
+# ripgrep's globset compiles a brace group as an alternation, so a ** that
+# starts an alternative before a / is recursive whatever precedes the group:
+# *{**/.git,**/*} reopens .git with the * matching nothing, and returned
+# .git/config with rg 13.0.0 and Claude Code's 14.1.1, as did
+# *{**/git,**/config} and *{**/it,**/config} (the * taking .g or .g plus a
+# segment start), while the expansions ***/.git and ***/git read as single
+# segments. So a brace alternative that starts with **/ is refused unless its
+# group starts the glob or follows a /, where such a ** is a whole segment of
+# every expansion and reads as ripgrep does. A ** with no / after it at the
+# start of an alternative is two * within one segment to ripgrep, as the
+# expansion reads, and passes when it cannot reach .git.
+EDGE='glob holds ** at the edge of a brace alternative that is not a whole path segment (field glob)'
+edge_out () { # path-or-empty glob [option...]: the check's output for one Grep
+  local input
+  if [ -n "$1" ]; then input="{\"pattern\":\"x\",\"path\":\"$1\",\"glob\":\"$2\"}"
+  else input="{\"pattern\":\"x\",\"glob\":\"$2\"}"; fi
+  printf '[%s]' "$(call Grep "$input")" > "$tmp/e.json"; shift 2
+  bash "$C" "$tmp/e.json" "$@" 2>&1; echo "rc=$?"
+}
+for opts in none audit; do
+  if [ "$opts" = audit ]; then O=("${AUDIT_OPTS[@]}"); else O=(); fi
+  for p in '' /w/repo; do
+    for g in '*{**/.git,**/*}' '*{**/.git,**/*.php}' '*{**/git,**/config}' '*{**/it,**/config}' '*{**/.git}' \
+             '.{**/git}' '*.{**/git}' '{.g,x}{**/it,y}' '*{**/.gi*,y}' '{**/x,.g}{**/it}' '.git{**/,}' \
+             'a{**/.git,y}' '{x,y}{**/.git}' '*{**/x}/*' 'src{**/*.php,x}' '*{**/x.php,y}' \
+             '{a,{**/x}}' 'r*{**/o/.git,**/o/.git/*}'; do
+      out=$(edge_out "$p" "$g" "${O[@]}")
+      assert_contains "$out" "Grep call 1: $EDGE" "the Grep glob $g is refused for a ** at a brace edge (path ${p:-none}, $opts options)"
+    done
+    for g in '{**,y}' '.git**' '**.git' '.g**' '**git' '.{**,x}' '*{**}' '{x/**,.g}it'; do
+      assert_eq "1" "$(grep_rc "$p" "$g" "${O[@]}")" "the Grep glob $g is refused (path ${p:-none}, $opts options)"
+    done
+    for g in 'x/{**/.git}' '{x,**}/config' 'a**/.git' 'src/{**/*.php,x}' '{**/a,b}/x' 'x/{a,**}' '{src,web}/**/*.php' \
+             '!*{**/.git,**/*}' '{**,y}{a,b}' '{x/**,y}.git' '.{**.git}/*' '{x/**}y'; do
+      assert_eq "0" "$(grep_rc "$p" "$g" "${O[@]}")" "the Grep glob $g passes (path ${p:-none}, $opts options)"
+    done
+  done
+  if [ "$opts" = audit ]; then O=("${AUDIT_OPTS[@]}" --root /w); else O=(--root /w); fi
+  for g in 're{**/po/.git}' 're{**/po}/*' 'r{**/epo/.git/x}' 'r*{**/po/.git,**/config}' '*{**/po/.git,**/config}' \
+           'r*{**/o/.git,**/o/.git/*}' 'x{**/repo/.git}'; do
+    assert_contains "$(edge_out /w "$g" "${O[@]}")" "Grep call 1: $EDGE" "the Grep glob $g from above the checkout is refused ($opts options)"
+  done
+  assert_eq "1" "$(grep_rc /w 're{**/po/.git,**/po/.git/*}' "${O[@]}")" "re{**/po/.git,**/po/.git/*} from above the checkout is refused ($opts options)"
+  for g in 'repo/{**/*.php,x}' '{repo,x}/{**/*.php,y}'; do
+    assert_eq "0" "$(grep_rc /w "$g" "${O[@]}")" "the Grep glob $g from above the checkout passes ($opts options)"
+  done
+done
+
 # ripgrep matches a glob against the path as written, and follows a symlinked
 # folder, so where the glob rule applies a Grep path that holds a .. segment or
 # passes through a symlink is refused: web/.. with web/** and a link to the
@@ -279,6 +327,29 @@ for g in '*/*/**' '**/*/*' '*/**/*'; do
   assert_contains "$(lgrep "$lws" "$g")" "Grep glob can reach .git (field glob)" "$g at a workspace behind a symlinked parent is refused"
 done
 assert_contains "$(lgrep "$lws" '*/x.php')" "rc=0" "*/x.php at a workspace behind a symlinked parent still passes"
+# With no path, a glob spelling the linked parent's absolute path ahead of a
+# brace group whose alternatives start with ** after a * returned
+# <parent>/repo/.git/config by the raw path with both ripgreps (a leading *
+# matches the empty name before the path's first /); it is refused
+# for that **, with no options and with the audit's.
+lup=$(dirname "$lws"); lrest=${lup#/}
+for o in none audit; do
+  if [ "$o" = audit ]; then O=("${AUDIT_OPTS[@]}"); else O=(); fi
+  for g in "{/,z}$lrest/r*{**/o/.git,**/o/.git/*}" "*/$lrest/r*{**/o/.git,**/o/.git/*}"; do
+    printf '[%s]' "$(call Grep "{\"pattern\":\"x\",\"glob\":\"$g\"}")" > "$tmp/s.json"
+    out=$(GITHUB_WORKSPACE="$lws" bash "$C" "$tmp/s.json" "${O[@]}" 2>&1)
+    assert_contains "$out" "Grep call 1: glob holds ** at the edge of a brace alternative that is not a whole path segment (field glob)" "the linked parent's path ahead of r*{**/o/.git,**/o/.git/*} is refused ($o options)"
+  done
+  # An alternative ending with /** spliced onto the rest of the path is /.*
+  # to ripgrep, so with the parent's second folder left out
+  # {/<first>/**,z}<third and on>/repo/{.git,.git/*} returned .git/config by
+  # the raw path with both ripgreps.
+  lfirst=${lrest%%/*}
+  g="{/$lfirst/**,z}${lrest#*/*/}/repo/{.git,.git/*}"
+  printf '[%s]' "$(call Grep "{\"pattern\":\"x\",\"glob\":\"$g\"}")" > "$tmp/s.json"
+  out=$(GITHUB_WORKSPACE="$lws" bash "$C" "$tmp/s.json" "${O[@]}" 2>&1)
+  assert_contains "$out" "Grep call 1: Grep glob can reach .git (field glob)" "a /** ending a brace alternative ahead of the linked parent's path is refused ($o options)"
+done
 assert_contains "$(sym_grep "$sws" '*/*/**')" "rc=0" "*/*/** at a workspace with no symlinked parent still passes"
 # A symlinked folder is not a subfolder for --grep-any-glob-in-subfolders: the
 # link to the checkout with * returned .git/info/x.php, searched as Claude Code
@@ -548,6 +619,16 @@ done
 glob_abs '{"pattern":"/w/other/*.php"}' 0 "a folder beside the workspace in an added root passes" --root /w
 glob_abs '{"pattern":"/w/repo/src/*/x.php"}' 0 "a wildcard below a workspace subfolder passes" --root /w
 glob_abs '{"pattern":"/w/repo/{src,web}/**"}' 0 "** below workspace subfolders passes"
+# The same globset reading of a ** that starts a brace alternative holds for
+# the listed glob: re{**/po/.git/config} from above lists repo/.git/config.
+# A brace alternative with ** at an edge is refused in an absolute Glob
+# pattern as in a Grep glob: re{**/po/.git/config} from above lists
+# repo/.git/config.
+glob_abs '{"pattern":"/w/re{**/po/.git/config}"}' 1 "a ** at a brace edge after a prefix from above the workspace is refused" --root /w
+glob_abs '{"pattern":"/w/repo/src/x{**/*.php}"}' 1 "a ** at a brace edge after a prefix in a workspace subfolder is refused"
+printf '[%s]' "$(call Glob '{"pattern":"/w/repo/src/x{**/*.php}"}')" > "$tmp/ga.json"
+assert_contains "$(run "$tmp/ga.json")" "Glob call 1: glob holds ** at the edge of a brace alternative that is not a whole path segment (field pattern)" "and says why"
+glob_abs '{"pattern":"/w/repo/src/{**/*.php,x.php}"}' 0 "a ** at a brace edge after a / in a workspace subfolder passes"
 # A symlink below its root is refused, as elsewhere: a link inside a root can
 # lead anywhere.
 sg="$(realpath "$tmp")/sglob"

@@ -27,6 +27,9 @@ fails the whole review if one breaks these rules, so keep to them:
   and the glob matches nothing you meant (the check warns about it rather
   than failing). Write `!{vendor,node_modules}/**` or `src/**/*.php,!vendor/**`, not
   `src/**/*.php,{web,docs}/**` or `src/**/*.php,!{vendor,node_modules}/**`.
+  In a Grep glob or an absolute Glob pattern, a brace alternative may start
+  with `**/` only when its group starts the glob or follows a `/`
+  (`src/{**/*.php,x}`, not `src{**/*.php,x}` or `*{**/a,b}`).
 - A Grep with no `path`, or with a `path` in your working directory, takes
   folder and brace globs (`src/**/*.php`, `{scripts/*,web/modules/custom/**}`,
   `*/x.php`, `*gitignore*`, `{.gitignore,composer.json}`), but a glob is
