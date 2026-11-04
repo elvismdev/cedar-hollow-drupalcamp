@@ -55,11 +55,30 @@
 #     and non-empty. Then they are resolved against the workspace when
 #     relative and normalised for .., and must land in $GITHUB_WORKSPACE but not
 #     its .git, in $REVIEW_HEAD_DIR or in $REVIEW_INPUT_DIR (each when set).
-#   - A Glob pattern: the same set plus * { } and comma. It must be relative,
-#     with no leading /, because Claude Code searches an absolute pattern from
-#     its static prefix rather than from its path. It is then resolved against
-#     its path, normalised for .. (a brace group's .. included, as segments),
-#     and held to the same roots.
+#   - A Glob pattern: the same set plus * { } and comma. A relative one is
+#     resolved against its path, normalised for .. (a brace group's ..
+#     included, as segments), and held to the same roots; a relative brace
+#     expansion that starts with / is refused. An absolute one is judged like
+#     a path, because Claude Code 2.1.316 ignores the path for it: it lists,
+#     with ripgrep --files --hidden --no-ignore and no exclusion of .git, the
+#     directory before the last / ahead of the pattern's first * or { (its
+#     dirname when it has none), with the rest as the glob, and a glob with
+#     no / matches names at any depth. So every brace expansion must be an
+#     absolute path in normal form (no empty, . or .. segment, no trailing /);
+#     that directory, the same directory of each expansion and each
+#     expansion whole must be inside the roots and not under .git in both
+#     views and must not pass through a symlink below their root; and where
+#     .git lies below that directory (the workspace's top level, or a root
+#     above it) no expansion's glob may be able to match .git or any path
+#     below it, so with no / it is refused there (*.php, README.md), and with
+#     a / it is refused when it can (*/config, **, .g*/config, */.git/config
+#     from above). The run's /mnt/audit/poc-write/in/*.json, a root of its
+#     own, passes. An absolute pattern not in normal form, or through a
+#     symlink to a folder inside the roots, keeps the label "Glob pattern is
+#     absolute"; one outside the roots, a symlink leading outside them
+#     included (its real path is judged first), gets "path outside the
+#     allowed roots", and one under .git or able to reach it "path under
+#     .git".
 #   - A Grep glob: the same set as a Glob pattern, plus ! as the first
 #     character of a part (and, in a part kept whole with a comma outside its
 #     braces, anywhere: there ripgrep reads a later ! as a literal character,
@@ -294,6 +313,7 @@ EXPANDED = json.load(open(sys.argv[5]))
 sys.dont_write_bytecode = True
 sys.path.insert(0, sys.argv[6])
 from grep_glob_parts import parts as grep_parts
+from glob_search_split import split as glob_search_split
 
 def expansions(value):
     """The brace expansions of a path-bearing value, or None when they could
@@ -405,15 +425,32 @@ def _names_below(gsegs, psegs, named=False):
         return False
     return _names_below(gsegs[1:], psegs[1:], set(gsegs[0]) != {'*'} if last else named)
 
-def can_reach_git(glob, targets):
+def _matches_below(gsegs, psegs):
+    """True when the glob segments can match some path strictly below the
+    path segments."""
+    if not psegs:
+        return bool(gsegs)
+    if not gsegs:
+        return False
+    if gsegs[0] == '**':
+        return _matches_below(gsegs[1:], psegs) or _matches_below(gsegs, psegs[1:])
+    return _segment_matches(gsegs[0], psegs[0]) and _matches_below(gsegs[1:], psegs[1:])
+
+def can_reach_git(glob, targets, listed=False):
     """True when one ripgrep glob can match the checkout's .git: its name, or,
     for a glob holding a /, any of targets (paths of .git), or a path below
-    one with .git itself named."""
+    one with .git itself named. With listed, nothing excludes .git from the
+    walk (Claude Code's Glob), so a glob reaches it when it can match any
+    path below a target, and a glob with no / matches names at any depth, so
+    it reaches .git whenever there is a target at all."""
     g = glob.rstrip('/')
     if '/' not in g:
+        if listed:
+            return bool(targets)
         return g == '' or _segment_matches(g, '.git')
     segs = [x for x in g.split('/') if x]
-    return not segs or any(_path_matches(segs, t.split('/')) or _names_below(segs, t.split('/'))
+    below = _matches_below if listed else _names_below
+    return not segs or any(_path_matches(segs, t.split('/')) or below(segs, t.split('/'))
                            for t in targets)
 
 def git_targets(path):
@@ -534,13 +571,77 @@ def grep_path_refusal(path):
         return ('Grep path is not in normal form', 'path')
     for e in expansions(path) or [path]:
         p = resolve(e, ws)
-        if p is None:
-            continue
-        holders = [r for r in roots if under(p, r)]
-        root = max(holders, key=len) if holders else '/'
-        if os.path.realpath(p) != posixpath.normpath(
-                posixpath.join(os.path.realpath(root), posixpath.relpath(p, root))):
+        if p is not None and through_symlink(p):
             return ('Grep path passes through a symlink', 'path')
+    return None
+
+def through_symlink(p):
+    """True when an existing component of the absolute path p, below the
+    allowed root that holds it (the longest), is a symlink on disk now. The
+    root itself and its ancestors are not judged; a path in no root is
+    judged whole."""
+    holders = [r for r in roots if under(p, r)]
+    root = max(holders, key=len) if holders else '/'
+    return os.path.realpath(p) != posixpath.normpath(
+        posixpath.join(os.path.realpath(root), posixpath.relpath(p, root)))
+
+# Claude Code 2.1.316 searches an absolute Glob pattern from its own split of
+# it (glob_search_split.py) and ignores the call's path. It runs ripgrep
+# --files --hidden --no-ignore in that folder with the rest as the glob and no
+# exclusion of .git, so hidden files and .git are listed, and a glob with no
+# / matches names at any depth.
+
+def normal_absolute(p):
+    """True for an absolute path in normal form: no empty, . or .. segment
+    and no trailing /."""
+    return p.startswith('/') and all(s not in ('', '.', '..') for s in p[1:].split('/'))
+
+def listed_git_targets(base):
+    """The paths of the workspace's .git that ripgrep may match a glob
+    against when it lists base: none when .git is not below base in either
+    view; otherwise .git's path from base in each view where base holds the
+    workspace, .git itself (ripgrep run in the workspace strips it from a
+    path) and .git's absolute paths, spelled and real (ripgrep matches a
+    path outside its working directory whole)."""
+    targets = set()
+    for v in VIEWS:
+        root = v.f(base)
+        if under(v.ws, root):
+            targets.add(posixpath.normpath(posixpath.join(posixpath.relpath(v.ws, root), '.git')))
+    if targets:
+        targets.add('.git')
+        absolute = {posixpath.join(w, '.git') for w in (ws, os.path.realpath(ws))}
+        real_ws, real_base = os.path.realpath(ws), os.path.realpath(base)
+        if under(real_ws, real_base):
+            # .git spelled through base, when a link makes base hold it.
+            absolute.add(posixpath.normpath(posixpath.join(base, posixpath.relpath(real_ws, real_base), '.git')))
+        targets |= {a.lstrip('/') for a in absolute}
+    return targets
+
+def absolute_glob_refusal(pattern, exps):
+    """The label for an absolute Glob pattern the check refuses, else None.
+    Every brace expansion must be a normal absolute path; the directory
+    Claude Code searches, the same directory of each expansion and each
+    expansion whole must be inside the roots and not under .git, in both
+    views, and not pass through a symlink below their root; and the glob,
+    expansion by expansion, must not be able to match .git or a path below
+    it."""
+    field = 'pattern'
+    if not all(normal_absolute(e) for e in exps):
+        return ('Glob pattern is absolute', field)
+    base = glob_search_split(pattern)[0]
+    dirs = [base] + [glob_search_split(e)[0] for e in exps]
+    for p in dirs + exps:
+        if under_git(p):
+            return ('path under .git', field)
+        if not inside(p):
+            return ('path outside the allowed roots', field)
+    if any(through_symlink(d) for d in dirs):
+        return ('Glob pattern is absolute', field)
+    targets = listed_git_targets(base)
+    prefix = base.rstrip('/') + '/'
+    if targets and any(can_reach_git(e[len(prefix):], targets, listed=True) for e in exps):
+        return ('path under .git', field)
     return None
 
 def inside(p):
@@ -718,14 +819,11 @@ def first_refusal(call):
             return ('field not a string', 'pattern')
         if not glob_ok(pattern):
             return ('character outside the allowlist', 'pattern')
-        # Relative only: Claude Code searches an absolute pattern from its
-        # static prefix, which a brace group holding .. moves away from the
-        # directory this check would compute.
-        if pattern.startswith('/'):
-            return ('Glob pattern is absolute', 'pattern')
         exps = expansions(pattern)
         if exps is None:
             return ('braces cannot be expanded', 'pattern')
+        if pattern.startswith('/'):
+            return absolute_glob_refusal(pattern, exps)
         for e in exps:
             if e.startswith('/'):
                 return ('Glob pattern is absolute', 'pattern')

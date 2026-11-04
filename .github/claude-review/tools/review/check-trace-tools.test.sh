@@ -484,13 +484,82 @@ ok_path Read '{"file_path":"/w/repo/a.pdf","offset":1,"limit":20,"pages":"1-2","
 ok_path Glob '{"pattern":"**/*.php","path":"/w/repo"}' "every Glob field passes"
 ok_path Grep '{"pattern":"x","path":"/w/repo","glob":"*.php","type":"php","output_mode":"content","-B":1,"-A":1,"-C":1,"context":1,"-n":true,"-i":true,"-o":false,"head_limit":5,"offset":0,"multiline":false}' "every Grep field passes"
 
-# A Glob pattern must be relative. Claude Code searches an absolute pattern from
-# its static prefix, not from the path the check would compute, so a brace group
-# holding .. made the check judge a different directory from the one listed.
+# An absolute Glob pattern is judged like a path. Claude Code 2.1.316 ignores
+# the call's path for it: it searches the directory before the last / ahead of
+# the first * or {, and runs ripgrep --files --hidden --no-ignore there with the
+# rest as the glob, listing hidden files and .git, with a glob that has no /
+# matching names at any depth. So every expansion must be a normal absolute
+# path, that directory and every expansion must be inside the roots and not
+# under .git, and the glob must not be able to match .git or a path below it.
 no_path Glob '{"pattern":"/proc/self/{environ,x/../../../w/repo/y}"}' "an absolute Glob pattern with a brace group is refused"
-no_path Glob '{"pattern":"/w/repo/**/*.php"}' "an absolute Glob pattern inside the workspace is refused"
+no_path Glob '{"pattern":"/w/repo/**/*.php"}' "an absolute Glob pattern whose ** reaches .git is refused"
 no_path Glob '{"pattern":"/proc/self/{environ,x}"}' "an absolute Glob pattern /proc/self/{environ,x} is refused"
 no_path Glob '{"pattern":"{..,x}/../../proc/*"}' "a relative Glob pattern climbing through a brace group is refused"
+# The check's split of an absolute pattern matches every split measured from
+# the Claude Code 2.1.316 binary in glob-split-corpus.json.
+split_out=$(python3 -I - "$(dirname "$C")" <<'PY'
+import json, os, sys
+sys.dont_write_bytecode = True
+sys.path.insert(0, sys.argv[1])
+from glob_search_split import split
+rows = json.load(open(os.path.join(sys.argv[1], 'glob-split-corpus.json')))['splits']
+bad = [r[0] for r in rows if list(split(r[0])) != r[1:]]
+print('%d rows, %d mismatched%s' % (len(rows), len(bad), (': ' + ' '.join(bad)) if bad else ''))
+PY
+)
+assert_contains "$split_out" ", 0 mismatched" "the absolute Glob split matches the measured corpus"
+case "$split_out" in [0-7]" rows"*) echo "FAIL: the measured split corpus has fewer than 8 rows" >&2; exit 1;; esac
+# The ninth audit run's poc-write call: its own input directory, a root.
+PW=(--tools "Read,Glob,Grep,Write,Agent,Task,SubagentHandback" --root /mnt/audit/poc-write/out --root /mnt/audit/poc-write/in --write-root /mnt/audit/poc-write/out --grep-any-glob-in-subfolders)
+glob_abs () { # input-json expected-rc message [options...]
+  printf '[%s]' "$(call Glob "$1")" > "$tmp/ga.json"
+  local want="$2" msg="$3"; shift 3
+  assert_eq "$want" "$(rc "$tmp/ga.json" "$@")" "$msg"
+}
+glob_abs '{"pattern":"/mnt/audit/poc-write/in/*.json"}' 0 "the run's absolute Glob of its input directory passes" "${PW[@]}"
+glob_abs '{"pattern":"/mnt/audit/poc-write/in/*.json"}' 1 "the same Glob without that root is refused"
+glob_abs '{"pattern":"/mnt/audit/poc-write/in/**/*.{json,txt}"}' 0 "a ** and an extension group in the input directory pass" "${PW[@]}"
+glob_abs '{"pattern":"/mnt/audit/poc-write/{in,out}/*.json"}' 1 "a brace group that moves the search to a folder outside the roots is refused" "${PW[@]}"
+glob_abs '{"pattern":"/mnt/audit/poc-write/in/*.json","path":"/proc"}' 1 "a path outside the roots is still refused beside it" "${PW[@]}"
+ok_path Glob '{"pattern":"/rt/head/**/*.php"}' "an absolute Glob in the head passes"
+ok_path Glob '{"pattern":"/rt/head/{src,tests}/*.php"}' "an absolute folder brace group in the head passes"
+ok_path Glob '{"pattern":"/w/repo/src/*.php"}' "an absolute Glob in a workspace subfolder passes"
+ok_path Glob '{"pattern":"/w/repo/web/{modules,themes}/**/*.yml"}' "an absolute brace group of workspace subfolders passes"
+ok_path Glob '{"pattern":"/rt/review-input/review-diff.patch"}' "an absolute Glob naming a file in the input directory passes"
+ok_path Glob '{"pattern":"/w/repo/src/x.php"}' "an absolute Glob naming a file in a workspace subfolder passes"
+no_path Glob '{"pattern":"/rt/head-other/*.php"}' "an absolute Glob in a sibling of the head is refused"
+no_path Glob '{"pattern":"/rt/{head,other}/*.php"}' "an absolute brace group leaving the roots is refused"
+no_path Glob '{"pattern":"/rt/head/{src,../../etc}/*"}' "an absolute brace expansion with .. is refused"
+no_path Glob '{"pattern":"/etc/passwd"}' "an absolute Glob of a file outside the roots is refused"
+no_path Glob '{"pattern":"/*"}' "an absolute Glob of / is refused"
+for p in '/rt/head/src/../*.php' '/rt/head/./*.php' '/rt/head//*.php' '/rt/head/src/' '/rt/head/{src,}/x.php' '//rt/head/*.php' '/rt/head/{..}/x'; do
+  glob_abs "{\"pattern\":\"$p\"}" 1 "the absolute Glob $p, not in normal form, is refused"
+done
+# From the workspace's top level, or above it, a glob that can match .git or
+# a path below it is refused; with no / it matches names at any depth, so it
+# can always match one below .git.
+for p in '/w/repo/*.php' '/w/repo/README.md' '/w/repo/*/config' '/w/repo/**' '/w/repo/.g*/config' '/w/repo/{.git,x}/**' '/w/repo/.git/config' '/w/repo/{src,.gi*}/*' '/w/repo/*/*'; do
+  glob_abs "{\"pattern\":\"$p\"}" 1 "the absolute Glob $p, which can reach .git, is refused"
+  glob_abs "{\"pattern\":\"$p\"}" 1 "and with the audit options" "${AUDIT_OPTS[@]}"
+done
+for p in '/w/*/.git/config' '/w/repo/../repo/.git/config' '/w/*/*' '/w/*.php' '/w/{repo,x}/.git/config' '/w/repo*/**'; do
+  glob_abs "{\"pattern\":\"$p\"}" 1 "the absolute Glob $p from above the workspace in an added root is refused" --root /w
+done
+glob_abs '{"pattern":"/w/other/*.php"}' 0 "a folder beside the workspace in an added root passes" --root /w
+glob_abs '{"pattern":"/w/repo/src/*/x.php"}' 0 "a wildcard below a workspace subfolder passes" --root /w
+glob_abs '{"pattern":"/w/repo/{src,web}/**"}' 0 "** below workspace subfolders passes"
+# A symlink below its root is refused, as elsewhere: a link inside a root can
+# lead anywhere.
+sg="$(realpath "$tmp")/sglob"
+mkdir -p "$sg/root/d" "$sg/elsewhere"
+ln -s "$sg/elsewhere" "$sg/root/l"
+ln -s "$sg/root/d" "$sg/root/l2"
+glob_abs "{\"pattern\":\"$sg/root/d/*.php\"}" 0 "an absolute Glob in a real folder of an added root passes" --root "$sg/root"
+glob_abs "{\"pattern\":\"$sg/root/l/*.php\"}" 1 "an absolute Glob through a symlink in an added root is refused" --root "$sg/root"
+printf '[%s]' "$(call Glob "{\"pattern\":\"$sg/root/l/*.php\"}")" > "$tmp/ga.json"
+assert_contains "$(run "$tmp/ga.json" --root "$sg/root")" "check-trace-tools: Glob call 1: path outside the allowed roots (field pattern)" "and is labelled outside the roots, its real path being judged first"
+glob_abs "{\"pattern\":\"$sg/root/{d,l}/*.php\"}" 1 "a brace expansion through a symlink is refused" --root "$sg/root"
+glob_abs "{\"pattern\":\"$sg/root/l2/*.php\"}" 1 "an absolute Glob through a symlink to a folder of the same root is refused" --root "$sg/root"
 
 # Without the head and input directories set, only the workspace is allowed.
 printf '[%s]' "$(call Read '{"file_path":"/rt/head/a"}')" > "$tmp/p.json"
@@ -521,7 +590,12 @@ label_is Read '{"file_path":"/proc/self/environ"}' "path outside the allowed roo
 label_is Glob '{"pattern":"../../*"}' "path outside the allowed roots (field pattern)" "label: outside roots, pattern"
 label_is Read '{"file_path":"/w/repo/.git/config"}' "path under .git (field file_path)" "label: under .git"
 label_is Read '{"file_path":"~/x"}' "path starts with ~ (field file_path)" "label: starts with ~"
-label_is Glob '{"pattern":"/w/repo/*.php"}' "Glob pattern is absolute (field pattern)" "label: absolute"
+label_is Glob '{"pattern":"/w/repo/src/../*.php"}' "Glob pattern is absolute (field pattern)" "label: absolute, not in normal form"
+printf '[%s]' "$(call Glob "{\"pattern\":\"$sg/root/l2/*.php\"}")" > "$tmp/l.json"
+assert_contains "$(run "$tmp/l.json" --root "$sg/root")" "check-trace-tools: Glob call 1: Glob pattern is absolute (field pattern)" "label: absolute, through a symlink"
+label_is Glob '{"pattern":"/proc/*"}' "path outside the allowed roots (field pattern)" "label: absolute, outside the roots"
+label_is Glob '{"pattern":"/w/repo/*/config"}' "path under .git (field pattern)" "label: absolute, can reach .git"
+label_is Glob '{"pattern":"/w/repo/.git/*"}' "path under .git (field pattern)" "label: absolute, under .git"
 label_is Grep '{"pattern":"x","glob":"*"}' "Grep glob can reach .git (field glob)" "label: can reach .git"
 label_is Grep '{"pattern":"x","glob":"!web/**,{a/**,z.php}"}' "$WARN" "warning: kept-whole negation with an outer comma"
 label_is Grep '{"pattern":"x","glob":"src/**/*.php,{web,docs}/**"}' "$WARN" "warning: kept-whole glob with an outer comma"
@@ -706,7 +780,9 @@ mkdir -p "$tmp/nosplit"
 cp "$C" "$(dirname "$C")/expand-braces.cjs" "$tmp/nosplit/"
 assert_eq "1" "$(bash "$tmp/nosplit/check-trace-tools.sh" "$tmp/b.json" >/dev/null 2>&1; echo $?)" "a missing glob split fails closed"
 cp "$(dirname "$C")/grep_glob_parts.py" "$tmp/nosplit/"
-assert_eq "0" "$(bash "$tmp/nosplit/check-trace-tools.sh" "$tmp/b.json" >/dev/null 2>&1; echo $?)" "and passes with it beside the script"
+assert_eq "1" "$(bash "$tmp/nosplit/check-trace-tools.sh" "$tmp/b.json" >/dev/null 2>&1; echo $?)" "a missing absolute Glob split fails closed"
+cp "$(dirname "$C")/glob_search_split.py" "$tmp/nosplit/"
+assert_eq "0" "$(bash "$tmp/nosplit/check-trace-tools.sh" "$tmp/b.json" >/dev/null 2>&1; echo $?)" "and passes with both beside the script"
 
 # A Read of the tool result Claude Code saved for an earlier call, denied by
 # the permission settings, is reported, not refused; every condition matters.
