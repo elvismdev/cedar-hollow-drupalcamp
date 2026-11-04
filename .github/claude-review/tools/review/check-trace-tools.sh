@@ -116,7 +116,7 @@
 #     brace expansions with the comma in place, and when it passes the check
 #     prints a warning line naming the call (on stderr, like every other line)
 #     and does not fail. A glob kept whole with a ! after its first character
-#     gets its own warning line, for a ! that excludes nothing.
+#     gets its own warning line, for a ! ripgrep reads as a literal character.
 #
 # One Read outside the roots is reported instead of refused: a denied read of
 # the tool result Claude Code saved for an earlier call. Claude Code saves a
@@ -753,20 +753,26 @@ KEPT_COMMA_WARNING = ('glob holds a brace group and a comma outside it, so ripgr
                       'pattern and it may match nothing (warning)')
 KEPT_BANG_WARNING = ("glob is kept whole and holds '!' after its first character, which ripgrep reads "
                      'as a literal character, so it excludes nothing (warning)')
+# A kept-whole glob that starts with ! is an exclusion, so only its later !
+# is called literal.
+KEPT_NEGATED_BANG_WARNING = ("glob is kept whole, starts with '!' and holds another '!' after it, which "
+                             'ripgrep reads as a literal character (warning)')
 
 def refusal(call):
     """(refusal, warnings): the refusal is (label, field or None) for the
     first rule that refuses the call, else None; the warnings, for a Grep
     that is not refused, are KEPT_COMMA_WARNING when its glob is kept whole
-    with a comma outside its braces and KEPT_BANG_WARNING when it is kept
-    whole with a ! after its first character, in that order."""
+    with a comma outside its braces and KEPT_BANG_WARNING (or, for a glob
+    that starts with !, KEPT_NEGATED_BANG_WARNING) when it is kept whole
+    with a ! after its first character, in that order."""
     r = first_refusal(call)
     args = call.get('input')
     g = args.get('glob') if call.get('name') == 'Grep' and isinstance(args, dict) else None
     if r is not None or not isinstance(g, str):
         return r, []
     return r, [w for w, on in ((KEPT_COMMA_WARNING, comma_outside_kept_braces(g)),
-                               (KEPT_BANG_WARNING, bang_in_kept_whole(g))) if on]
+                               (KEPT_NEGATED_BANG_WARNING if g.startswith('!') else KEPT_BANG_WARNING,
+                                bang_in_kept_whole(g))) if on]
 
 def first_refusal(call):
     """(label, field or None) for the first rule that refuses the call, else None.

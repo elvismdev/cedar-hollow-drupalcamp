@@ -475,10 +475,16 @@ done
 # with its ! in place. A ! after the first character of a part Claude Code
 # splits off is still refused.
 BANG_WARN="glob is kept whole and holds '!' after its first character, which ripgrep reads as a literal character, so it excludes nothing (warning)"
+# A kept-whole glob that starts with ! is an exclusion, so its warning calls
+# only the later ! literal and never says the glob excludes nothing.
+NEG_BANG_WARN="glob is kept whole, starts with '!' and holds another '!' after it, which ripgrep reads as a literal character (warning)"
 bang_warned () { # path-or-empty glob message [option...]: the Grep passes with the ! warning
-  local out p="$1" g="$2" msg="$3"; shift 3
+  local out p="$1" g="$2" msg="$3" w="$BANG_WARN"; shift 3
+  case "$g" in '!'*) w="$NEG_BANG_WARN";; esac
   out=$(grep_out "$p" "$g" "$@")
-  assert_contains "$out" "check-trace-tools: Grep call 1: $BANG_WARN" "$msg warns"
+  assert_contains "$out" "check-trace-tools: Grep call 1: $w" "$msg warns"
+  case "$g" in '!'*) case "$out" in *"excludes nothing"*)
+    echo "FAIL: $msg says a glob that starts with ! excludes nothing" >&2; exit 1;; esac;; esac
   assert_contains "$out" "all inside the allowed roots" "$msg reads as passing"
   assert_contains "$out" "rc=0" "$msg passes"
 }
@@ -495,7 +501,8 @@ for o in none audit; do
     bang_warned '' "$g" "the audit's kept-whole glob $g ($o options)" "${O[@]}"
   done
   for p in '' /w/repo /w/repo/web /rt/head; do
-    for g in '{!a,b}' '{a,!b}' '{a,!b}/x' '{a/**,!b/**}' 'src/{x,!y}/*.php' '{a,b}/!c' '!{a,!b}' '!!{a,b}'; do
+    for g in '{!a,b}' '{a,!b}' '{a,!b}/x' '{a/**,!b/**}' 'src/{x,!y}/*.php' '{a,b}/!c' 'x,{a,b}/!c' \
+             '!{a,!b}' '!!{a,b}' '!{a,b}/!c'; do
       bang_warned "$p" "$g" "the kept-whole glob $g (path ${p:-none}, $o options)" "${O[@]}"
     done
   done
