@@ -62,7 +62,7 @@ layout () { # plain|linked
 }
 
 cat > "$tmp/canary.py" <<'PY'
-import itertools, json, os, re, subprocess, sys
+import itertools, json, os, re, shutil, subprocess, sys
 from concurrent.futures import ThreadPoolExecutor
 
 check, suite, ws, token, plain, tmp, up = sys.argv[1:]
@@ -339,10 +339,9 @@ def kept_from_above(name, checker, exit_on_fail=True):
             fh.write(plain + '\n')
     ctoken = 'Ct' + os.urandom(12).hex()
     subprocess.run(['git', '-C', cws, 'config', 'canary.token', ctoken], check=True)
-    cglobs = CGLOBS
     env = dict(os.environ, GITHUB_WORKSPACE=cws)
     calls = [{'type': 'tool_use', 'id': 'k%d' % i, 'name': 'Grep', 'input': {'pattern': 'x', 'path': up, 'glob': g}}
-             for i, g in enumerate(cglobs)]
+             for i, g in enumerate(CGLOBS)]
     trace = os.path.join(tmp, 'kept.json')
     json.dump(calls, open(trace, 'w'))
     leaked = []
@@ -355,7 +354,7 @@ def kept_from_above(name, checker, exit_on_fail=True):
             sys.exit('FAIL: the trace check did not run for the kept-whole globs from above %s: %s'
                      % (name, r.stderr[-400:]))
         reached, bad = [], []
-        for i, g in enumerate(cglobs, 1):
+        for i, g in enumerate(CGLOBS, 1):
             for mode in MODES:
                 args = ['rg', '--hidden'] + [x for d in ('.git', '.svn', '.hg', '.bzr', '.jj', '.sl') for x in ('--glob', '!' + d)]
                 args += ['--max-columns', '500', '-l', '--null', ctoken]
@@ -369,7 +368,7 @@ def kept_from_above(name, checker, exit_on_fail=True):
         if not exit_on_fail:
             continue
         print('kept-whole from above %s %s: accepted %d, refused %d, leaked %d, refused that returned the token %d'
-              % (name, 'audit' if len(options) > 2 else 'none', len(cglobs) - len(refused), len(refused), len(bad), len(reached)))
+              % (name, 'audit' if len(options) > 2 else 'none', len(CGLOBS) - len(refused), len(refused), len(bad), len(reached)))
         if bad:
             sys.exit('FAIL: accepted kept-whole glob(s) returned the .git token from above %s: %s' % (name, ' '.join(bad)))
         if not reached:
@@ -383,9 +382,12 @@ for name in ('re,po', '!re,po', '!re'):
 # skipping every expansion that starts with ! as an exclusion even in a glob
 # kept whole: it must leak from above a checkout named !re, or the search
 # above could not have caught that mistake.
-import shutil
+# The copy holds only the files the check runs: itself, the two Python
+# modules it imports and the brace expander.
 mutant_dir = os.path.join(tmp, 'mutant')
-shutil.copytree(os.path.dirname(check), mutant_dir)
+os.makedirs(mutant_dir)
+for f in ('check-trace-tools.sh', 'grep_glob_parts.py', 'glob_search_split.py', 'expand-braces.cjs'):
+    shutil.copy(os.path.join(os.path.dirname(check), f), mutant_dir)
 mutant = os.path.join(mutant_dir, os.path.basename(check))
 src = open(mutant, encoding='utf-8').read()
 EXEMPT = "if t.startswith('!') and (value.startswith('!') or not kept):"
