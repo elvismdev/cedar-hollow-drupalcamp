@@ -147,9 +147,17 @@ def accepted(path, options):
     trace = os.path.join(tmp, 'trace.json')
     json.dump(calls, open(trace, 'w'))
     r = subprocess.run(['bash', check, trace] + options, capture_output=True, text=True)
-    refused = {int(n) for n in re.findall(r'Grep call (\d+):', r.stderr)}
+    # A line ending (warning) names a call the check accepted; every other
+    # line naming a Grep call is a refusal.
+    refused, warned = set(), set()
+    for line in r.stderr.splitlines():
+        m = re.match(r'check-trace-tools: Grep call (\d+): ', line)
+        if m:
+            (warned if line.endswith(' (warning)') else refused).add(int(m.group(1)))
     if r.returncode not in (0, 1) or (r.returncode == 1 and not refused):
         sys.exit('FAIL: the trace check did not run: %s' % r.stderr[-400:])
+    if refused & warned:
+        sys.exit('FAIL: the trace check both refused and warned on call(s) %s' % sorted(refused & warned))
     return {g for i, g in enumerate(globs, 1) if i not in refused}
 
 def spawn(path, mode):
@@ -277,6 +285,10 @@ if failures:
 # through refused ones in both spawn modes, or a clean result proves nothing.
 if '*.php' not in ok['no path'] or '/x.php' not in ''.join(leaks('*.php', '', 'raw')[2]):
     sys.exit('FAIL: the accepted glob *.php found no ordinary file')
+# A kept-whole glob with a comma outside its braces passes with a warning, so
+# it must be among the accepted globs searched above.
+if 'src/**/*.php,{web,docs}/**' not in ok['no path']:
+    sys.exit('FAIL: the warned glob src/**/*.php,{web,docs}/** was not searched as accepted')
 for name, path, _ in (VARIANTS[0], VARIANTS[5], VARIANTS[8], VARIANTS[9]):
     for mode in MODES:
         refused = [g for g in globs if g not in ok[name]]

@@ -86,6 +86,13 @@
 #     {scripts/*,web/modules/custom/**}, */x.php and src/** pass, and *, **,
 #     **/*, .g*, */ and **/.git do not; from above the workspace repo/* and
 #     */* do not either; !web/**,* does not, for its * part.
+#     A part kept whole that also has a comma outside its braces
+#     ({a,b}/**,c/**) reaches ripgrep as one glob in which that comma is a
+#     literal character, so it may match nothing the agent meant. It is not
+#     refused for that: it is judged by these rules as ripgrep reads it, its
+#     brace expansions with the comma in place, and when it passes the check
+#     prints a warning line naming the call (on stderr, like every other line)
+#     and does not fail.
 #
 # One Read outside the roots is reported instead of refused: a denied read of
 # the tool result Claude Code saved for an earlier call. Claude Code saves a
@@ -457,8 +464,9 @@ def comma_outside_kept_braces(value):
     """True for a glob Claude Code keeps whole because it holds a brace group
     that also has a comma outside its braces (src/**/*.php,{web,docs}/**,
     !web/**,{a/**,z.php}): ripgrep reads that comma as a literal character,
-    so the glob silently matches nothing the agent meant. A } before its {
-    counts too."""
+    so the glob may match nothing the agent meant. Such a glob is reported
+    as a warning, not refused; the rules below judge it as ripgrep reads it.
+    A } before its { counts too."""
     if grep_parts(value) != [value] or '{' not in value or '}' not in value:
         return False
     depth = 0
@@ -646,8 +654,6 @@ def refusal(call):
         # apply in every mode.
         if not (SUBFOLDER_GLOB_CHARS.fullmatch(g) is not None if subfolder else grep_glob_chars_ok(g)):
             return ('character outside the allowlist', 'glob')
-        if comma_outside_kept_braces(g):
-            return ('Grep glob holds a brace group and a comma outside it', 'glob')
         if '..' in re.split(r'[/{},!]', g):
             return ('Grep glob holds a .. segment', 'glob')
         exps = expansions(g)
@@ -776,6 +782,11 @@ for i, c in enumerate(calls(trace), 1):
         label, field = r
         print(f"check-trace-tools: {c.get('name')} call {i}: {label}"
               + (f" (field {field})" if field else ''), file=sys.stderr)
+    elif c.get('name') == 'Grep' and isinstance(c.get('input'), dict) \
+            and isinstance(c['input'].get('glob'), str) and comma_outside_kept_braces(c['input']['glob']):
+        # On stderr like every other line: stdout carries only the refused calls.
+        print(f"check-trace-tools: Grep call {i}: glob holds a brace group and a comma outside it, so ripgrep "
+              "reads it as one pattern and it may match nothing (warning)", file=sys.stderr)
 print(', '.join(refused))
 PY
 ) || {
