@@ -77,10 +77,11 @@
 #     part that starts with ! is an exclusion to ripgrep and only removes
 #     files, so it passes from any path (!web/**, !{a,b}); a ! anywhere else
 #     is a literal character to ripgrep, measured with rg 13.0.0 and Claude
-#     Code's rg 14.1.1, and is refused ({!a,b}, a/!b). Every other part and
-#     brace expansion must have no .. segment and is judged whole, as ripgrep
-#     matches it: with no / (a
-#     trailing / aside) against the name .git, and with a / against .git's
+#     Code's rg 14.1.1, and is refused ({!a,b}, a/!b), except in a whole
+#     glob with a comma outside its braces, where it is a literal character
+#     and the glob is only warned about. Every other part and brace expansion
+#     must have no .. segment and is judged whole, as ripgrep matches it: with
+#     no / (a trailing / aside) against the name .git, and with a / against .git's
 #     path, which is .git from the workspace and, from a root above it, also
 #     its path from there (repo/.git). A glob with a / that names .git on the
 #     way to a path inside it (.git/config, **/.git/**) is refused as well.
