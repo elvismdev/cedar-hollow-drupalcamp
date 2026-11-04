@@ -556,6 +556,8 @@ ln -s "$sg/elsewhere" "$sg/root/l"
 ln -s "$sg/root/d" "$sg/root/l2"
 glob_abs "{\"pattern\":\"$sg/root/d/*.php\"}" 0 "an absolute Glob in a real folder of an added root passes" --root "$sg/root"
 glob_abs "{\"pattern\":\"$sg/root/l/*.php\"}" 1 "an absolute Glob through a symlink in an added root is refused" --root "$sg/root"
+printf '[%s]' "$(call Glob "{\"pattern\":\"$sg/root/l/*.php\"}")" > "$tmp/ga.json"
+assert_contains "$(run "$tmp/ga.json" --root "$sg/root")" "check-trace-tools: Glob call 1: path outside the allowed roots (field pattern)" "and is labelled outside the roots, its real path being judged first"
 glob_abs "{\"pattern\":\"$sg/root/{d,l}/*.php\"}" 1 "a brace expansion through a symlink is refused" --root "$sg/root"
 glob_abs "{\"pattern\":\"$sg/root/l2/*.php\"}" 1 "an absolute Glob through a symlink to a folder of the same root is refused" --root "$sg/root"
 

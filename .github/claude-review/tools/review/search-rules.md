@@ -14,7 +14,10 @@ fails the whole review if one breaks these rules, so keep to them:
   above it, it is refused when its glob could list `.git` (a glob with no
   `/` matches names at any depth there): `<checkout>/src/*.php` passes,
   `<checkout>/*.php` and `<checkout>/*/config` do not; use `src/*.php`
-  relative instead.
+  relative instead. A pattern with no `*` or `{` is searched from its
+  folder too and matches its last name at any depth, so from the checkout's
+  top level name a subfolder: `<checkout>/src/x.php`, not
+  `<checkout>/x.php`.
 - A Grep `glob` uses only letters, digits and `. _ / @ + - * { } ,`. Never use
   `?`, `[`, `]` or a space, and use `!` only as the first character of a
   comma part: such a part (`!**/node_modules/**`) only excludes files and
