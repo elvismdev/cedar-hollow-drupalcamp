@@ -329,12 +329,13 @@ done
 assert_contains "$(lgrep "$lws" '*/x.php')" "rc=0" "*/x.php at a workspace behind a symlinked parent still passes"
 # With no path, a glob spelling the linked parent's absolute path ahead of a
 # brace group whose alternatives start with ** after a * returned
-# <parent>/repo/.git/config by the raw path with both ripgreps; it is refused
+# <parent>/repo/.git/config by the raw path with both ripgreps (a leading *
+# matches the empty name before the path's first /); it is refused
 # for that **, with no options and with the audit's.
 lup=$(dirname "$lws"); lrest=${lup#/}
 for o in none audit; do
   if [ "$o" = audit ]; then O=("${AUDIT_OPTS[@]}"); else O=(); fi
-  for g in "{/,z}$lrest/r*{**/o/.git,**/o/.git/*}" "*/${lrest#*/}/r*{**/o/.git,**/o/.git/*}"; do
+  for g in "{/,z}$lrest/r*{**/o/.git,**/o/.git/*}" "*/$lrest/r*{**/o/.git,**/o/.git/*}"; do
     printf '[%s]' "$(call Grep "{\"pattern\":\"x\",\"glob\":\"$g\"}")" > "$tmp/s.json"
     out=$(GITHUB_WORKSPACE="$lws" bash "$C" "$tmp/s.json" "${O[@]}" 2>&1)
     assert_contains "$out" "Grep call 1: glob holds ** at the edge of a brace alternative that is not a whole path segment (field glob)" "the linked parent's path ahead of r*{**/o/.git,**/o/.git/*} is refused ($o options)"

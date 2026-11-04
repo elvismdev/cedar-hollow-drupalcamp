@@ -160,7 +160,7 @@ for pre in ['*', '.', '.g', '.gi', 'r', 'r*', 're', 'r*/', '*/']:
 # second folder left out reads as /.*, spanning that folder (the last
 # shape).
 B_UP = ['{/,z}%s/r*{**/o/.git,**/o/.git/*}' % up.lstrip('/'),
-        '*/%s/r*{**/o/.git,**/o/.git/*}' % up.lstrip('/').split('/', 1)[1],
+        '*/%s/r*{**/o/.git,**/o/.git/*}' % up.lstrip('/'),
         '{/%s/**,z}%s/repo/{.git,.git/*}' % tuple(up.lstrip('/').split('/', 2)[0::2])]
 globs |= set(B_UP)
 # Kept-whole shapes: a brace group with a comma outside it, which ripgrep
@@ -410,8 +410,11 @@ for path, g, options, label in REGRESSIONS:
 # parent's absolute path and leaked by the raw path only in the linked
 # layout.
 linked = os.path.realpath(ws) != ws
+# With no path they leak in both spawn modes in the plain layout; behind a
+# symlinked parent ripgrep matches the absolute path by the raw path, so
+# there only the fd mode is required.
 EDGE_REGRESSIONS = [(g, 'no path', '', m) for g in ('*{**/.git,**/*}', '*{**/.git,**/*.php}', '*{**/git,**/config}',
-                                                    '*{**/it,**/config}') for m in MODES]
+                                                    '*{**/it,**/config}') for m in (('fd',) if linked else MODES)]
 EDGE_REGRESSIONS += [(g, 'parent', up, 'fd') for g in ('r*{**/po/.git,**/config}', '*{**/po/.git,**/config}',
                                                       'r*{**/o/.git,**/o/.git/*}')]
 EDGE_REGRESSIONS += [(g, 'no path', '', 'raw') for g in B_UP if linked]
