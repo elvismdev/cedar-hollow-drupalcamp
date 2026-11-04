@@ -526,6 +526,7 @@ ok_path Glob '{"pattern":"/rt/head/{src,tests}/*.php"}' "an absolute folder brac
 ok_path Glob '{"pattern":"/w/repo/src/*.php"}' "an absolute Glob in a workspace subfolder passes"
 ok_path Glob '{"pattern":"/w/repo/web/{modules,themes}/**/*.yml"}' "an absolute brace group of workspace subfolders passes"
 ok_path Glob '{"pattern":"/rt/review-input/review-diff.patch"}' "an absolute Glob naming a file in the input directory passes"
+ok_path Glob '{"pattern":"/w/repo/src/x.php"}' "an absolute Glob naming a file in a workspace subfolder passes"
 no_path Glob '{"pattern":"/rt/head-other/*.php"}' "an absolute Glob in a sibling of the head is refused"
 no_path Glob '{"pattern":"/rt/{head,other}/*.php"}' "an absolute brace group leaving the roots is refused"
 no_path Glob '{"pattern":"/rt/head/{src,../../etc}/*"}' "an absolute brace expansion with .. is refused"

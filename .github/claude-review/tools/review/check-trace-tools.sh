@@ -73,10 +73,12 @@
 #     below it, so with no / it is refused there (*.php, README.md), and with
 #     a / it is refused when it can (*/config, **, .g*/config, */.git/config
 #     from above). The run's /mnt/audit/poc-write/in/*.json, a root of its
-#     own, passes. An absolute pattern not in normal form or through a
-#     symlink keeps the label "Glob pattern is absolute"; one outside the
-#     roots is labelled as such, and one under .git or able to reach it
-#     "path under .git".
+#     own, passes. An absolute pattern not in normal form, or through a
+#     symlink to a folder inside the roots, keeps the label "Glob pattern is
+#     absolute"; one outside the roots, a symlink leading outside them
+#     included (its real path is judged first), gets "path outside the
+#     allowed roots", and one under .git or able to reach it "path under
+#     .git".
 #   - A Grep glob: the same set as a Glob pattern, plus ! as the first
 #     character of a part (and, in a part kept whole with a comma outside its
 #     braces, anywhere: there ripgrep reads a later ! as a literal character,
