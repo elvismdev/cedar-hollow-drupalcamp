@@ -5,7 +5,16 @@ fails the whole review if one breaks these rules, so keep to them:
 
 - A `file_path` or `path` uses only letters, digits and `. _ / @ + -`, and
   never `..`, `~` or `.git`.
-- A Glob `pattern` is relative and uses only those characters plus `* { } ,`.
+- A Glob `pattern` uses only those characters plus `* { } ,`. A relative
+  pattern is searched from the `path`. An absolute pattern ignores the `path`
+  and is searched from its folder before the first `*` or `{`, so it is
+  judged like a path: no `//`, `.` or `..` segment and no trailing `/`, that
+  folder and every brace alternative inside the allowed folders, never
+  through a symbolic link, and from the checkout's top level or a folder
+  above it, it is refused when its glob could list `.git` (a glob with no
+  `/` matches names at any depth there): `<checkout>/src/*.php` passes,
+  `<checkout>/*.php` and `<checkout>/*/config` do not; use `src/*.php`
+  relative instead.
 - A Grep `glob` uses only letters, digits and `. _ / @ + - * { } ,`. Never use
   `?`, `[`, `]` or a space, and use `!` only as the first character of a
   comma part: such a part (`!**/node_modules/**`) only excludes files and
