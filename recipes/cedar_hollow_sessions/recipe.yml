@@ -24,6 +24,7 @@ install:
   - smart_date
   - better_exposed_filters
   - forward
+  - cedar_hollow_core
 config:
   # Registration's workflow already exists on any site that has the module,
   # and a recipe-installed module's config entities are not created from its
@@ -41,3 +42,9 @@ config:
         - 'access content'
         - 'create attendee registration self'
         - 'access forward'
+    # Forward's install hook adds a route that delivers mail; mail is logged
+    # and never sent, so the whole interface map is replaced.
+    system.mail:
+      simpleConfigUpdate:
+        interface:
+          default: cedar_hollow_logger
