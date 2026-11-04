@@ -108,8 +108,9 @@
 #     reading ripgrep's globset may give it: it compiles a brace group as an
 #     alternation, so a ** starting an alternative before a / spans folders
 #     or vanishes whatever precedes the group, and *{**/.git,**/*} (expanded
-#     ***/.git) reopens .git; so such a ** may match within one segment,
-#     across folders, or, before a /, nothing with that /.
+#     ***/.git) reopens .git; so such a ** with a / beside it may match
+#     within one segment, across folders, or, before a /, nothing with that
+#     /. One with no / beside it stays within its segment.
 #     Matching ignores letter case. So *gitignore*, {.gitignore,composer.json},
 #     {scripts/*,web/modules/custom/**}, */x.php and src/** pass, and *, **,
 #     **/*, .g*, */ and **/.git do not; from above the workspace repo/* and
@@ -449,14 +450,15 @@ def _matches_below(gsegs, psegs):
 # of an alternative and before a / it is recursive, (?:/?|.*/) with that /
 # consumed, whatever precedes the group; after a / at the end of an
 # alternative it is /.*; elsewhere, when not a whole segment, it is two *
-# within one segment. A brace expansion splices the alternative onto what
-# precedes it, so *{**/.git} becomes ***/.git, whose first segment reads as
-# one folder, while ripgrep matches .git with the * matching nothing. So each
-# run of two or more * that is not a whole segment of an expansion holding a
-# / is judged as every reading globset may give it: * within one segment,
+# within one segment. Both recursive readings need a / beside the **. A
+# brace expansion splices the alternative onto what precedes it, so
+# *{**/.git} becomes ***/.git, whose first segment reads as one folder, while
+# ripgrep matches .git with the * matching nothing. So each run of two or
+# more * that is not a whole segment of an expansion but has a / beside it is
+# judged as every reading globset may give it: * within one segment,
 # characters with / among them (*/**/*), and, before a /, nothing with that /
-# consumed. A whole-segment run spans folders, as **. With no / there is no
-# recursive reading, and a run is one *.
+# consumed. A whole-segment run spans folders, as **. A run with no / beside
+# it is one *.
 STAR_RUN = re.compile(r'\*{2,}')
 MAX_READINGS = 256
 
@@ -470,7 +472,7 @@ def globset_readings(glob):
         s, e = m.span()
         if (s == 0 or glob[s - 1] == '/') and (e == len(glob) or glob[e] == '/'):
             options.append([('**', 0)])
-        elif '/' not in glob:
+        elif glob[s - 1:s] != '/' and glob[e:e + 1] != '/':
             options.append([('*', 0)])
         else:
             options.append([('*', 0), ('*/**/*', 0)] + ([('', 1)] if glob[e:e + 1] == '/' else []))

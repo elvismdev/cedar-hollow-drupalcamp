@@ -248,7 +248,7 @@ for opts in none audit; do
       assert_eq "1" "$(grep_rc "$p" "$g" "${O[@]}")" "the Grep glob $g is refused (path ${p:-none}, $opts options)"
     done
     for g in 'a{**/.git,y}' 'x/{**/.git}' '{x,y}{**/.git}' '*{**/x}/*' '{x,**}/config' '{x/**,y}.git' 'a**/.git' \
-             'src/{**/*.php,x}' 'src{**/*.php,x}' '*{**/x.php,y}'; do
+             'src/{**/*.php,x}' 'src{**/*.php,x}' '*{**/x.php,y}' '.{**.git}/*' '.g{**.git,y}/info/*'; do
       assert_eq "0" "$(grep_rc "$p" "$g" "${O[@]}")" "the Grep glob $g passes (path ${p:-none}, $opts options)"
     done
   done
