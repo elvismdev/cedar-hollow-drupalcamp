@@ -620,6 +620,36 @@ for g in '{a/**,!*/**}' '{x/**,!re/**}'; do
   assert_contains "$out" "rc=0" "the mutant accepts $g from above !re, so the test above can fail"
 done
 
+# A kept-whole glob with a ! after its first character still goes through
+# the brace-edge refusal and the /** rewrite. *{**/.git,**/.git/*,!x} returned
+# .git/config with no path, and from above a checkout at a/b/repo
+# {!x,a/**}repo/{.git,.git/*} returned a/b/repo/.git/config, with rg 13.0.0
+# and Claude Code's 14.1.1; the first is refused for its ** at a brace edge,
+# the second as able to reach .git, which a copy of the check without the
+# /** rewrite accepts. Neither prints a warning.
+for o in none audit; do
+  if [ "$o" = audit ]; then O=("${AUDIT_OPTS[@]}"); else O=(); fi
+  for g in '*{**/.git,**/.git/*,!x}' '*{**/.git,!x,**/*}' 'r*{**/o/.git,**/o/.git/*,!x}'; do
+    out=$(edge_out '' "$g" "${O[@]}")
+    assert_contains "$out" "Grep call 1: $EDGE" "the kept-whole glob $g with a ! is refused for a ** at a brace edge ($o options)"
+    case "$out" in *"(warning)"*) echo "FAIL: the refused glob $g also printed a warning" >&2; exit 1;; esac
+  done
+  if [ "$o" = audit ]; then O=("${AUDIT_OPTS[@]}" --root /w); else O=(--root /w); fi
+  for g in '{!x,a/**}repo/{.git,.git/*}' '{a/**,!x}repo/{.git,.git/*}'; do
+    out=$(zgrep /w/a/b/repo /w "$g" "${O[@]}")
+    assert_contains "$out" "Grep call 1: Grep glob can reach .git (field glob)" "$g from above a/b/repo is refused ($o options)"
+    case "$out" in *"(warning)"*) echo "FAIL: the refused glob $g also printed a warning" >&2; exit 1;; esac
+  done
+done
+mkdir -p "$tmp/norewrite"
+cp "$(dirname "$C")"/{check-trace-tools.sh,grep_glob_parts.py,glob_search_split.py,expand-braces.cjs} "$tmp/norewrite/"
+rewrite="g = SUFFIX_STAR.sub('**/*', glob.rstrip('/'))"
+assert_eq "1" "$(grep -cF "$rewrite" "$tmp/norewrite/check-trace-tools.sh")" "the copy finds the /** rewrite once"
+python3 -c 'import sys; p=sys.argv[1]; s=open(p).read(); open(p,"w").write(s.replace(sys.argv[2], "g = glob.rstrip(\"/\")"))' \
+  "$tmp/norewrite/check-trace-tools.sh" "$rewrite"
+out=$(C="$tmp/norewrite/check-trace-tools.sh" zgrep /w/a/b/repo /w '{!x,a/**}repo/{.git,.git/*}' --root /w)
+assert_contains "$out" "rc=0" "a copy without the /** rewrite accepts {!x,a/**}repo/{.git,.git/*}, so the test above can fail"
+
 # Closed input fields. Each tool's input may hold only the fields of its own
 # schema in Claude Code 2.1.309. Claude Code reads aliases and stray fields
 # (Grep reads file_path as path when path is absent), so any other key is
