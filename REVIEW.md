@@ -103,7 +103,7 @@ Report nothing from these. They are vendored, generated, or not ours:
   `web/libraries/`, `vendor/`, `node_modules/`.
 - `package-lock.json` files, except to ask whether a change pulls in packages
   nobody asked for.
-- Generated Storybook output (`web/themes/custom/cedar_hollow/storybook/`) and
+- Generated Storybook output (`build/storybook/`) and
   test artifacts (`tests/test-results/`, `tests/a11y-results/`,
   `tests/perf/reports/`).
 

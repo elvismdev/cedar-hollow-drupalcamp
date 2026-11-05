@@ -2,7 +2,10 @@ import { defineConfig, devices } from '@playwright/test';
 
 // DDEV serves this project on port 30001 locally.
 export const BASE_URL = process.env.BASE_URL ?? 'https://cedar-hollow.ddev.site:30001';
-export const STORYBOOK_URL = process.env.STORYBOOK_URL ?? `${BASE_URL}/themes/custom/cedar_hollow/storybook`;
+// Storybook is never served on the Drupal origin: a built preview accepts story
+// updates by postMessage from any origin. Locally `npm run storybook` answers
+// here; CI serves the static build on the same port.
+export const STORYBOOK_URL = process.env.STORYBOOK_URL ?? 'http://127.0.0.1:6006';
 
 // Pantheon sandboxes show a warning page unless Deterrence-Bypass is sent. On
 // Pantheon, PANTHEON_BOT_BYPASS_TOKEN (from `terminus gcdn:bot-bypass`) keeps
