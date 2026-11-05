@@ -12,7 +12,8 @@ mkdir -p "$tmp/bin"
 cat > "$tmp/bin/claude" <<'SH'
 #!/usr/bin/env bash
 prompt=$(cat)
-[ -n "${FAKE_FAIL:-}" ] && exit 3
+# FAKE_STDERR is written to stderr before a FAKE_FAIL exit.
+[ -n "${FAKE_FAIL:-}" ] && { printf '%s' "${FAKE_STDERR:-}" >&2; exit 3; }
 # Record each --add-dir the agent was given, and whether the review diff was in
 # that directory when the agent started.
 if [ -n "${ARGS_LOG:-}" ]; then
@@ -26,7 +27,21 @@ if [ -n "${ARGS_LOG:-}" ]; then
     shift
   done
 fi
-if printf '%s' "$prompt" | grep -q VERIFYING; then body="${VERDICT_JSON:-[]}"; else body="${REVIEW_JSON:-[]}"; fi
+# Record what the case tree's "leak" path is when the agent starts: a link, a
+# file (with its content) or nothing.
+if [ -n "${LINK_LOG:-}" ]; then
+  if [ -L leak ]; then echo "link"; elif [ -f leak ]; then echo "file $(cat leak)"; else echo "none"; fi >> "$LINK_LOG"
+fi
+if printf '%s' "$prompt" | grep -q VERIFYING; then body="${VERDICT_JSON:-[]}"; call="${VERIFY_READ:-}"; else body="${REVIEW_JSON:-[]}"; call="${REVIEW_READ:-}"; fi
+# REVIEW_READ and VERIFY_READ put a Read of that path in the reviewer's or a
+# verifier's trace.
+# READ_DIFF reads the review diff from the --add-dir directory; READ_CWD reads
+# gate.sh by the physical path of the working directory.
+if [ -n "${READ_DIFF:-}" ]; then
+  prev=""; for a in "$@"; do [ "$prev" = "--add-dir" ] && call="$a/review-diff.patch"; prev="$a"; done
+fi
+[ -n "${READ_CWD:-}" ] && call="$(pwd -P)/gate.sh"
+[ -n "$call" ] && python3 -c 'import json,sys; print(json.dumps({"type":"assistant","message":{"content":[{"type":"tool_use","id":"toolu_1","name":"Read","input":{"file_path":sys.argv[1]}}]}}))' "$call"
 python3 -c 'import json,sys; print(json.dumps({"type":"system","subtype":"init"})); print(json.dumps({"type":"assistant","message":{"content":[{"type":"text","text":"```json\n"+sys.argv[1]+"\n```"}]}}))' "$body"
 SH
 chmod +x "$tmp/bin/claude"
@@ -45,11 +60,13 @@ printf '{"name":"gate-fails-open","control":"review","introduced":"%s","fix":"x"
 printf '{"name":"docs-only","kind":"clean","commit":"%s","angle":"bugs","why":"a README line"}' "$clean" > "$r/cases/002.json"
 printf '{"name":"deterministic","control":"bash lint.sh {file}","fix":"x","file":"a"}' > "$r/cases/003.json"
 
-# run <env assignments...> -- <args...>: the eval's exit code, output kept in $tmp/out
+# run <env assignments...> -- <args...>: the eval's exit code, output kept in $tmp/out.
+# The eval screens its output against the token it holds, so every run holds a
+# dummy one unless the assignments replace it.
 run() {
   local envs=()
   while [ "$1" != "--" ]; do envs+=("$1"); shift; done; shift
-  (cd "$r" && env "${envs[@]}" node "$E" "$@" >"$tmp/out" 2>&1); echo $?
+  (cd "$r" && env CLAUDE_CODE_OAUTH_TOKEN=dummy-oauth-token-for-tests "${envs[@]}" node "$E" "$@" >"$tmp/out" 2>&1); echo $?
 }
 
 hit='[{"severity":"important","file":"gate.sh","line":1,"title":"the gate fails open"}]'
@@ -153,5 +170,101 @@ assert_eq '["--add-dir","/a","--max-turns","3","--disallowedTools","Bash,Read(//
 for bad in "--disallowedTools 'Bash Read'" "--disallowedTools 'Bash" "--disallowedTools Bash'x'" "--add-dir \"/a b\"" "--x a\\b"; do
   assert_eq "unusable" "$(args_of "$bad")" "refused: $bad"
 done
+
+# A link the case commit adds is replaced before any agent runs, with the same
+# script the review action runs on the head, so the agent's Read cannot follow
+# it out of the case tree.
+outside="$tmp/outside-secret"; printf 'outside the tree\n' > "$outside"
+(cd "$r" && ln -s "$outside" leak && git add leak && git commit -q -m "add a link out of the tree")
+linked=$(git -C "$r" rev-parse HEAD)
+mkdir -p "$r/link-cases"
+printf '{"name":"adds-a-link","kind":"clean","commit":"%s","angle":"bugs","why":"a link"}' "$linked" > "$r/link-cases/001.json"
+: > "$tmp/link.log"
+assert_eq "0" "$(run REVIEW_JSON='[]' LINK_LOG="$tmp/link.log" -- link-cases --base main --no-verify)" "a case whose tree holds a link still runs"
+assert_eq "file symlink to: $outside" "$(cat "$tmp/link.log")" "and the agent finds a file naming the link's target, not the link"
+assert_contains "$(cat "$tmp/out")" "replace-symlinks: replaced 1 symlink(s)" "the eval logs the replacement"
+
+# Every agent's trace goes through the review job's tool check, with the case
+# tree as the workspace: a refused call fails the case with the check's reason,
+# whatever the agent reported.
+assert_eq "0" "$(run REVIEW_JSON="$hit" REVIEW_READ=gate.sh -- cases --base main --no-verify --only gate-fails-open)" "a Read inside the case tree passes the tool check"
+assert_contains "$(cat "$tmp/out")" "check-trace-tools: 1 tool call(s), all Read, Glob or Grep, all inside the allowed roots" "and the check's verdict is logged"
+: > "$tmp/summary.md"
+assert_eq "2" "$(run REVIEW_JSON="$hit" REVIEW_READ=.git/config GITHUB_STEP_SUMMARY="$tmp/summary.md" -- cases --base main --no-verify --only gate-fails-open)" "a reviewer Read of the case tree's .git fails the eval"
+assert_contains "$(cat "$tmp/out")" "check-trace-tools.sh refused the reviewer's trace" "the eval says the tool check refused"
+assert_contains "$(cat "$tmp/out")" "Read call 1: path under .git" "and passes on the check's reason"
+assert_contains "$(grep '^| gate-fails-open |' "$tmp/summary.md")" "path under .git (field file_path); check-trace-tools: the agent called" "the job summary row holds the whole reason on one line"
+assert_eq "2" "$(run REVIEW_JSON="$hit" REVIEW_READ="$r/.git/config" -- cases --base main --no-verify --only gate-fails-open)" "a Read of the repository's own .git/config fails it too"
+assert_contains "$(cat "$tmp/out")" "path outside the allowed roots" "as outside the allowed roots"
+assert_eq "2" "$(run REVIEW_JSON="$hit" VERDICT_JSON="$keep" VERIFY_READ=/proc/self/environ -- cases --base main --only gate-fails-open)" "a verifier's refused Read fails the case instead of counting as a vote"
+assert_contains "$(cat "$tmp/out")" "check-trace-tools.sh refused verifier 1's trace" "and names the verifier"
+
+# What the agents wrote is screened against the token the eval holds, with the
+# review job's screen, before any of it reaches the log, the job summary or
+# --out. The token is random for this run, so only the agent's output can
+# have put it there.
+token="sk-ant-oat01-$(od -An -N24 -tx1 /dev/urandom | tr -d ' \n')"
+leak="[{\"severity\":\"important\",\"file\":\"gate.sh\",\"line\":1,\"title\":\"the gate fails open, token $token\"}]"
+: > "$tmp/summary.md"; rm -f "$tmp/results.json"
+assert_eq "2" "$(run CLAUDE_CODE_OAUTH_TOKEN="$token" REVIEW_JSON="$leak" GITHUB_STEP_SUMMARY="$tmp/summary.md" -- cases --base main --no-verify --only gate-fails-open --out "$tmp/results.json")" "a finding holding the token fails the eval"
+assert_contains "$(cat "$tmp/out")" "a screened file contains the value of: CLAUDE_CODE_OAUTH_TOKEN" "the log says the screen refused, naming the secret"
+for f in "$tmp/out" "$tmp/summary.md" "$tmp/results.json"; do
+  [ -s "$f" ] || { echo "FAIL: $f was not written" >&2; exit 1; }
+  if grep -qF "$token" "$f"; then echo "FAIL: the token reached $f" >&2; exit 1; fi
+done
+assert_contains "$(cat "$tmp/summary.md")" "the secret screen refused" "the job summary gives the screen's reason instead"
+assert_contains "$(cat "$tmp/results.json")" "the secret screen refused" "and so does --out"
+# A finding the verifiers refute is printed as dropped: it is screened as well.
+: > "$tmp/summary.md"; rm -f "$tmp/results.json"
+assert_eq "2" "$(run CLAUDE_CODE_OAUTH_TOKEN="$token" REVIEW_JSON="$leak" VERDICT_JSON="$refute" GITHUB_STEP_SUMMARY="$tmp/summary.md" -- cases --base main --only docs-only --out "$tmp/results.json")" "a dropped finding holding the token fails the eval too"
+for f in "$tmp/out" "$tmp/summary.md" "$tmp/results.json"; do
+  [ -s "$f" ] || { echo "FAIL: $f was not written" >&2; exit 1; }
+  if grep -qF "$token" "$f"; then echo "FAIL: the dropped title's token reached $f" >&2; exit 1; fi
+done
+assert_contains "$(cat "$tmp/out")" "CLAUDE_CODE_OAUTH_TOKEN" "and the screen names the secret"
+# A clean output passes the screen, and the log shows that it ran.
+assert_eq "0" "$(run CLAUDE_CODE_OAUTH_TOKEN="$token" REVIEW_JSON="$hit" -- cases --base main --no-verify --only gate-fails-open)" "output without the token passes the screen"
+assert_contains "$(cat "$tmp/out")" "keep-trace: screened" "and the screen's line is logged"
+# With no token to compare against the screen cannot run, and fails closed.
+assert_eq "2" "$(run CLAUDE_CODE_OAUTH_TOKEN= REVIEW_JSON="$hit" -- cases --base main --no-verify --only gate-fails-open)" "an eval holding no token cannot screen and fails"
+assert_contains "$(cat "$tmp/out")" "no secret long enough to compare against" "with the screen's reason"
+
+# ANTHROPIC_API_KEY, when the eval holds one, is screened as well.
+apikey="sk-ant-api03-$(od -An -N24 -tx1 /dev/urandom | tr -d ' \n')"
+keyleak="[{\"severity\":\"important\",\"file\":\"gate.sh\",\"line\":1,\"title\":\"the gate fails open, key $apikey\"}]"
+assert_eq "2" "$(run ANTHROPIC_API_KEY="$apikey" REVIEW_JSON="$keyleak" -- cases --base main --no-verify --only gate-fails-open)" "a finding holding ANTHROPIC_API_KEY fails the eval"
+assert_contains "$(cat "$tmp/out")" "a screened file contains the value of: ANTHROPIC_API_KEY" "and the screen names it"
+if grep -qF "$apikey" "$tmp/out"; then echo "FAIL: the API key reached the log" >&2; exit 1; fi
+
+# The agent's whole stderr is screened, not only the part kept for the reason.
+long=$(printf 'x%.0s' $(seq 1 400))
+assert_eq "2" "$(run CLAUDE_CODE_OAUTH_TOKEN="$token" FAKE_FAIL=1 FAKE_STDERR="$long $token" -- cases --base main --no-verify --only gate-fails-open)" "a failed agent's stderr is screened"
+assert_contains "$(cat "$tmp/out")" "a screened file contains the value of: CLAUDE_CODE_OAUTH_TOKEN" "including past its first 300 characters"
+if grep -qF "$token" "$tmp/out"; then echo "FAIL: the stderr token reached the log" >&2; exit 1; fi
+
+# Nothing replay prints reaches the log before the screen has passed it.
+run REVIEW_JSON="$hit" -- cases --base main --no-verify --only gate-fails-open >/dev/null
+screened=$(grep -n "keep-trace: screened" "$tmp/out" | head -1 | cut -d: -f1)
+assembled=$(grep -n "assemble-review-prompt:" "$tmp/out" | head -1 | cut -d: -f1)
+checked=$(grep -n "check-trace-tools:" "$tmp/out" | head -1 | cut -d: -f1)
+[ -n "$screened" ] && [ -n "$assembled" ] && [ -n "$checked" ] && [ "$screened" -lt "$assembled" ] && [ "$screened" -lt "$checked" ] \
+  || { echo "FAIL: replay's lines were printed before the screen (screen $screened, prompt $assembled, check $checked)" >&2; exit 1; }
+
+# Each case's work directory, traces included, is removed once screened,
+# whether the screen passed or refused.
+mkdir -p "$tmp/tmpdir"
+run TMPDIR="$tmp/tmpdir" REVIEW_JSON="$hit" -- cases --base main --no-verify --only gate-fails-open >/dev/null
+run TMPDIR="$tmp/tmpdir" CLAUDE_CODE_OAUTH_TOKEN="$token" REVIEW_JSON="$leak" -- cases --base main --no-verify --only gate-fails-open >/dev/null
+assert_eq "" "$(ls -A "$tmp/tmpdir")" "no case work directory is left behind"
+
+# A temporary directory reached through a link: the tool check gets real
+# paths, so a Read of the tree by its physical path passes.
+mkdir -p "$tmp/realtmp"; ln -s "$tmp/realtmp" "$tmp/linktmp"
+assert_eq "0" "$(run TMPDIR="$tmp/linktmp" REVIEW_JSON="$hit" READ_CWD=1 -- cases --base main --no-verify --only gate-fails-open)" "a Read by the tree's physical path passes when the temporary directory is a link"
+
+# A case name outside the path allowlist does not make its own paths refused.
+mkdir -p "$r/odd-cases"
+printf '{"name":"gate: fails open","control":"review","introduced":"%s","fix":"x","angle":"bugs","expect_file":"gate.sh","expect_any":["fails open"]}' "$bug" > "$r/odd-cases/001.json"
+assert_eq "0" "$(run REVIEW_JSON="$hit" READ_DIFF=1 -- odd-cases --base main --no-verify)" "a case named with a colon and a space can read its own diff"
 
 pass "review-eval.test.sh"
