@@ -36,7 +36,7 @@ test('the site does not serve a Storybook build', async ({ request }) => {
   expect(response.status()).toBe(404);
 });
 
-test('a session page shows its image as AVIF',async ({ page, request }) => {
+test('a session page shows its image as AVIF', async ({ page, request }) => {
   await page.goto('/sessions/caching-render-arrays');
   const image = page.locator('.session img.hero__img');
   await expect(image).toHaveAttribute('srcset', /\.avif/);
