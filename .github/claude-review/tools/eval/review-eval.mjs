@@ -10,11 +10,15 @@
 //
 // The containment is the review job's too, with the case tree in the place of
 // the head: its links are replaced before any agent runs, every agent's trace
-// goes through the tool check, and a refused call makes the case an error. What
-// the agents wrote, the traces and each case's row, is screened against the
-// token the eval holds before any of it is printed, put in the job summary or
-// written to --out; a refusal, or an eval holding no token to screen against,
-// makes the case an error whose reason holds no agent text.
+// goes through the tool check, and a refused call makes the case an error. Each
+// case runs in its own work directory, named from the case name reduced to the
+// characters the check allows and given to it by its real path. What the
+// agents wrote, the traces, their whole stderr, each case's row and the lines
+// it holds back for the log, is screened against the token the eval holds
+// before any of it is printed, put in the job summary or written to --out; a
+// refusal, or an eval holding no token to screen against, makes the case an
+// error whose reason holds no agent text. The work directory is removed once
+// screened.
 //
 // Two kinds of case, in one directory of *.json files:
 //   incident  "control": "review", with "introduced" (the commit that brought
@@ -44,8 +48,11 @@
 //                        [--out <results.json>] [--baseline <baseline.json>]
 //   baseline  {"cases": {"<case name>": "pass" | "fail"}}, the last measured result
 //   Run from the root of the repository whose history the cases name. The
-//   reviewer is the `claude` CLI on PATH, authenticated the usual way.
-import { readFileSync, writeFileSync, readdirSync, mkdtempSync, mkdirSync, appendFileSync, existsSync } from 'node:fs';
+//   reviewer is the `claude` CLI on PATH. CLAUDE_CODE_OAUTH_TOKEN must be set:
+//   what the agents wrote is screened against it, and against ANTHROPIC_API_KEY
+//   when that is set too, and with no token to screen against every case is an
+//   error. There is no way to run the eval without the screen.
+import { readFileSync, writeFileSync, readdirSync, mkdtempSync, mkdirSync, appendFileSync, existsSync, realpathSync, rmSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { join, dirname } from 'node:path';
 import { tmpdir } from 'node:os';
@@ -172,8 +179,11 @@ function runAgent(promptFile, cwd, args, work, label) {
     trace = join(work, `${label}.json`);
     writeFileSync(trace, JSON.stringify(messages));
   }
-  if (r.status !== 0) return { ok: false, trace, error: `claude exited ${r.status}: ${(r.stderr || '').trim().slice(0, 300)}` };
-  return { ok: true, trace };
+  // The whole of stderr is kept for the screen; the reason keeps its start.
+  const stderr = join(work, `${label}.stderr`);
+  writeFileSync(stderr, r.stderr || '');
+  if (r.status !== 0) return { ok: false, trace, stderr, error: `claude exited ${r.status}: ${(r.stderr || '').trim().slice(0, 300)}` };
+  return { ok: true, trace, stderr };
 }
 
 /**
@@ -186,9 +196,10 @@ function runAgent(promptFile, cwd, args, work, label) {
  * tree was checked out from, its .git included, lies outside every root. Its
  * reason lines name tools, call numbers and fixed labels, never a value.
  * Returns an error message on a refusal, null when the trace passed or the
- * agent left no trace, which the review job also lets through.
+ * agent left no trace, which the review job also lets through. Its passing
+ * line and any warnings go to the case's log, printed only after the screen.
  */
-function checkTrace(trace, tree, input, who) {
+function checkTrace(trace, tree, input, who, log) {
   if (!trace) return null;
   const env = { ...process.env, GITHUB_WORKSPACE: tree, REVIEW_INPUT_DIR: input };
   delete env.REVIEW_HEAD_DIR;
@@ -196,7 +207,7 @@ function checkTrace(trace, tree, input, who) {
   const said = `${(r.stderr || '').trim()}${r.stdout ? `\n${r.stdout.trim()}` : ''}`.trim();
   // One line, so the reason stays in its row of the job summary's table.
   if (r.status !== 0) return `check-trace-tools.sh refused ${who} trace: ${said.replace(/\s*\n\s*/g, '; ') || `exit ${r.status}`}`;
-  console.log(`    ${said}`);
+  log.push(said);
   return null;
 }
 
@@ -209,119 +220,136 @@ function caseCommit(c, kind) {
   return kind === 'incident' ? c.introduced : c.commit;
 }
 
-/** One case: its result, the directory it ran in, and every agent trace it wrote. */
-function runCase(repo, c, kind, base, verify) {
-  const work = mkdtempSync(join(tmpdir(), `review-eval-${c.name}-`));
-  const traces = [];
-  return { ...replay(repo, c, kind, base, verify, work, traces), work, traces };
+/**
+ * A name for a temporary directory: the case name reduced to the characters
+ * the tool check allows in a path, so a case's own paths are never refused.
+ */
+export function safeName(name) {
+  return String(name).replace(/[^A-Za-z0-9._-]/g, '_');
 }
 
-function replay(repo, c, kind, base, verify, work, traces) {
-  const commit = caseCommit(c, kind);
-  const angle = c.angle;
-  const tree = join(work, 'tree');
-  // The diffs are written here and the agent opens them with the Read tool. It
-  // runs in the worktree, so the directory is added for reading with --add-dir,
-  // which compose-agent-args.sh emits from REVIEW_INPUT_DIR, as in the review job.
-  // Its deny rules are written from GITHUB_WORKSPACE, here the repository whose
-  // .git the worktree shares, and RUNNER_TEMP, the runner's when the eval runs
-  // in a job and the case's directory otherwise.
-  const input = join(work, 'input');
-  mkdirSync(input);
-  const env = { ...process.env, REVIEW_INPUT_DIR: input, GITHUB_WORKSPACE: repo, RUNNER_TEMP: process.env.RUNNER_TEMP || work };
-  let args;
-  // The script prints no line and says why on stderr when it refuses a path.
-  const compose = sh('bash', [join(TOOLS, 'agent/compose-agent-args.sh')], { cwd: repo, env });
-  if (compose.status !== 0) {
-    return { error: `compose-agent-args.sh refused the reviewer's arguments: ${(compose.stderr || '').trim().slice(0, 300) || `exit ${compose.status}`}` };
-  }
-  try {
-    args = reviewArgs((compose.stdout || '').split('\n').find((l) => l.startsWith('AGENT_ARGS_REVIEW=')));
-  } catch (e) {
-    return { error: e.message };
-  }
-  const add = sh('git', ['worktree', 'add', '--detach', tree, commit], { cwd: repo });
-  if (add.status !== 0) return { error: `could not check out ${commit}: ${add.stderr.trim()}` };
-  try {
-    // The case tree is the reviewed change, as the head is in the review job,
-    // and the agent's Read follows links. Each link becomes a file naming its
-    // target before any agent runs, with the script the review job runs on the head.
-    const links = sh('bash', [join(TOOLS, 'review/replace-symlinks.sh'), tree]);
-    if (links.status !== 0) {
-      return { error: `replace-symlinks.sh failed on the case tree: ${(links.stderr || '').trim() || `exit ${links.status}`}` };
+/**
+ * One case in a work directory of its own, given by its real path, because the
+ * tool check compares the paths an agent used with the roots both as spelled
+ * and as real paths. Returns the case's result plus every file the screen must
+ * read (agent traces and stderr) and the lines it would print, held back until
+ * the screen has passed them.
+ */
+function replay(repo, c, kind, base, verify) {
+  const work = realpathSync(mkdtempSync(join(tmpdir(), `review-eval-${safeName(c.name)}-`)));
+  const traces = [];
+  const log = [];
+  const steps = () => {
+    const commit = caseCommit(c, kind);
+    const angle = c.angle;
+    const tree = join(work, 'tree');
+    // The diffs are written here and the agent opens them with the Read tool. It
+    // runs in the worktree, so the directory is added for reading with --add-dir,
+    // which compose-agent-args.sh emits from REVIEW_INPUT_DIR, as in the review job.
+    // Its deny rules are written from GITHUB_WORKSPACE, here the repository whose
+    // .git the worktree shares, and RUNNER_TEMP, the runner's when the eval runs
+    // in a job and the case's directory otherwise.
+    const input = join(work, 'input');
+    mkdirSync(input);
+    const env = { ...process.env, REVIEW_INPUT_DIR: input, GITHUB_WORKSPACE: repo, RUNNER_TEMP: process.env.RUNNER_TEMP || work };
+    let args;
+    // The script prints no line and says why on stderr when it refuses a path.
+    const compose = sh('bash', [join(TOOLS, 'agent/compose-agent-args.sh')], { cwd: repo, env });
+    if (compose.status !== 0) {
+      return { error: `compose-agent-args.sh refused the reviewer's arguments: ${(compose.stderr || '').trim().slice(0, 300) || `exit ${compose.status}`}` };
     }
-    console.log(`    ${(links.stdout || '').trim()}`);
-
-    const prompt = join(work, 'prompt.txt');
-    const a = sh('bash', [join(TOOLS, 'review/assemble-review-prompt.sh'), angle, base, commit, prompt, `${commit}^`], { cwd: repo, env });
-    if (a.status !== 0) return { error: `could not assemble the prompt: ${(a.stderr || a.stdout).trim()}` };
-    console.log(`    ${(a.stdout || '').trim()}`);
-
-    const review = runAgent(prompt, tree, args, work, 'review');
-    if (review.trace) traces.push(review.trace);
-    const reviewRefused = checkTrace(review.trace, tree, input, "the reviewer's");
-    if (reviewRefused) return { error: reviewRefused };
-    if (!review.ok) return { error: review.error };
-    const candidates = join(work, 'candidates.json');
-    if (!extract(review.trace, candidates)) return { error: 'the reviewer ran but reported nothing machine-readable' };
-
-    let findingsFile = candidates;
-    let dropped = [];
-    const count = JSON.parse(readFileSync(candidates, 'utf8')).length;
-    if (verify && count > 0) {
-      const vprompt = join(work, 'verify-prompt.txt');
-      const v = sh('bash', [join(TOOLS, 'review/assemble-verify-prompt.sh'), base, commit, candidates, vprompt], { cwd: repo, env });
-      if (v.status !== 0) return { error: `could not assemble the verification prompt: ${(v.stderr || v.stdout).trim()}` };
-      const votes = [];
-      for (let i = 1; i <= VERIFIERS; i += 1) {
-        const out = join(work, `verdicts-${i}.json`);
-        votes.push(out);
-        const run = runAgent(vprompt, tree, args, work, `verify-${i}`);
-        if (run.trace) traces.push(run.trace);
-        // A refused call fails the case: it is a breach of the containment,
-        // not a vote.
-        const verifyRefused = checkTrace(run.trace, tree, input, `verifier ${i}'s`);
-        if (verifyRefused) return { error: verifyRefused };
-        // A verifier that fails is a vote to keep, exactly as in the review action.
-        if (run.ok) extract(run.trace, out);
+    try {
+      args = reviewArgs((compose.stdout || '').split('\n').find((l) => l.startsWith('AGENT_ARGS_REVIEW=')));
+    } catch (e) {
+      return { error: e.message };
+    }
+    const add = sh('git', ['worktree', 'add', '--detach', tree, commit], { cwd: repo });
+    if (add.status !== 0) return { error: `could not check out ${commit}: ${add.stderr.trim()}` };
+    try {
+      // Real paths, for the agent's working directory and the tool check's roots.
+      const realTree = realpathSync(tree);
+      const realInput = realpathSync(input);
+      // The case tree is the reviewed change, as the head is in the review job,
+      // and the agent's Read follows links. Each link becomes a file naming its
+      // target before any agent runs, with the script the review job runs on the head.
+      const links = sh('bash', [join(TOOLS, 'review/replace-symlinks.sh'), realTree]);
+      if (links.status !== 0) {
+        return { error: `replace-symlinks.sh failed on the case tree: ${(links.stderr || '').trim() || `exit ${links.status}`}` };
       }
-      findingsFile = join(work, 'findings.json');
-      const vote = sh('node', [join(TOOLS, 'review/vote-findings.mjs'), candidates, findingsFile, join(work, 'dropped.json'), String(VERIFIERS), ...votes]);
-      if (vote.status !== 0) return { error: `the vote failed: ${vote.stderr.trim()}` };
-      dropped = JSON.parse(readFileSync(join(work, 'dropped.json'), 'utf8'));
+      log.push((links.stdout || '').trim());
+
+      const prompt = join(work, 'prompt.txt');
+      const a = sh('bash', [join(TOOLS, 'review/assemble-review-prompt.sh'), angle, base, commit, prompt, `${commit}^`], { cwd: repo, env });
+      if (a.status !== 0) return { error: `could not assemble the prompt: ${(a.stderr || a.stdout).trim()}` };
+      log.push((a.stdout || '').trim());
+
+      const review = runAgent(prompt, realTree, args, work, 'review');
+      traces.push(...[review.trace, review.stderr].filter(Boolean));
+      const reviewRefused = checkTrace(review.trace, realTree, realInput, "the reviewer's", log);
+      if (reviewRefused) return { error: reviewRefused };
+      if (!review.ok) return { error: review.error };
+      const candidates = join(work, 'candidates.json');
+      if (!extract(review.trace, candidates)) return { error: 'the reviewer ran but reported nothing machine-readable' };
+
+      let findingsFile = candidates;
+      let dropped = [];
+      const count = JSON.parse(readFileSync(candidates, 'utf8')).length;
+      if (verify && count > 0) {
+        const vprompt = join(work, 'verify-prompt.txt');
+        const v = sh('bash', [join(TOOLS, 'review/assemble-verify-prompt.sh'), base, commit, candidates, vprompt], { cwd: repo, env });
+        if (v.status !== 0) return { error: `could not assemble the verification prompt: ${(v.stderr || v.stdout).trim()}` };
+        const votes = [];
+        for (let i = 1; i <= VERIFIERS; i += 1) {
+          const out = join(work, `verdicts-${i}.json`);
+          votes.push(out);
+          const run = runAgent(vprompt, realTree, args, work, `verify-${i}`);
+          traces.push(...[run.trace, run.stderr].filter(Boolean));
+          // A refused call fails the case: it is a breach of the containment,
+          // not a vote.
+          const verifyRefused = checkTrace(run.trace, realTree, realInput, `verifier ${i}'s`, log);
+          if (verifyRefused) return { error: verifyRefused };
+          // A verifier that fails is a vote to keep, exactly as in the review action.
+          if (run.ok) extract(run.trace, out);
+        }
+        findingsFile = join(work, 'findings.json');
+        const vote = sh('node', [join(TOOLS, 'review/vote-findings.mjs'), candidates, findingsFile, join(work, 'dropped.json'), String(VERIFIERS), ...votes]);
+        if (vote.status !== 0) return { error: `the vote failed: ${vote.stderr.trim()}` };
+        dropped = JSON.parse(readFileSync(join(work, 'dropped.json'), 'utf8'));
+      }
+      const findings = JSON.parse(readFileSync(findingsFile, 'utf8'));
+      // What the reviewer said and what the vote removed, so a miss can be told
+      // apart: a reviewer that said nothing, or verifiers that refuted it.
+      log.push(`reviewer reported ${count}, the vote dropped ${dropped.length}, ${findings.length} kept`);
+      return { findings, candidates: count, dropped };
+    } finally {
+      sh('git', ['worktree', 'remove', '--force', tree], { cwd: repo });
     }
-    const findings = JSON.parse(readFileSync(findingsFile, 'utf8'));
-    // What the reviewer said and what the vote removed, so a miss can be told
-    // apart: a reviewer that said nothing, or verifiers that refuted it.
-    console.log(`    reviewer reported ${count}, the vote dropped ${dropped.length}, ${findings.length} kept`);
-    return { findings, candidates: count, dropped };
-  } finally {
-    sh('git', ['worktree', 'remove', '--force', tree], { cwd: repo });
-  }
+};
+  return { ...steps(), work, traces, log };
 }
 
 /**
  * The review job's secret screen, keep-trace.sh in screen-only mode, on every
  * agent trace of the case and on the row the eval is about to print, put in the
- * job summary and write to --out, against the token the eval holds. Its reasons
+ * job summary and write to --out, and on the lines the case held back for the
+ * log, against the token the eval holds and ANTHROPIC_API_KEY when set. Its reasons
  * name a secret, never its value. A refusal replaces the row with one holding
  * no agent text, and a screen that cannot run refuses, so an eval holding no
  * token fails closed.
  */
 function screen(row, r, c, kind) {
   const published = join(r.work, 'published.json');
-  writeFileSync(published, JSON.stringify(row));
-  const env = {
-    ...process.env,
-    REVIEW_SCREEN_ONLY: '1',
-    REVIEW_SECRETS_JSON: JSON.stringify({ CLAUDE_CODE_OAUTH_TOKEN: process.env.CLAUDE_CODE_OAUTH_TOKEN || '' }),
-  };
+  writeFileSync(published, JSON.stringify({ row, log: r.log }));
+  const secrets = { CLAUDE_CODE_OAUTH_TOKEN: process.env.CLAUDE_CODE_OAUTH_TOKEN || '' };
+  if (process.env.ANTHROPIC_API_KEY) secrets.ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
+  const env = { ...process.env, REVIEW_SCREEN_ONLY: '1', REVIEW_SECRETS_JSON: JSON.stringify(secrets) };
   const s = sh('bash', [join(TOOLS, 'review/keep-trace.sh'), join(r.work, 'screen'), c.angle, caseCommit(c, kind), ...r.traces, published], { env });
   if (s.status !== 0) {
     const why = (s.stderr || '').trim().replace(/\s*\n\s*/g, '; ') || `exit ${s.status}`;
     return { name: c.name, kind, status: 'error', why: `the secret screen refused this case's output, so none of it is shown: ${why}` };
   }
   console.log(`    ${(s.stdout || '').trim()}`);
+  for (const line of r.log) console.log(`    ${line.replace(/\n/g, '\n    ')}`);
   return row;
 }
 
@@ -377,7 +405,7 @@ function main(argv) {
 
   const results = [];
   for (const { c, kind } of cases) {
-    const r = runCase(repo, c, kind, base, opts.verify);
+    const r = replay(repo, c, kind, base, opts.verify);
     let row;
     if (r.error) row = { name: c.name, kind, status: 'error', why: r.error };
     else {
@@ -389,6 +417,8 @@ function main(argv) {
     }
     // Nothing an agent wrote is printed before the screen passed it.
     row = screen(row, r, c, kind);
+    // The traces and stderr in it are not kept, whatever the screen decided.
+    rmSync(r.work, { recursive: true, force: true });
     for (const d of row.dropped || []) console.log(`      dropped: ${d.file}:${d.line} ${String(d.title || '').slice(0, 100)}`);
     results.push(row);
     console.log(`  ${row.status.padEnd(5)} ${kind.padEnd(8)} ${c.name}: ${row.why}`);

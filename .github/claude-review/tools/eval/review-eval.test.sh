@@ -12,7 +12,8 @@ mkdir -p "$tmp/bin"
 cat > "$tmp/bin/claude" <<'SH'
 #!/usr/bin/env bash
 prompt=$(cat)
-[ -n "${FAKE_FAIL:-}" ] && exit 3
+# FAKE_STDERR is written to stderr before a FAKE_FAIL exit.
+[ -n "${FAKE_FAIL:-}" ] && { printf '%s' "${FAKE_STDERR:-}" >&2; exit 3; }
 # Record each --add-dir the agent was given, and whether the review diff was in
 # that directory when the agent started.
 if [ -n "${ARGS_LOG:-}" ]; then
@@ -34,6 +35,12 @@ fi
 if printf '%s' "$prompt" | grep -q VERIFYING; then body="${VERDICT_JSON:-[]}"; call="${VERIFY_READ:-}"; else body="${REVIEW_JSON:-[]}"; call="${REVIEW_READ:-}"; fi
 # REVIEW_READ and VERIFY_READ put a Read of that path in the reviewer's or a
 # verifier's trace.
+# READ_DIFF reads the review diff from the --add-dir directory; READ_CWD reads
+# gate.sh by the physical path of the working directory.
+if [ -n "${READ_DIFF:-}" ]; then
+  prev=""; for a in "$@"; do [ "$prev" = "--add-dir" ] && call="$a/review-diff.patch"; prev="$a"; done
+fi
+[ -n "${READ_CWD:-}" ] && call="$(pwd -P)/gate.sh"
 [ -n "$call" ] && python3 -c 'import json,sys; print(json.dumps({"type":"assistant","message":{"content":[{"type":"tool_use","id":"toolu_1","name":"Read","input":{"file_path":sys.argv[1]}}]}}))' "$call"
 python3 -c 'import json,sys; print(json.dumps({"type":"system","subtype":"init"})); print(json.dumps({"type":"assistant","message":{"content":[{"type":"text","text":"```json\n"+sys.argv[1]+"\n```"}]}}))' "$body"
 SH
@@ -208,9 +215,10 @@ done
 assert_contains "$(cat "$tmp/summary.md")" "the secret screen refused" "the job summary gives the screen's reason instead"
 assert_contains "$(cat "$tmp/results.json")" "the secret screen refused" "and so does --out"
 # A finding the verifiers refute is printed as dropped: it is screened as well.
-: > "$tmp/summary.md"
+: > "$tmp/summary.md"; rm -f "$tmp/results.json"
 assert_eq "2" "$(run CLAUDE_CODE_OAUTH_TOKEN="$token" REVIEW_JSON="$leak" VERDICT_JSON="$refute" GITHUB_STEP_SUMMARY="$tmp/summary.md" -- cases --base main --only docs-only --out "$tmp/results.json")" "a dropped finding holding the token fails the eval too"
 for f in "$tmp/out" "$tmp/summary.md" "$tmp/results.json"; do
+  [ -s "$f" ] || { echo "FAIL: $f was not written" >&2; exit 1; }
   if grep -qF "$token" "$f"; then echo "FAIL: the dropped title's token reached $f" >&2; exit 1; fi
 done
 assert_contains "$(cat "$tmp/out")" "CLAUDE_CODE_OAUTH_TOKEN" "and the screen names the secret"
@@ -220,5 +228,43 @@ assert_contains "$(cat "$tmp/out")" "keep-trace: screened" "and the screen's lin
 # With no token to compare against the screen cannot run, and fails closed.
 assert_eq "2" "$(run CLAUDE_CODE_OAUTH_TOKEN= REVIEW_JSON="$hit" -- cases --base main --no-verify --only gate-fails-open)" "an eval holding no token cannot screen and fails"
 assert_contains "$(cat "$tmp/out")" "no secret long enough to compare against" "with the screen's reason"
+
+# ANTHROPIC_API_KEY, when the eval holds one, is screened as well.
+apikey="sk-ant-api03-$(od -An -N24 -tx1 /dev/urandom | tr -d ' \n')"
+keyleak="[{\"severity\":\"important\",\"file\":\"gate.sh\",\"line\":1,\"title\":\"the gate fails open, key $apikey\"}]"
+assert_eq "2" "$(run ANTHROPIC_API_KEY="$apikey" REVIEW_JSON="$keyleak" -- cases --base main --no-verify --only gate-fails-open)" "a finding holding ANTHROPIC_API_KEY fails the eval"
+assert_contains "$(cat "$tmp/out")" "a screened file contains the value of: ANTHROPIC_API_KEY" "and the screen names it"
+if grep -qF "$apikey" "$tmp/out"; then echo "FAIL: the API key reached the log" >&2; exit 1; fi
+
+# The agent's whole stderr is screened, not only the part kept for the reason.
+long=$(printf 'x%.0s' $(seq 1 400))
+assert_eq "2" "$(run CLAUDE_CODE_OAUTH_TOKEN="$token" FAKE_FAIL=1 FAKE_STDERR="$long $token" -- cases --base main --no-verify --only gate-fails-open)" "a failed agent's stderr is screened"
+assert_contains "$(cat "$tmp/out")" "a screened file contains the value of: CLAUDE_CODE_OAUTH_TOKEN" "including past its first 300 characters"
+if grep -qF "$token" "$tmp/out"; then echo "FAIL: the stderr token reached the log" >&2; exit 1; fi
+
+# Nothing replay prints reaches the log before the screen has passed it.
+run REVIEW_JSON="$hit" -- cases --base main --no-verify --only gate-fails-open >/dev/null
+screened=$(grep -n "keep-trace: screened" "$tmp/out" | head -1 | cut -d: -f1)
+assembled=$(grep -n "assemble-review-prompt:" "$tmp/out" | head -1 | cut -d: -f1)
+checked=$(grep -n "check-trace-tools:" "$tmp/out" | head -1 | cut -d: -f1)
+[ -n "$screened" ] && [ -n "$assembled" ] && [ -n "$checked" ] && [ "$screened" -lt "$assembled" ] && [ "$screened" -lt "$checked" ] \
+  || { echo "FAIL: replay's lines were printed before the screen (screen $screened, prompt $assembled, check $checked)" >&2; exit 1; }
+
+# Each case's work directory, traces included, is removed once screened,
+# whether the screen passed or refused.
+mkdir -p "$tmp/tmpdir"
+run TMPDIR="$tmp/tmpdir" REVIEW_JSON="$hit" -- cases --base main --no-verify --only gate-fails-open >/dev/null
+run TMPDIR="$tmp/tmpdir" CLAUDE_CODE_OAUTH_TOKEN="$token" REVIEW_JSON="$leak" -- cases --base main --no-verify --only gate-fails-open >/dev/null
+assert_eq "" "$(ls -A "$tmp/tmpdir")" "no case work directory is left behind"
+
+# A temporary directory reached through a link: the tool check gets real
+# paths, so a Read of the tree by its physical path passes.
+mkdir -p "$tmp/realtmp"; ln -s "$tmp/realtmp" "$tmp/linktmp"
+assert_eq "0" "$(run TMPDIR="$tmp/linktmp" REVIEW_JSON="$hit" READ_CWD=1 -- cases --base main --no-verify --only gate-fails-open)" "a Read by the tree's physical path passes when the temporary directory is a link"
+
+# A case name outside the path allowlist does not make its own paths refused.
+mkdir -p "$r/odd-cases"
+printf '{"name":"gate: fails open","control":"review","introduced":"%s","fix":"x","angle":"bugs","expect_file":"gate.sh","expect_any":["fails open"]}' "$bug" > "$r/odd-cases/001.json"
+assert_eq "0" "$(run REVIEW_JSON="$hit" READ_DIFF=1 -- odd-cases --base main --no-verify)" "a case named with a colon and a space can read its own diff"
 
 pass "review-eval.test.sh"
