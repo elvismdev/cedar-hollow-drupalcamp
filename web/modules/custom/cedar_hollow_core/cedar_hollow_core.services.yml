@@ -4,3 +4,6 @@ services:
   Drupal\cedar_hollow_core\Twig\SafeHrefExtension:
     tags:
       - { name: twig.extension }
+  Drupal\cedar_hollow_core\EventSubscriber\DuplicateRegistrantMessageSubscriber:
+    tags:
+      - { name: event_subscriber }
