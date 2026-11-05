@@ -375,7 +375,9 @@ The repository's merge settings are changed to match (merge commits only), becau
 *   **Containment.** The agents get the review job's arguments and the review job's controls, with the case tree in the place of the head:
     *   the case tree's symlinks are replaced with files naming their targets (`replace-symlinks.sh`) before any agent runs;
     *   every agent's trace goes through `check-trace-tools.sh`, with the case tree as the workspace, because the agents work in it, and the case's input directory as the second root; the repository the tree comes from, its `.git` included, is outside every root, and a refused call by the reviewer or any verifier makes the case an error with the check's reason;
-    *   the traces and each case's row are screened against `CLAUDE_CODE_OAUTH_TOKEN` with `keep-trace.sh` in screen-only mode before anything an agent wrote is printed, put in the job summary or written to `--out`; a refusal, or no token to screen against, makes the case an error whose reason holds no agent text.
+    *   the traces and each case's row are screened against `CLAUDE_CODE_OAUTH_TOKEN` with `keep-trace.sh` in screen-only mode before anything an agent wrote is printed, put in the job summary or written to `--out`; a refusal, or no token to screen against, makes the case an error whose reason holds no agent text;
+    *   the screen also covers each agent's whole stderr and the lines the case would print, `ANTHROPIC_API_KEY` is screened too when set, and nothing from a case is printed before the screen passed it;
+    *   each case works in a directory named from its case name reduced to `[A-Za-z0-9._-]`, given to the agent and the tool check by its real path, and removed after the screen.
 *   **Result.**
     *   A case that regresses against the baseline opens or updates the issue labelled `reviewer-eval`.
     *   A case that could not run says so instead.
