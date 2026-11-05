@@ -92,7 +92,7 @@ terminus env:code-log cedar-hollow-demo.dev
 
 Re-run only the newest `main` commit's CI run; re-running an older one cancels the newer commit's CI. To retry an older failure, push an empty commit. Re-running `deploy-dev.yml` itself is safe: it skips the push when Dev already runs the commit and waits for that commit's build.
 
-Pantheon's build runs `composer install` only. Storybook is never built or served on Pantheon, because a built Storybook preview accepts story updates from any origin and must not share the Drupal site's origin: `.github/workflows/storybook-pages.yml` builds it on every push to `main` and publishes it to GitHub Pages. Content reached Pantheon once, by database copy from DDEV.
+Pantheon's build runs `composer install` only. Storybook is never built or served on Pantheon, because a built Storybook preview accepts story updates from any origin and must not share the Drupal site's origin: `.github/workflows/storybook-pages.yml` builds it after CI succeeds on `main` and publishes it to GitHub Pages. Content reached Pantheon once, by database copy from DDEV.
 
 On a freshly created Dev, the one-time recipe and image import must run after `drush deploy` and before the warm-up. The first deploy there is expected to end red at `warm` or `smoke`; then run:
 
