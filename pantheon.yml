@@ -5,12 +5,7 @@ php_version: 8.3
 database:
   version: 10.6
 
-# Builds the theme's static Storybook on every push. The theme folder holds
-# package.json and package-lock.json; build output is ignored in the root
-# .gitignore.
-frontend_build:
-  enabled: true
-  paths:
-    - path: web/themes/custom/cedar_hollow
-      node_version: 22
-      build_command: build
+# No frontend_build: the theme ships its CSS and JavaScript as committed files,
+# and its only build is Storybook, which is published to GitHub Pages. A
+# Storybook built here would be served on the Drupal origin, where a built
+# preview accepts story updates by postMessage from any origin.

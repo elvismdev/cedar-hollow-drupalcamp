@@ -97,9 +97,10 @@
 #/.env
 
 # Cedar Hollow: theme and test tooling output (rules live here because the
-# upstream ignores .gitignore files under web/).
+# upstream ignores .gitignore files under web/). The static Storybook is built
+# into build/storybook, outside the web/ docroot, so no web server serves it.
 /web/themes/custom/cedar_hollow/node_modules/
-/web/themes/custom/cedar_hollow/storybook/
+/build/
 /tests/node_modules/
 /tests/test-results/
 /tests/playwright-report/

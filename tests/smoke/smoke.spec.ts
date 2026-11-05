@@ -26,6 +26,16 @@ test('the agenda data is uncached at the edge and tagged per session', async ({ 
   expect(response.headers()['x-drupal-cache-tags']).toMatch(/registration_list\.host_entity:node:\d+/);
 });
 
+// A built Storybook preview accepts story updates by postMessage from any
+// origin, so one served here would run script on the site's origin. Storybook
+// is built into build/storybook, outside the docroot, and published to GitHub
+// Pages; this catches a copy left in the theme folder by an older build.
+test('the site does not serve a Storybook build', async ({ request }) => {
+  const response = await request.get('/themes/custom/cedar_hollow/storybook/iframe.html');
+  test.skip(response.headers()['cf-mitigated'] === 'challenge', 'The edge answered with a bot challenge, which a test must not get past.');
+  expect(response.status()).toBe(404);
+});
+
 test('a session page shows its image as AVIF', async ({ page, request }) => {
   await page.goto('/sessions/caching-render-arrays');
   const image = page.locator('.session img.hero__img');

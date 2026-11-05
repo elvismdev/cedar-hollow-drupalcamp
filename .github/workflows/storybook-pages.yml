@@ -1,0 +1,71 @@
+name: Publish Storybook
+
+# Publishes the theme's static Storybook to GitHub Pages, on its own origin.
+# A built Storybook preview accepts story updates by postMessage from any
+# origin, so it must never be served on the Drupal site's origin. Runs after
+# the workflow named "CI" in ci.yml completes, and publishes a commit only when
+# its CI run succeeded on a push to main in this repository, so a fork's branch
+# named main never publishes. Renaming CI stops publishing without an error.
+# The build uses relative URLs, so it works under the project sub-path without
+# a base setting.
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+
+# Only runs that will publish share the storybook-pages group, so a skipped run
+# never replaces a deployment that is waiting. A running deployment is never
+# cancelled.
+concurrency:
+  group: ${{ (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push' && github.event.workflow_run.head_branch == 'main' && github.event.workflow_run.head_repository.full_name == github.repository) && 'storybook-pages' || format('storybook-pages-skip-{0}', github.run_id) }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build Storybook
+    if: github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push' && github.event.workflow_run.head_branch == 'main' && github.event.workflow_run.head_repository.full_name == github.repository
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version: '22'
+      # Storybook loads core's hidden.module.css, so Drupal core must be
+      # present; installed the way CI's theme job installs it.
+      - uses: shivammathur/setup-php@eb7c497e18156a6bbabfef1d3a82760b9eda3962 # v2
+        with:
+          php-version: '8.3'
+          tools: composer:v2
+      - run: composer install --no-interaction --no-progress --no-dev
+      - run: npm ci
+        working-directory: web/themes/custom/cedar_hollow
+      # Writes build/storybook at the repository root.
+      - run: npm run build
+        working-directory: web/themes/custom/cedar_hollow
+      - uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5
+        with:
+          path: build/storybook
+
+  deploy:
+    name: Deploy to GitHub Pages
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d # v6
+      - id: deployment
+        uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5
