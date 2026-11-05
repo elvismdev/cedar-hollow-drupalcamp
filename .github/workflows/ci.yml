@@ -142,15 +142,19 @@ jobs:
       - uses: ddev/github-action-setup-ddev@v1
       - name: Rebuild the site from configuration and the content recipe
         run: scripts/rebuild.sh
-      - name: Build the theme's Storybook for the BEM parity test
-        run: ddev exec -d /var/www/html/web/themes/custom/cedar_hollow "npm ci && npm run build"
-      # On its own origin, as published, never through Drupal: the parity
-      # test reads it at STORYBOOK_URL's default, http://127.0.0.1:6006.
-      - name: Serve the Storybook build
-        run: python3 -m http.server 6006 --bind 127.0.0.1 --directory web/themes/custom/cedar_hollow/storybook > /tmp/storybook-server.log 2>&1 &
       - uses: actions/setup-node@v7
         with:
           node-version: '22'
+      # Built outside the docroot and served on its own origin, as published,
+      # so Drupal never serves it: the parity test reads it at STORYBOOK_URL's
+      # default, http://127.0.0.1:6006, and the smoke suite checks that the
+      # site has no Storybook.
+      - name: Build and serve the theme's Storybook for the BEM parity test
+        working-directory: web/themes/custom/cedar_hollow
+        run: |
+          npm ci
+          npx storybook build -o "$RUNNER_TEMP/storybook"
+          python3 -m http.server 6006 --bind 127.0.0.1 --directory "$RUNNER_TEMP/storybook" > /tmp/storybook-server.log 2>&1 &
       # --with-deps runs apt-get update, which can hang on an unreachable
       # Ubuntu mirror, so a stalled install fails here instead of at the job's
       # 60-minute limit.
