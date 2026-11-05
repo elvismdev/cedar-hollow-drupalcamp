@@ -146,19 +146,50 @@ function resolveBase(repo, given) {
   return null;
 }
 
-/** One agent run, prompt on stdin, the stream converted to the array the extractor reads. */
+/**
+ * One agent run, prompt on stdin, the stream converted to the array the
+ * extractor reads. The trace is written even when the agent failed, so what it
+ * called before failing is still checked.
+ */
 function runAgent(promptFile, cwd, args, work, label) {
   const stream = join(work, `${label}.jsonl`);
   const r = sh('bash', ['-c', 'claude -p --output-format stream-json --verbose "${@:3}" < "$1" > "$2"', '_', promptFile, stream, ...args], { cwd });
-  if (r.status !== 0) return { ok: false, error: `claude exited ${r.status}: ${(r.stderr || '').trim().slice(0, 300)}` };
-  const messages = [];
-  for (const line of readFileSync(stream, 'utf8').split('\n')) {
-    if (!line.trim()) continue;
-    try { messages.push(JSON.parse(line)); } catch { /* a partial line is not a message */ }
+  let trace = null;
+  if (existsSync(stream)) {
+    const messages = [];
+    for (const line of readFileSync(stream, 'utf8').split('\n')) {
+      if (!line.trim()) continue;
+      try { messages.push(JSON.parse(line)); } catch { /* a partial line is not a message */ }
+    }
+    trace = join(work, `${label}.json`);
+    writeFileSync(trace, JSON.stringify(messages));
   }
-  const trace = join(work, `${label}.json`);
-  writeFileSync(trace, JSON.stringify(messages));
+  if (r.status !== 0) return { ok: false, trace, error: `claude exited ${r.status}: ${(r.stderr || '').trim().slice(0, 300)}` };
   return { ok: true, trace };
+}
+
+/**
+ * The review job's tool check on one agent's trace: Read, Glob and Grep only,
+ * on paths inside the allowed roots. The check resolves relative paths, and a
+ * Glob or Grep with no path, against GITHUB_WORKSPACE, which in the review job
+ * is the agent's working directory. Here the agent works in the case tree, so
+ * the tree is the workspace and its .git is refused as the workspace's is; the
+ * input directory is the second root, and nothing else is: the repository the
+ * tree was checked out from, its .git included, lies outside every root. Its
+ * reason lines name tools, call numbers and fixed labels, never a value.
+ * Returns an error message on a refusal, null when the trace passed or the
+ * agent left no trace, which the review job also lets through.
+ */
+function checkTrace(trace, tree, input, who) {
+  if (!trace) return null;
+  const env = { ...process.env, GITHUB_WORKSPACE: tree, REVIEW_INPUT_DIR: input };
+  delete env.REVIEW_HEAD_DIR;
+  const r = sh('bash', [join(TOOLS, 'review/check-trace-tools.sh'), trace], { env });
+  const said = `${(r.stderr || '').trim()}${r.stdout ? `\n${r.stdout.trim()}` : ''}`.trim();
+  // One line, so the reason stays in its row of the job summary's table.
+  if (r.status !== 0) return `check-trace-tools.sh refused ${who} trace: ${said.replace(/\s*\n\s*/g, '; ') || `exit ${r.status}`}`;
+  console.log(`    ${said}`);
+  return null;
 }
 
 function extract(trace, out) {
@@ -209,6 +240,8 @@ function runCase(repo, c, kind, base, verify) {
     console.log(`    ${(a.stdout || '').trim()}`);
 
     const review = runAgent(prompt, tree, args, work, 'review');
+    const reviewRefused = checkTrace(review.trace, tree, input, "the reviewer's");
+    if (reviewRefused) return { error: reviewRefused };
     if (!review.ok) return { error: review.error };
     const candidates = join(work, 'candidates.json');
     if (!extract(review.trace, candidates)) return { error: 'the reviewer ran but reported nothing machine-readable' };
@@ -225,6 +258,10 @@ function runCase(repo, c, kind, base, verify) {
         const out = join(work, `verdicts-${i}.json`);
         votes.push(out);
         const run = runAgent(vprompt, tree, args, work, `verify-${i}`);
+        // A refused call fails the case: it is a breach of the containment,
+        // not a vote.
+        const verifyRefused = checkTrace(run.trace, tree, input, `verifier ${i}'s`);
+        if (verifyRefused) return { error: verifyRefused };
         // A verifier that fails is a vote to keep, exactly as in the review action.
         if (run.ok) extract(run.trace, out);
       }

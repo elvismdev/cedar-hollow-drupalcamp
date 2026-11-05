@@ -31,7 +31,10 @@ fi
 if [ -n "${LINK_LOG:-}" ]; then
   if [ -L leak ]; then echo "link"; elif [ -f leak ]; then echo "file $(cat leak)"; else echo "none"; fi >> "$LINK_LOG"
 fi
-if printf '%s' "$prompt" | grep -q VERIFYING; then body="${VERDICT_JSON:-[]}"; else body="${REVIEW_JSON:-[]}"; fi
+if printf '%s' "$prompt" | grep -q VERIFYING; then body="${VERDICT_JSON:-[]}"; call="${VERIFY_READ:-}"; else body="${REVIEW_JSON:-[]}"; call="${REVIEW_READ:-}"; fi
+# REVIEW_READ and VERIFY_READ put a Read of that path in the reviewer's or a
+# verifier's trace.
+[ -n "$call" ] && python3 -c 'import json,sys; print(json.dumps({"type":"assistant","message":{"content":[{"type":"tool_use","id":"toolu_1","name":"Read","input":{"file_path":sys.argv[1]}}]}}))' "$call"
 python3 -c 'import json,sys; print(json.dumps({"type":"system","subtype":"init"})); print(json.dumps({"type":"assistant","message":{"content":[{"type":"text","text":"```json\n"+sys.argv[1]+"\n```"}]}}))' "$body"
 SH
 chmod +x "$tmp/bin/claude"
@@ -171,5 +174,20 @@ printf '{"name":"adds-a-link","kind":"clean","commit":"%s","angle":"bugs","why":
 assert_eq "0" "$(run REVIEW_JSON='[]' LINK_LOG="$tmp/link.log" -- link-cases --base main --no-verify)" "a case whose tree holds a link still runs"
 assert_eq "file symlink to: $outside" "$(cat "$tmp/link.log")" "and the agent finds a file naming the link's target, not the link"
 assert_contains "$(cat "$tmp/out")" "replace-symlinks: replaced 1 symlink(s)" "the eval logs the replacement"
+
+# Every agent's trace goes through the review job's tool check, with the case
+# tree as the workspace: a refused call fails the case with the check's reason,
+# whatever the agent reported.
+assert_eq "0" "$(run REVIEW_JSON="$hit" REVIEW_READ=gate.sh -- cases --base main --no-verify --only gate-fails-open)" "a Read inside the case tree passes the tool check"
+assert_contains "$(cat "$tmp/out")" "check-trace-tools: 1 tool call(s), all Read, Glob or Grep, all inside the allowed roots" "and the check's verdict is logged"
+: > "$tmp/summary.md"
+assert_eq "2" "$(run REVIEW_JSON="$hit" REVIEW_READ=.git/config GITHUB_STEP_SUMMARY="$tmp/summary.md" -- cases --base main --no-verify --only gate-fails-open)" "a reviewer Read of the case tree's .git fails the eval"
+assert_contains "$(cat "$tmp/out")" "check-trace-tools.sh refused the reviewer's trace" "the eval says the tool check refused"
+assert_contains "$(cat "$tmp/out")" "Read call 1: path under .git" "and passes on the check's reason"
+assert_contains "$(grep '^| gate-fails-open |' "$tmp/summary.md")" "path under .git (field file_path); check-trace-tools: the agent called" "the job summary row holds the whole reason on one line"
+assert_eq "2" "$(run REVIEW_JSON="$hit" REVIEW_READ="$r/.git/config" -- cases --base main --no-verify --only gate-fails-open)" "a Read of the repository's own .git/config fails it too"
+assert_contains "$(cat "$tmp/out")" "path outside the allowed roots" "as outside the allowed roots"
+assert_eq "2" "$(run REVIEW_JSON="$hit" VERDICT_JSON="$keep" VERIFY_READ=/proc/self/environ -- cases --base main --only gate-fails-open)" "a verifier's refused Read fails the case instead of counting as a vote"
+assert_contains "$(cat "$tmp/out")" "check-trace-tools.sh refused verifier 1's trace" "and names the verifier"
 
 pass "review-eval.test.sh"
