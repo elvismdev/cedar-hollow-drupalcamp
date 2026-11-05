@@ -3,6 +3,7 @@
 *   **Author:** Elvis Morales
 *   **Status:** Proposed
 *   **Date:** 2026-10-30
+*   **Revised:** 2026-11-05: Pantheon no longer runs `frontend_build`; Storybook is published to GitHub Pages (the Pantheon build workflow term, Alternative F and README item 3).
 
 --------------------------------------------------------------------------------
 
@@ -14,7 +15,7 @@ Terms used below:
 
 *   **Dev**: Pantheon's development environment, served at `dev-cedar-hollow-demo.pantheonsite.io`. It is the only initialized environment on this site.
 *   **Pantheon's Git repository**: every Pantheon site has its own Git repository. Dev always runs that repository's `master` branch, which is why GitHub `main` is pushed to Pantheon `master`.
-*   **Pantheon build workflow**: the background job Pantheon starts after each push to its repository, listed by `terminus workflow:list` as `Sync code on "dev"`. It syncs the code, runs Integrated Composer (`composer install`) and runs `frontend_build`, which here builds the theme's static Storybook (`storybook build`). Nothing built is committed to Git.
+*   **Pantheon build workflow**: the background job Pantheon starts after each push to its repository, listed by `terminus workflow:list` as `Sync code on "dev"`. It syncs the code and runs Integrated Composer (`composer install`). Nothing built is committed to Git. Until 2026-11-05 it also ran `frontend_build`, which built the theme's static Storybook; that build was removed because a built Storybook preview must not be served on the Drupal origin, and Storybook is now published to GitHub Pages by `storybook-pages.yml`.
 *   **`drush deploy`**: Drush's standard deploy command. It runs database updates, imports the configuration in `config/`, and runs deploy hooks. Pushing code does not run it.
 *   **CI**: the GitHub workflow named `CI` in `.github/workflows/ci.yml`, with five jobs: `php-quality`, `theme`, `phpunit`, `e2e` and `visual`. None of them has an `if:` condition or `continue-on-error`, so a CI run that concludes `success` means all five ran and passed.
 *   **Deploy contract**: the rules every deploy to Dev follows: the CI gate, the ordering of deploys, the three checks and the recovery. `docs/designs/cedar-hollow-drupalcamp.md` (Deployment) states it, this design records how it was reached and why, and `deploy-dev.yml` carries it out step by step.
@@ -287,8 +288,8 @@ Each step of the `deploy` job appends what it learned to that job's step summary
 ### Alternative F: building Composer and the theme in GitHub Actions
 
 *   **Pros**: push-to-pantheon's README reports faster deploys; the build is visible in the GitHub log.
-*   **Cons**: Built files (vendor, contrib modules, Storybook output) would have to be committed into the site's Pantheon repository on every deploy, which the current `.gitignore` and `frontend_build` setup exist to avoid. It duplicates what Integrated Composer and `frontend_build` already do.
-*   **Reason for Rejection**: Pantheon already builds both; nothing in the goals needs the build moved.
+*   **Cons**: Built files (vendor and contrib modules) would have to be committed into the site's Pantheon repository on every deploy, which the `.gitignore` and Integrated Composer exist to avoid. It duplicates what Integrated Composer already does.
+*   **Reason for Rejection**: Pantheon already builds the Composer dependencies; nothing in the goals needs that build moved. (On 2026-10-30 Pantheon's `frontend_build` also built Storybook; since 2026-11-05 Storybook is built in GitHub Actions and published to GitHub Pages, never committed to Pantheon's repository.)
 
 ### Alternative G: repository secrets instead of a GitHub Environment
 
@@ -384,7 +385,7 @@ Item 8 (settings) is done before the pull request is merged, because the merge s
 *   **Proposed Changes**: the new section contains, in order:
     1.  Deploys run through `.github/workflows/deploy-dev.yml` after every CI job passes on `main`; there is no manual push. Watch a run on the Actions tab or under the `pantheon-dev` deployment. A green run means Dev runs the commit and all three checks passed; a red run marks the failed step, and the `deploy` job's summary lists what happened up to it. `terminus env:code-log cedar-hollow-demo.dev` shows which commit Dev runs.
     2.  The re-run rule from the Technical Plan.
-    3.  Pantheon's build runs `composer install` and builds Storybook (`frontend_build` in `pantheon.yml`). Content reached Pantheon once, by database copy from DDEV. (Kept from today's text.)
+    3.  Pantheon's build runs `composer install` and builds Storybook (`frontend_build` in `pantheon.yml`). Content reached Pantheon once, by database copy from DDEV. (Kept from the text of 2026-10-30. Since 2026-11-05 the README says Pantheon's build runs `composer install` only and Storybook is published to GitHub Pages.)
     4.  The fresh-Dev order, with the two import commands.
     5.  Restore: "Restore Dev from the deploy run's backup file (a full restore was tested on 2026-10-28: every page returned 200, configuration matched the code and the reviewer account was intact):" followed by `terminus backup:restore cedar-hollow-demo.dev --file=<database backup file from the run summary> -y`, together with a revert on `main`.
     6.  Divergence recovery, with its commands.
