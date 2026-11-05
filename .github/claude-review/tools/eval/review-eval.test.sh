@@ -53,11 +53,13 @@ printf '{"name":"gate-fails-open","control":"review","introduced":"%s","fix":"x"
 printf '{"name":"docs-only","kind":"clean","commit":"%s","angle":"bugs","why":"a README line"}' "$clean" > "$r/cases/002.json"
 printf '{"name":"deterministic","control":"bash lint.sh {file}","fix":"x","file":"a"}' > "$r/cases/003.json"
 
-# run <env assignments...> -- <args...>: the eval's exit code, output kept in $tmp/out
+# run <env assignments...> -- <args...>: the eval's exit code, output kept in $tmp/out.
+# The eval screens its output against the token it holds, so every run holds a
+# dummy one unless the assignments replace it.
 run() {
   local envs=()
   while [ "$1" != "--" ]; do envs+=("$1"); shift; done; shift
-  (cd "$r" && env "${envs[@]}" node "$E" "$@" >"$tmp/out" 2>&1); echo $?
+  (cd "$r" && env CLAUDE_CODE_OAUTH_TOKEN=dummy-oauth-token-for-tests "${envs[@]}" node "$E" "$@" >"$tmp/out" 2>&1); echo $?
 }
 
 hit='[{"severity":"important","file":"gate.sh","line":1,"title":"the gate fails open"}]'
@@ -189,5 +191,34 @@ assert_eq "2" "$(run REVIEW_JSON="$hit" REVIEW_READ="$r/.git/config" -- cases --
 assert_contains "$(cat "$tmp/out")" "path outside the allowed roots" "as outside the allowed roots"
 assert_eq "2" "$(run REVIEW_JSON="$hit" VERDICT_JSON="$keep" VERIFY_READ=/proc/self/environ -- cases --base main --only gate-fails-open)" "a verifier's refused Read fails the case instead of counting as a vote"
 assert_contains "$(cat "$tmp/out")" "check-trace-tools.sh refused verifier 1's trace" "and names the verifier"
+
+# What the agents wrote is screened against the token the eval holds, with the
+# review job's screen, before any of it reaches the log, the job summary or
+# --out. The token is random for this run, so only the agent's output can
+# have put it there.
+token="sk-ant-oat01-$(od -An -N24 -tx1 /dev/urandom | tr -d ' \n')"
+leak="[{\"severity\":\"important\",\"file\":\"gate.sh\",\"line\":1,\"title\":\"the gate fails open, token $token\"}]"
+: > "$tmp/summary.md"; rm -f "$tmp/results.json"
+assert_eq "2" "$(run CLAUDE_CODE_OAUTH_TOKEN="$token" REVIEW_JSON="$leak" GITHUB_STEP_SUMMARY="$tmp/summary.md" -- cases --base main --no-verify --only gate-fails-open --out "$tmp/results.json")" "a finding holding the token fails the eval"
+assert_contains "$(cat "$tmp/out")" "a screened file contains the value of: CLAUDE_CODE_OAUTH_TOKEN" "the log says the screen refused, naming the secret"
+for f in "$tmp/out" "$tmp/summary.md" "$tmp/results.json"; do
+  [ -s "$f" ] || { echo "FAIL: $f was not written" >&2; exit 1; }
+  if grep -qF "$token" "$f"; then echo "FAIL: the token reached $f" >&2; exit 1; fi
+done
+assert_contains "$(cat "$tmp/summary.md")" "the secret screen refused" "the job summary gives the screen's reason instead"
+assert_contains "$(cat "$tmp/results.json")" "the secret screen refused" "and so does --out"
+# A finding the verifiers refute is printed as dropped: it is screened as well.
+: > "$tmp/summary.md"
+assert_eq "2" "$(run CLAUDE_CODE_OAUTH_TOKEN="$token" REVIEW_JSON="$leak" VERDICT_JSON="$refute" GITHUB_STEP_SUMMARY="$tmp/summary.md" -- cases --base main --only docs-only --out "$tmp/results.json")" "a dropped finding holding the token fails the eval too"
+for f in "$tmp/out" "$tmp/summary.md" "$tmp/results.json"; do
+  if grep -qF "$token" "$f"; then echo "FAIL: the dropped title's token reached $f" >&2; exit 1; fi
+done
+assert_contains "$(cat "$tmp/out")" "CLAUDE_CODE_OAUTH_TOKEN" "and the screen names the secret"
+# A clean output passes the screen, and the log shows that it ran.
+assert_eq "0" "$(run CLAUDE_CODE_OAUTH_TOKEN="$token" REVIEW_JSON="$hit" -- cases --base main --no-verify --only gate-fails-open)" "output without the token passes the screen"
+assert_contains "$(cat "$tmp/out")" "keep-trace: screened" "and the screen's line is logged"
+# With no token to compare against the screen cannot run, and fails closed.
+assert_eq "2" "$(run CLAUDE_CODE_OAUTH_TOKEN= REVIEW_JSON="$hit" -- cases --base main --no-verify --only gate-fails-open)" "an eval holding no token cannot screen and fails"
+assert_contains "$(cat "$tmp/out")" "no secret long enough to compare against" "with the screen's reason"
 
 pass "review-eval.test.sh"

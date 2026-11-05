@@ -8,6 +8,14 @@
 // its own prompt or grants its own tools measures something the pipeline does
 // not run.
 //
+// The containment is the review job's too, with the case tree in the place of
+// the head: its links are replaced before any agent runs, every agent's trace
+// goes through the tool check, and a refused call makes the case an error. What
+// the agents wrote, the traces and each case's row, is screened against the
+// token the eval holds before any of it is printed, put in the job summary or
+// written to --out; a refusal, or an eval holding no token to screen against,
+// makes the case an error whose reason holds no agent text.
+//
 // Two kinds of case, in one directory of *.json files:
 //   incident  "control": "review", with "introduced" (the commit that brought
 //             the defect in), "angle", "expect_file" and "expect_any" (phrases
@@ -197,10 +205,20 @@ function extract(trace, out) {
   return r.status === 0 && existsSync(out);
 }
 
+function caseCommit(c, kind) {
+  return kind === 'incident' ? c.introduced : c.commit;
+}
+
+/** One case: its result, the directory it ran in, and every agent trace it wrote. */
 function runCase(repo, c, kind, base, verify) {
-  const commit = kind === 'incident' ? c.introduced : c.commit;
-  const angle = c.angle;
   const work = mkdtempSync(join(tmpdir(), `review-eval-${c.name}-`));
+  const traces = [];
+  return { ...replay(repo, c, kind, base, verify, work, traces), work, traces };
+}
+
+function replay(repo, c, kind, base, verify, work, traces) {
+  const commit = caseCommit(c, kind);
+  const angle = c.angle;
   const tree = join(work, 'tree');
   // The diffs are written here and the agent opens them with the Read tool. It
   // runs in the worktree, so the directory is added for reading with --add-dir,
@@ -240,6 +258,7 @@ function runCase(repo, c, kind, base, verify) {
     console.log(`    ${(a.stdout || '').trim()}`);
 
     const review = runAgent(prompt, tree, args, work, 'review');
+    if (review.trace) traces.push(review.trace);
     const reviewRefused = checkTrace(review.trace, tree, input, "the reviewer's");
     if (reviewRefused) return { error: reviewRefused };
     if (!review.ok) return { error: review.error };
@@ -258,6 +277,7 @@ function runCase(repo, c, kind, base, verify) {
         const out = join(work, `verdicts-${i}.json`);
         votes.push(out);
         const run = runAgent(vprompt, tree, args, work, `verify-${i}`);
+        if (run.trace) traces.push(run.trace);
         // A refused call fails the case: it is a breach of the containment,
         // not a vote.
         const verifyRefused = checkTrace(run.trace, tree, input, `verifier ${i}'s`);
@@ -274,11 +294,35 @@ function runCase(repo, c, kind, base, verify) {
     // What the reviewer said and what the vote removed, so a miss can be told
     // apart: a reviewer that said nothing, or verifiers that refuted it.
     console.log(`    reviewer reported ${count}, the vote dropped ${dropped.length}, ${findings.length} kept`);
-    for (const d of dropped) console.log(`      dropped: ${d.file}:${d.line} ${String(d.title || '').slice(0, 100)}`);
-    return { findings, candidates: count, dropped, work };
+    return { findings, candidates: count, dropped };
   } finally {
     sh('git', ['worktree', 'remove', '--force', tree], { cwd: repo });
   }
+}
+
+/**
+ * The review job's secret screen, keep-trace.sh in screen-only mode, on every
+ * agent trace of the case and on the row the eval is about to print, put in the
+ * job summary and write to --out, against the token the eval holds. Its reasons
+ * name a secret, never its value. A refusal replaces the row with one holding
+ * no agent text, and a screen that cannot run refuses, so an eval holding no
+ * token fails closed.
+ */
+function screen(row, r, c, kind) {
+  const published = join(r.work, 'published.json');
+  writeFileSync(published, JSON.stringify(row));
+  const env = {
+    ...process.env,
+    REVIEW_SCREEN_ONLY: '1',
+    REVIEW_SECRETS_JSON: JSON.stringify({ CLAUDE_CODE_OAUTH_TOKEN: process.env.CLAUDE_CODE_OAUTH_TOKEN || '' }),
+  };
+  const s = sh('bash', [join(TOOLS, 'review/keep-trace.sh'), join(r.work, 'screen'), c.angle, caseCommit(c, kind), ...r.traces, published], { env });
+  if (s.status !== 0) {
+    const why = (s.stderr || '').trim().replace(/\s*\n\s*/g, '; ') || `exit ${s.status}`;
+    return { name: c.name, kind, status: 'error', why: `the secret screen refused this case's output, so none of it is shown: ${why}` };
+  }
+  console.log(`    ${(s.stdout || '').trim()}`);
+  return row;
 }
 
 function main(argv) {
@@ -343,6 +387,9 @@ function main(argv) {
         candidates: r.candidates, kept: r.findings, dropped: r.dropped,
       };
     }
+    // Nothing an agent wrote is printed before the screen passed it.
+    row = screen(row, r, c, kind);
+    for (const d of row.dropped || []) console.log(`      dropped: ${d.file}:${d.line} ${String(d.title || '').slice(0, 100)}`);
     results.push(row);
     console.log(`  ${row.status.padEnd(5)} ${kind.padEnd(8)} ${c.name}: ${row.why}`);
   }
