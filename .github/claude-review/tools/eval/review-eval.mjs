@@ -194,6 +194,15 @@ function runCase(repo, c, kind, base, verify) {
   const add = sh('git', ['worktree', 'add', '--detach', tree, commit], { cwd: repo });
   if (add.status !== 0) return { error: `could not check out ${commit}: ${add.stderr.trim()}` };
   try {
+    // The case tree is the reviewed change, as the head is in the review job,
+    // and the agent's Read follows links. Each link becomes a file naming its
+    // target before any agent runs, with the script the review job runs on the head.
+    const links = sh('bash', [join(TOOLS, 'review/replace-symlinks.sh'), tree]);
+    if (links.status !== 0) {
+      return { error: `replace-symlinks.sh failed on the case tree: ${(links.stderr || '').trim() || `exit ${links.status}`}` };
+    }
+    console.log(`    ${(links.stdout || '').trim()}`);
+
     const prompt = join(work, 'prompt.txt');
     const a = sh('bash', [join(TOOLS, 'review/assemble-review-prompt.sh'), angle, base, commit, prompt, `${commit}^`], { cwd: repo, env });
     if (a.status !== 0) return { error: `could not assemble the prompt: ${(a.stderr || a.stdout).trim()}` };

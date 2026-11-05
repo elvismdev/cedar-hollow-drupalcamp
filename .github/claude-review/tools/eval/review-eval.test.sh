@@ -26,6 +26,11 @@ if [ -n "${ARGS_LOG:-}" ]; then
     shift
   done
 fi
+# Record what the case tree's "leak" path is when the agent starts: a link, a
+# file (with its content) or nothing.
+if [ -n "${LINK_LOG:-}" ]; then
+  if [ -L leak ]; then echo "link"; elif [ -f leak ]; then echo "file $(cat leak)"; else echo "none"; fi >> "$LINK_LOG"
+fi
 if printf '%s' "$prompt" | grep -q VERIFYING; then body="${VERDICT_JSON:-[]}"; else body="${REVIEW_JSON:-[]}"; fi
 python3 -c 'import json,sys; print(json.dumps({"type":"system","subtype":"init"})); print(json.dumps({"type":"assistant","message":{"content":[{"type":"text","text":"```json\n"+sys.argv[1]+"\n```"}]}}))' "$body"
 SH
@@ -153,5 +158,18 @@ assert_eq '["--add-dir","/a","--max-turns","3","--disallowedTools","Bash,Read(//
 for bad in "--disallowedTools 'Bash Read'" "--disallowedTools 'Bash" "--disallowedTools Bash'x'" "--add-dir \"/a b\"" "--x a\\b"; do
   assert_eq "unusable" "$(args_of "$bad")" "refused: $bad"
 done
+
+# A link the case commit adds is replaced before any agent runs, with the same
+# script the review action runs on the head, so the agent's Read cannot follow
+# it out of the case tree.
+outside="$tmp/outside-secret"; printf 'outside the tree\n' > "$outside"
+(cd "$r" && ln -s "$outside" leak && git add leak && git commit -q -m "add a link out of the tree")
+linked=$(git -C "$r" rev-parse HEAD)
+mkdir -p "$r/link-cases"
+printf '{"name":"adds-a-link","kind":"clean","commit":"%s","angle":"bugs","why":"a link"}' "$linked" > "$r/link-cases/001.json"
+: > "$tmp/link.log"
+assert_eq "0" "$(run REVIEW_JSON='[]' LINK_LOG="$tmp/link.log" -- link-cases --base main --no-verify)" "a case whose tree holds a link still runs"
+assert_eq "file symlink to: $outside" "$(cat "$tmp/link.log")" "and the agent finds a file naming the link's target, not the link"
+assert_contains "$(cat "$tmp/out")" "replace-symlinks: replaced 1 symlink(s)" "the eval logs the replacement"
 
 pass "review-eval.test.sh"
