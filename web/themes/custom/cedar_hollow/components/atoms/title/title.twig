@@ -1,6 +1,9 @@
 {# Markup from uclahs/surface source/patterns/elements/title (GPL-2.0-or-later). #}
 {% set attributes = attributes ?: create_attribute() %}
-{% set level = level ?: '2' %}
+{# The tag name comes from the enum, never from the prop: a lookup, because
+   Twig's `in` compares loosely and matches ' 2' or '2.0' to '2'. A list is
+   not a valid lookup key, so it takes the default first. #}
+{% set level = level is iterable ? '2' : ({'2': '2', '3': '3', '4': '4', '5': '5', '6': '6'}[level] ?? '2') %}
 {# Size defaults to the heading level; an explicit size replaces it. #}
 <h{{ level }}{{ attributes.addClass('title', size ? 'title--size-' ~ size : 'title--h' ~ level) }}>
   {% set href = url|safe_href %}
