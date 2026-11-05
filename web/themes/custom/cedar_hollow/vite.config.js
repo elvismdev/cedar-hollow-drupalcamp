@@ -28,12 +28,12 @@ export default defineConfig({
       // "cedar_hollow:card" resolves by searching this folder's tier
       // subfolders for card/card.twig, the same id Drupal's SDC uses.
       namespaces: { cedar_hollow: join(import.meta.dirname, 'components') },
-      // Canvas's toSrcSet filter returns null for plain URLs, the only kind
-      // stories pass, so Storybook registers it with that result.
-      // safe_href comes from the cedar_hollow_core module in Drupal; stories
-      // pass only fixed URLs, so Storybook registers it returning its input.
       functions: {
+        // Canvas's toSrcSet filter returns null for plain URLs, the only kind
+        // stories pass, so Storybook registers it with that result.
         toSrcSet: (twigInstance) => twigInstance.extendFilter('toSrcSet', () => null),
+        // safe_href comes from the cedar_hollow_core module in Drupal; stories
+        // pass only fixed URLs, so Storybook registers it returning its input.
         safe_href: (twigInstance) => twigInstance.extendFilter('safe_href', (url) => url),
       },
     }),
