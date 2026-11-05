@@ -177,11 +177,16 @@ final class UrlPropHrefTest extends CanvasKernelTestBase {
   private function renderComponent(string $id, array $props): string {
     // Component prop validation runs only while assertions are on, and a
     // production PHP configuration switches them off, so the components render
-    // here as they do for visitors, whatever the value's format.
+    // here as they do for visitors, whatever the value's format. A value of -1
+    // compiles assertions out and cannot be changed at runtime; it already
+    // renders as visitors get it.
+    $build = ['#type' => 'component', '#component' => $id, '#props' => $props];
+    if (ini_get('zend.assertions') === '-1') {
+      return (string) $this->container->get('renderer')->renderInIsolation($build);
+    }
     $assertions = ini_set('zend.assertions', '0');
     $this->assertNotFalse($assertions, 'Assertions can be switched off at runtime.');
     try {
-      $build = ['#type' => 'component', '#component' => $id, '#props' => $props];
       return (string) $this->container->get('renderer')->renderInIsolation($build);
     }
     finally {
