@@ -3,8 +3,9 @@
 {% set level = level ?: '2' %}
 {# Size defaults to the heading level; an explicit size replaces it. #}
 <h{{ level }}{{ attributes.addClass('title', size ? 'title--size-' ~ size : 'title--h' ~ level) }}>
-  {% if url %}
-    <a href="{{ url }}" class="title__link">{{ text }}</a>
+  {% set href = url|safe_href %}
+  {% if href %}
+    <a href="{{ href }}" class="title__link">{{ text }}</a>
   {% else %}
     {{ text }}
   {% endif %}

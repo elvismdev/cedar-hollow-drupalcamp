@@ -1,7 +1,8 @@
 {# Markup based on uclahs/surface source/patterns/components/quote (GPL-2.0-or-later). #}
 {% set attributes = attributes ?: create_attribute() %}
 {% set classes = ['quote'] %}
-{% if image.src %}
+{% set src = image.src|safe_href %}
+{% if src %}
   {% set classes = classes|merge(['quote--with-image']) %}
 {% endif %}
 <div{{ attributes.addClass(classes) }}>
@@ -14,12 +15,12 @@
         <figcaption class="quote__author">{{ author }}</figcaption>
       </figure>
     </div>
-    {% if image.src %}
-      {% set srcset = image.src|toSrcSet(image.width) %}
+    {% if src %}
+      {% set srcset = src|toSrcSet(image.width) %}
       <div class="quote__image">
         <img
           class="quote__img"
-          src="{{ image.src }}"
+          src="{{ src }}"
           {% if srcset %}srcset="{{ srcset }}" sizes="auto, 100vw"{% endif %}
           alt="{{ image.alt }}"
           {% if image.width %}width="{{ image.width }}"{% endif %}

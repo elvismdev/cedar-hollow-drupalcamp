@@ -1,3 +1,6 @@
 services:
   Drupal\cedar_hollow_core\SeatsSummary:
     autowire: true
+  Drupal\cedar_hollow_core\Twig\SafeHrefExtension:
+    tags:
+      - { name: twig.extension }
