@@ -372,6 +372,10 @@ The repository's merge settings are changed to match (merge commits only), becau
     *   Three clean cases from merged commits.
     *   The baseline is `.github/claude-review/evals/eval-baseline.json`, outside the cases folder, written by the owner from the first run's results.
 *   **Replay.** Upstream's worktree replay is used unchanged: each case's tree is checked out at its commit, and that commit's own diff is reviewed. The agents have no shell, so they cannot ask git for the fix commit.
+*   **Containment.** The agents get the review job's arguments and the review job's controls, with the case tree in the place of the head:
+    *   the case tree's symlinks are replaced with files naming their targets (`replace-symlinks.sh`) before any agent runs;
+    *   every agent's trace goes through `check-trace-tools.sh`, with the case tree as the workspace, because the agents work in it, and the case's input directory as the second root; the repository the tree comes from, its `.git` included, is outside every root, and a refused call by the reviewer or any verifier makes the case an error with the check's reason;
+    *   the traces and each case's row are screened against `CLAUDE_CODE_OAUTH_TOKEN` with `keep-trace.sh` in screen-only mode before anything an agent wrote is printed, put in the job summary or written to `--out`; a refusal, or no token to screen against, makes the case an error whose reason holds no agent text.
 *   **Result.**
     *   A case that regresses against the baseline opens or updates the issue labelled `reviewer-eval`.
     *   A case that could not run says so instead.
@@ -986,6 +990,7 @@ Stage 4 lands in this order:
     *   The test reuses upstream's stubbed `claude` and adds two cases:
         *   `REVIEW_JSON='[]'` against a baseline where the incident passes must exit 1, which tests regression detection without merging a weakened prompt;
         *   an important finding about a different Drush issue in `deploy-dev.yml` must fail the incident.
+    *   The containment above is tested with the same stub: a link out of the case tree reaches the agent as a file, a refused Read in a reviewer's or a verifier's trace fails the eval, and a random token planted in a finding is absent from the log, the job summary and `--out`.
 
 #### 30. `.github/workflows/review-eval.yml` (Create)
 
