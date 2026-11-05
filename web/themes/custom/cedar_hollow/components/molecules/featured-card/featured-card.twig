@@ -1,7 +1,7 @@
 {# Markup based on uclahs/surface source/patterns/components/featured-card (GPL-2.0-or-later). #}
 {% set attributes = attributes ?: create_attribute() %}
 {# Only a value from this component's enum reaches the title's tag name. #}
-{% set heading_level = {'2': '2', '3': '3', '4': '4'}[heading_level] ?? '3' %}
+{% set heading_level = heading_level is iterable ? '3' : ({'2': '2', '3': '3', '4': '4'}[heading_level] ?? '3') %}
 <div{{ attributes.addClass('featured-card') }}>
   <div class="featured-card__layout">
     {% set src = image.src|safe_href %}
