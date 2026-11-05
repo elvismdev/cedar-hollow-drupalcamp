@@ -5,12 +5,13 @@ declare(strict_types=1);
 namespace Drupal\Tests\cedar_hollow_core\Kernel;
 
 use Drupal\Tests\canvas\Kernel\CanvasKernelTestBase;
+use Drupal\canvas\Twig\CanvasTwigExtension;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\Attributes\RunTestsInSeparateProcesses;
 
 /**
- * Theme components print URL props into href only after cleaning them.
+ * Theme components print URL props into href and src only after cleaning.
  */
 #[Group('cedar_hollow_core')]
 #[RunTestsInSeparateProcesses]
@@ -95,6 +96,53 @@ final class UrlPropHrefTest extends CanvasKernelTestBase {
       $this->assertStringContainsString('Go', $html, "$id still renders its text.");
     }
     $this->assertStringContainsString('<button', $this->renderComponent('cedar_hollow:button', self::linkComponents($url)['cedar_hollow:button']));
+  }
+
+  /**
+   * Image src values and the src and srcset each must render with.
+   *
+   * @return array<string, array{string, ?string, bool}>
+   *   The image src, the expected src (NULL for no image) and whether the
+   *   image has a srcset.
+   */
+  public static function imageProvider(): array {
+    $file = '/sites/default/files/x.jpg';
+    $wide = $file . '?alternateWidths=' . rawurlencode($file . '?w={width}');
+    return [
+      'root-relative image' => [$file, $file, FALSE],
+      'image with width candidates' => [$wide, $wide, TRUE],
+      'javascript scheme' => ['javascript:alert(1)', 'alert(1)', FALSE],
+      'leading U+0001 before scheme' => ["\u{0001}javascript:alert(1)", 'alert(1)', FALSE],
+      'scheme with width candidates' => ['javascript:' . $wide, $wide, TRUE],
+      'two schemes before width candidates' => ['javascript:x://' . $wide, '//' . $wide, FALSE],
+      'scheme only' => ['javascript:', NULL, FALSE],
+      'control character only' => ["\u{0001}", NULL, FALSE],
+    ];
+  }
+
+  /**
+   * Tests the src and srcset the image components render.
+   */
+  #[DataProvider('imageProvider')]
+  public function testImageSrc(string $src, ?string $expected, bool $has_srcset): void {
+    $image = ['src' => $src, 'alt' => 'A speaker', 'width' => 800, 'height' => 600];
+    $components = [
+      'cedar_hollow:featured-card' => ['heading' => 'Go', 'image' => $image, 'heading_level' => '3'],
+      'cedar_hollow:quote' => ['author' => 'Go', 'quote' => 'Words', 'image' => $image],
+    ];
+    foreach ($components as $id => $props) {
+      $html = $this->renderComponent($id, $props);
+      if ($expected === NULL) {
+        $this->assertSame(0, preg_match('/<img\b/', $html), "$id renders no image.");
+        continue;
+      }
+      $this->assertSame(1, preg_match('/<img\b[^>]*\ssrc="([^"]*)"/', $html, $matches), "$id renders an image.");
+      $this->assertSame($expected, html_entity_decode($matches[1], ENT_QUOTES | ENT_HTML5), "$id src.");
+      $srcset = preg_match('/<img\b[^>]*\ssrcset="([^"]*)"/', $html, $matches) ? html_entity_decode($matches[1], ENT_QUOTES | ENT_HTML5) : NULL;
+      $this->assertSame($has_srcset, $srcset !== NULL, "$id srcset presence.");
+      // The srcset is the one the cleaned src produces.
+      $this->assertSame($this->container->get(CanvasTwigExtension::class)->toSrcSet($expected, 800), $srcset, "$id srcset.");
+    }
   }
 
   /**
