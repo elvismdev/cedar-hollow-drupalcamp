@@ -19,7 +19,7 @@
       <div class="quote__image">
         <img
           class="quote__img"
-          src="{{ image.src }}"
+          src="{{ image.src|safe_href }}"
           {% if srcset %}srcset="{{ srcset }}" sizes="auto, 100vw"{% endif %}
           alt="{{ image.alt }}"
           {% if image.width %}width="{{ image.width }}"{% endif %}

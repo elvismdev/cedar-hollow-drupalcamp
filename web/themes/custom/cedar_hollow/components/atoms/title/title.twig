@@ -4,7 +4,7 @@
 {# Size defaults to the heading level; an explicit size replaces it. #}
 <h{{ level }}{{ attributes.addClass('title', size ? 'title--size-' ~ size : 'title--h' ~ level) }}>
   {% if url %}
-    <a href="{{ url }}" class="title__link">{{ text }}</a>
+    <a href="{{ url|safe_href }}" class="title__link">{{ text }}</a>
   {% else %}
     {{ text }}
   {% endif %}

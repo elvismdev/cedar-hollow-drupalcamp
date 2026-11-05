@@ -7,7 +7,7 @@
       <div class="featured-card__image">
         <img
           class="featured-card__img"
-          src="{{ image.src }}"
+          src="{{ image.src|safe_href }}"
           {% if srcset %}srcset="{{ srcset }}" sizes="auto, 100vw"{% endif %}
           alt="{{ image.alt }}"
           {% if image.width %}width="{{ image.width }}"{% endif %}
