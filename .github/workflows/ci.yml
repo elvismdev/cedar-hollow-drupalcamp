@@ -142,8 +142,12 @@ jobs:
       - uses: ddev/github-action-setup-ddev@v1
       - name: Rebuild the site from configuration and the content recipe
         run: scripts/rebuild.sh
-      - name: Build the theme's Storybook (served by Drupal for the BEM parity test)
+      - name: Build the theme's Storybook for the BEM parity test
         run: ddev exec -d /var/www/html/web/themes/custom/cedar_hollow "npm ci && npm run build"
+      # On its own origin, as published, never through Drupal: the parity
+      # test reads it at STORYBOOK_URL's default, http://127.0.0.1:6006.
+      - name: Serve the Storybook build
+        run: python3 -m http.server 6006 --bind 127.0.0.1 --directory web/themes/custom/cedar_hollow/storybook > /tmp/storybook-server.log 2>&1 &
       - uses: actions/setup-node@v7
         with:
           node-version: '22'
