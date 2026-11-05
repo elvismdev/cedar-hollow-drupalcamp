@@ -59,7 +59,7 @@ Storybook, from `web/themes/custom/cedar_hollow`:
 ```bash
 npm ci
 npm run storybook           # development server on port 6006
-npm run build               # static build into storybook/, for the visual tests
+npm run build               # static build into build/storybook at the repository root, outside the docroot
 npm run lint:css            # stylelint and scripts/check_css.py
 ```
 

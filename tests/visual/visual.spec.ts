@@ -6,7 +6,7 @@ import { test, expect } from '../fixtures';
 // Visual regression on the design system's key templates, rendered by the
 // static Storybook build. Run in the mcr.microsoft.com/playwright image, both
 // locally and in CI, so fonts and rendering match the committed baselines.
-const STORYBOOK_DIR = join(__dirname, '../../web/themes/custom/cedar_hollow/storybook');
+const STORYBOOK_DIR = join(__dirname, '../../build/storybook');
 const PORT = 6008;
 
 const STORIES = [

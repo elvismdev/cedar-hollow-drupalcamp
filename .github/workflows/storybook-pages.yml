@@ -43,7 +43,7 @@ jobs:
         working-directory: web/themes/custom/cedar_hollow
       - uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5
         with:
-          path: web/themes/custom/cedar_hollow/storybook
+          path: build/storybook
 
   deploy:
     name: Deploy to GitHub Pages
