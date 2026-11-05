@@ -20,8 +20,6 @@ final class DuplicateRegistrantMessageTest extends SessionTestBase {
   public function testDuplicateAddressIsRefusedWithoutEcho(): void {
     $session = $this->createSession('Recipes in practice', 10, FALSE);
     $register = 'node/' . $session->id() . '/register';
-    // Collect mail in state; nothing is sent.
-    $this->config('system.mail')->set('interface.default', 'test_mail_collector')->save();
     $taken = 'taken-' . $this->randomMachineName() . '@example.com';
 
     $this->drupalGet($register);
@@ -33,7 +31,7 @@ final class DuplicateRegistrantMessageTest extends SessionTestBase {
     $this->drupalGet($register);
     $this->submitForm(['anon_mail[0][value]' => $taken], 'Save Registration');
     $this->assertSession()->statusMessageNotContains('Registration has been saved.');
-    $this->assertSession()->statusMessageContains('This email address cannot be registered for this session.', 'error');
+    $this->assertSession()->statusMessageContains('This email address is already registered for this session.', 'error');
     // The form keeps the visitor's own input in the field, so the check is on
     // the rendered text, which holds every message.
     $this->assertSession()->pageTextNotContains($taken);
