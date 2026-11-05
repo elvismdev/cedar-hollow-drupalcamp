@@ -2,8 +2,9 @@
 {% set attributes = attributes ?: create_attribute() %}
 {% set classes = tone == 'light' ? ['eyebrow', 'eyebrow--light'] : ['eyebrow'] %}
 <div{{ attributes.addClass(classes) }}>
-  {% if url %}
-    <a href="{{ url|safe_href }}" class="eyebrow__link">{{ text }}</a>
+  {% set href = url|safe_href %}
+  {% if href %}
+    <a href="{{ href }}" class="eyebrow__link">{{ text }}</a>
   {% else %}
     <span class="eyebrow__text">{{ text }}</span>
   {% endif %}

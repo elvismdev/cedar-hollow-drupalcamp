@@ -62,7 +62,49 @@ final class UrlPropHrefTest extends CanvasKernelTestBase {
    */
   #[DataProvider('urlProvider')]
   public function testComponentHref(string $url, string $expected): void {
-    $components = [
+    foreach (self::linkComponents($url) as $id => $props) {
+      $html = $this->renderComponent($id, $props);
+      // The raw markup is read, so no HTML parser normalizes the value first.
+      $this->assertSame(1, preg_match('/<a[^>]*\shref="([^"]*)"/', $html, $matches), "$id renders a link.");
+      $this->assertSame($expected, html_entity_decode($matches[1], ENT_QUOTES | ENT_HTML5), "$id href.");
+    }
+  }
+
+  /**
+   * URL prop values that clean to an empty string.
+   *
+   * @return array<string, array{string}>
+   *   The URL prop value.
+   */
+  public static function emptiedUrlProvider(): array {
+    return [
+      'scheme only' => ['javascript:'],
+      'control character only' => ["\u{0001}"],
+      'whitespace only' => [' '],
+    ];
+  }
+
+  /**
+   * Tests that a URL that cleans to nothing renders no link.
+   */
+  #[DataProvider('emptiedUrlProvider')]
+  public function testEmptiedUrlRendersNoLink(string $url): void {
+    foreach (self::linkComponents($url) as $id => $props) {
+      $html = $this->renderComponent($id, $props);
+      $this->assertSame(0, preg_match('/<a\b/', $html), "$id renders no link.");
+      $this->assertStringContainsString('Go', $html, "$id still renders its text.");
+    }
+    $this->assertStringContainsString('<button', $this->renderComponent('cedar_hollow:button', self::linkComponents($url)['cedar_hollow:button']));
+  }
+
+  /**
+   * The link-rendering components with a URL prop.
+   *
+   * @return array<string, array<string, mixed>>
+   *   Props keyed by component ID.
+   */
+  private static function linkComponents(string $url): array {
+    return [
       'cedar_hollow:button' => ['text' => 'Go', 'url' => $url, 'variant' => 'primary'],
       'cedar_hollow:title' => ['text' => 'Go', 'url' => $url, 'level' => '2', 'size' => 'medium'],
       'cedar_hollow:eyebrow' => ['text' => 'Go', 'url' => $url, 'tone' => 'default'],
@@ -71,19 +113,28 @@ final class UrlPropHrefTest extends CanvasKernelTestBase {
         'tone' => 'default',
       ],
     ];
+  }
+
+  /**
+   * Renders a component as visitors get it.
+   *
+   * @param string $id
+   *   The component ID.
+   * @param array<string, mixed> $props
+   *   The component props.
+   *
+   * @return string
+   *   The rendered markup.
+   */
+  private function renderComponent(string $id, array $props): string {
     // Component prop validation runs only while assertions are on, and a
     // production PHP configuration switches them off, so the components render
     // here as they do for visitors, whatever the value's format.
     $assertions = ini_set('zend.assertions', '0');
     $this->assertNotFalse($assertions, 'Assertions can be switched off at runtime.');
     try {
-      foreach ($components as $id => $props) {
-        $build = ['#type' => 'component', '#component' => $id, '#props' => $props];
-        $html = (string) $this->container->get('renderer')->renderInIsolation($build);
-        // The raw markup is read, so no HTML parser normalizes the value first.
-        $this->assertSame(1, preg_match('/<a[^>]*\shref="([^"]*)"/', $html, $matches), "$id renders a link.");
-        $this->assertSame($expected, html_entity_decode($matches[1], ENT_QUOTES | ENT_HTML5), "$id href.");
-      }
+      $build = ['#type' => 'component', '#component' => $id, '#props' => $props];
+      return (string) $this->container->get('renderer')->renderInIsolation($build);
     }
     finally {
       ini_set('zend.assertions', $assertions);
