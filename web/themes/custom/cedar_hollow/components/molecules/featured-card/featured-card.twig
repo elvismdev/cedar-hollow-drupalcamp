@@ -1,5 +1,7 @@
 {# Markup based on uclahs/surface source/patterns/components/featured-card (GPL-2.0-or-later). #}
 {% set attributes = attributes ?: create_attribute() %}
+{# Only a value from this component's enum reaches the title's tag name. #}
+{% set heading_level = heading_level is iterable ? '3' : ({'2': '2', '3': '3', '4': '4'}[heading_level] ?? '3') %}
 <div{{ attributes.addClass('featured-card') }}>
   <div class="featured-card__layout">
     {% set src = image.src|safe_href %}
@@ -21,7 +23,7 @@
       {% if eyebrow %}
         {% include 'cedar_hollow:eyebrow' with {text: eyebrow} only %}
       {% endif %}
-      {% include 'cedar_hollow:title' with {text: heading, url: url, level: heading_level ?: '3', size: 'large'} only %}
+      {% include 'cedar_hollow:title' with {text: heading, url: url, level: heading_level, size: 'large'} only %}
       {% if subtitle %}
         <p class="featured-card__subtitle">{{ subtitle }}</p>
       {% endif %}
