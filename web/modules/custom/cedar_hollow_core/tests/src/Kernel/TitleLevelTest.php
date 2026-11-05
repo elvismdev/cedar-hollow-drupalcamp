@@ -11,7 +11,7 @@ use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\Attributes\RunTestsInSeparateProcesses;
 
 /**
- * The title's level reaches the heading tag name only from its enum.
+ * Heading levels reach the heading tag name only from each component's enum.
  */
 #[Group('cedar_hollow_core')]
 #[RunTestsInSeparateProcesses]
@@ -74,6 +74,46 @@ final class TitleLevelTest extends CanvasKernelTestBase {
   public function testTitleFallsBackToDefault(string $level): void {
     $html = $this->renderComponent('cedar_hollow:title', ['text' => 'Go', 'level' => $level]);
     $this->assertHeading($html, '2', 'title--h2', 'Title');
+  }
+
+  /**
+   * Tests that each heading level in a molecule's enum renders its heading.
+   */
+  public function testMoleculesKeepEnumLevels(): void {
+    foreach (self::molecules() as $id => [, $size]) {
+      foreach (['2', '3', '4'] as $level) {
+        $html = $this->renderComponent($id, ['heading' => 'Go', 'heading_level' => $level]);
+        $this->assertHeading($html, $level, 'title--size-' . $size, "$id level $level");
+      }
+    }
+  }
+
+  /**
+   * Tests that an off-enum molecule heading level renders its default.
+   */
+  #[DataProvider('offEnumProvider')]
+  public function testMoleculesFallBackToDefault(string $level): void {
+    // Levels 5 and 6 are in the title's enum but outside the molecules' enum.
+    foreach ([$level, '5', '6'] as $value) {
+      foreach (self::molecules() as $id => [$default, $size]) {
+        $html = $this->renderComponent($id, ['heading' => 'Go', 'heading_level' => $value]);
+        $this->assertHeading($html, $default, 'title--size-' . $size, $id);
+      }
+    }
+  }
+
+  /**
+   * The molecules that render a title from a heading level.
+   *
+   * @return array<string, array{string, string}>
+   *   The default level and the title size, keyed by component ID.
+   */
+  private static function molecules(): array {
+    return [
+      'cedar_hollow:callout' => ['2', 'large'],
+      'cedar_hollow:card' => ['3', 'small'],
+      'cedar_hollow:featured-card' => ['3', 'large'],
+    ];
   }
 
   /**

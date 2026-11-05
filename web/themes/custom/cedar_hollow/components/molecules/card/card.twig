@@ -1,5 +1,7 @@
 {# Markup based on uclahs/surface source/patterns/components/card (GPL-2.0-or-later). #}
 {% set attributes = attributes ?: create_attribute() %}
+{# Only a value from this component's enum reaches the title's tag name. #}
+{% set heading_level = {'2': '2', '3': '3', '4': '4'}[heading_level] ?? '3' %}
 <article{{ attributes.addClass('card') }}>
   {% if image|render|trim %}
     <div class="card__image">
@@ -24,7 +26,7 @@
     {% if eyebrow %}
       {% include 'cedar_hollow:eyebrow' with {text: eyebrow} only %}
     {% endif %}
-    {% include 'cedar_hollow:title' with {text: heading, url: url, level: heading_level ?: '3', size: 'small'} only %}
+    {% include 'cedar_hollow:title' with {text: heading, url: url, level: heading_level, size: 'small'} only %}
     {% if summary %}
       <p class="card__summary">{{ summary }}</p>
     {% endif %}
