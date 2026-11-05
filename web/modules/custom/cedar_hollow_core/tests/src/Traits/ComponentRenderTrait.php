@@ -6,6 +6,10 @@ namespace Drupal\Tests\cedar_hollow_core\Traits;
 
 /**
  * Renders the theme's components as visitors get them, in a kernel test.
+ *
+ * The using class must extend \Drupal\KernelTests\KernelTestBase: the trait
+ * reads its $container property and calls its config() method and PHPUnit
+ * assertions.
  */
 trait ComponentRenderTrait {
 
