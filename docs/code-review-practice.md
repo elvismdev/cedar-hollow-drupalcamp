@@ -199,7 +199,7 @@ With `publish=false` the whole audit runs, but the rendered issue body is sealed
 
 #### Re-enabling the schedule
 
-GitHub disables a scheduled workflow after a period with no repository activity, and emails a warning first. Push events are not disabled that way, so the CI job "Security audit schedule health" runs `.github/security-audit/check-audit-health.sh` on every push to `main`. It warns when the audit workflow is not active, when none of its last 10 completed runs on `main` has a successful report job, or when the newest that does started more than 40 days ago. While the workflow has no schedule it only notes that and skips the age check. It always exits 0, so it never stops a deploy.
+GitHub disables a scheduled workflow after a period with no repository activity, and emails a warning first. Push events are not disabled that way, so the CI job "Security audit schedule health" runs `.github/security-audit/check-audit-health.sh` on every push to `main`. It warns when the audit workflow is not active, when none of its last 10 completed runs on `main` has a successful report job, or when the newest that does started more than 40 days ago. While the workflow file has no schedule, the script stops after the active check and prints a notice: it reads no run history, so neither of the last two warnings can fire. It always exits 0, so it never stops a deploy.
 
 When the email or the warning arrives:
 
@@ -209,17 +209,33 @@ gh workflow enable security-audit.yml
 
 #### Rotating and storing the keys
 
-Two `age` key pairs seal everything the jobs hand on. The agents' private key, `AUDIT_AGENTS_AGE_KEY`, is in the `claude-agents` environment. The sandbox's, `AUDIT_SANDBOX_AGE_KEY`, is in `audit-sandbox`. The public halves are `.github/security-audit/keys/agents.pub` and `sandbox.pub`. To rotate one, on the owner's machine:
+Two `age` key pairs seal what the jobs hand on. The agents' private key, `AUDIT_AGENTS_AGE_KEY`, is in the `claude-agents` environment. The sandbox's, `AUDIT_SANDBOX_AGE_KEY`, is in `audit-sandbox`. The public halves are `.github/security-audit/keys/agents.pub` and `sandbox.pub`. To rotate the agents' key, on the owner's machine, from the root of a clone:
 
-```bash
-age-keygen -o agents.key
-grep '^AGE-SECRET-KEY-' agents.key | gh secret set AUDIT_AGENTS_AGE_KEY --env claude-agents
-age-keygen -y agents.key > .github/security-audit/keys/agents.pub
-```
+1.  Generate the key in a temporary folder outside the clone, so it can never be committed:
 
-1.  Copy the `AGE-SECRET-KEY-` line into the password manager before setting the secret. A secret cannot be read back, and the owner's copy is the only way to open sealed files locally.
-2.  Commit the new public key through a pull request. Every run checks that its private key opens what is sealed to its own public key and not the other one, so runs fail at that check until the pull request merges.
-3.  Delete `agents.key`.
+    ```bash
+    d=$(mktemp -d)
+    age-keygen -o "$d/agents.key"
+    ```
+
+2.  Copy the `AGE-SECRET-KEY-` line from `"$d/agents.key"` into the password manager before setting the secret: a secret cannot be read back, and the owner's copy is the only way to open sealed files locally.
+3.  Set the secret from the same line:
+
+    ```bash
+    grep '^AGE-SECRET-KEY-' "$d/agents.key" | gh secret set AUDIT_AGENTS_AGE_KEY --env claude-agents
+    ```
+
+4.  Write the public half and commit it through a pull request. Every run checks that its private key opens what is sealed to its own public key and not the other one, so runs fail at that check until the pull request merges.
+
+    ```bash
+    age-keygen -y "$d/agents.key" > .github/security-audit/keys/agents.pub
+    ```
+
+5.  Delete the temporary folder:
+
+    ```bash
+    rm -rf "$d"
+    ```
 
 For the sandbox key, use `sandbox.key`, `AUDIT_SANDBOX_AGE_KEY`, `--env audit-sandbox` and `sandbox.pub`. The sandbox key opens only the scripts sent to the sandbox, so its rotation needs no reset.
 
@@ -228,32 +244,49 @@ For the sandbox key, use `sandbox.key`, `AUDIT_SANDBOX_AGE_KEY`, `--env audit-sa
 The saved state is sealed to the old key, so the next run cannot open it and fails. There is no reset input. Instead, delete the `audit-state` artifact that the issue's state marker names; the next run then finds no prior state, starts a fresh ledger, and lists the old findings as "not re-checked this run".
 
 ```bash
-run=$(gh issue view <issue> --json body --jq .body | sed -n 's/^<!-- security-audit-state \(.*\) -->$/\1/p' | jq -r .run_id)
-id=$(gh api "repos/{owner}/{repo}/actions/runs/$run/artifacts?name=audit-state" --jq '.artifacts[0].id')
-gh api -X DELETE "repos/{owner}/{repo}/actions/artifacts/$id"
+run=$(gh issue view <issue> --json body --jq .body \
+  | sed -n 's/^<!-- security-audit-state \(.*\) -->$/\1/p' | jq -r '.run_id // empty')
+if [ -z "$run" ]; then
+  echo "The issue has no state marker; there is no saved state to reset."
+else
+  id=$(gh api "repos/{owner}/{repo}/actions/runs/$run/artifacts?name=audit-state" \
+    --jq '[.artifacts[] | select(.expired == false)][0].id // empty')
+  if [ -z "$id" ]; then
+    echo "Run $run has no unexpired audit-state artifact; the next run starts fresh already."
+  else
+    echo "Deleting audit-state artifact $id of run $run."
+    gh api -X DELETE "repos/{owner}/{repo}/actions/artifacts/$id"
+  fi
+fi
 ```
 
 #### Opening a sealed file locally
 
-Each sealed artifact is a tar archive encrypted with `age`. All are kept for one day, except `audit-state`, which is kept for 90.
+Every artifact a run uploads is kept for one day, except `audit-state`, which is kept for 90. Two are plain: `run-metadata` (the run's facts, no findings) and `audit-site` (the throwaway site as a `.tar.gz`, with its test accounts). Every other one is a tar archive sealed with `age`:
 
 | Artifact | Sealed to | Holds |
 |---|---|---|
 | `audit-source`, `audit-poc-write`, `audit-poc`, `audit-final` | agents | The state after each phase |
 | `poc-scripts` | agents | The proof-of-concept scripts |
 | `poc-scripts-sandbox` | sandbox | The same scripts, for the sandbox |
-| `poc-run-records` | agents | One sealed file per script run |
+| `poc-run-records` | agents | One sealed file per script run, `poc-run-<n>-<a or b>.age` |
+| `failed-trace-<job>-<step>` | agents | An agent step's trace, kept when its run check failed |
+| `canary-trace-source`, `canary-trace-poc-write` | agents | The canary agent's trace |
 | `audit-report` | agents | The rendered body of a run that did not publish |
 | `audit-state` | agents | `findings.json`, `coverage-ledger.json`, `disputed.json`, `audit-history.json` |
 
+Open one with the repository's own `seal.sh`, which checks the sha256 before decrypting and hands the key to `age` through a file descriptor. Run it from the root of a clone, with every file outside the clone:
+
 ```bash
-gh run download <run-id> -n audit-state -D sealed
-sha256sum sealed/audit-state.age
-mkdir opened
-age -d -i agents.key sealed/audit-state.age | tar -x -C opened
+d=$(mktemp -d)
+gh run download <run-id> -n audit-state -D "$d/sealed"
+mkdir "$d/opened"
+read -rs AUDIT_AGENTS_AGE_KEY && export AUDIT_AGENTS_AGE_KEY
+bash .github/security-audit/seal.sh open AUDIT_AGENTS_AGE_KEY <sha256> "$d/sealed/audit-state.age" "$d/opened"
+unset AUDIT_AGENTS_AGE_KEY
 ```
 
-`agents.key` holds the `AGE-SECRET-KEY-` line from the password manager. Compare the sha256 with the one in the issue's state marker before opening, and delete `agents.key` afterwards.
+`read -rs` takes the `AGE-SECRET-KEY-` line pasted from the password manager without showing it. For `audit-state`, `<sha256>` is the one in the issue's state marker. For the sandbox's artifact, use `AUDIT_SANDBOX_AGE_KEY`. Delete `"$d"` when done.
 
 #### Retracting a wrong issue edit
 
@@ -261,15 +294,11 @@ When a run publishes something that should not be public:
 
 1.  Edit the issue body to remove it. Keep the `<!-- security-audit-state ... -->` line exactly as it is: the next run finds its prior state through it.
 2.  Delete the earlier revision from the issue's edit history, or the text stays readable there.
-3.  Rotate any secret it showed. For the token, `claude setup-token`, then `gh secret set CLAUDE_CODE_OAUTH_TOKEN --env claude-agents`. For the agents' key, rotate it and reset the state.
+3.  Rotate any secret it showed. For the token, follow "Rotating the token" in the maintainer runbook, including its re-run that confirms the new token works. For the agents' key, rotate it and reset the state.
 
 #### A published High or Critical finding
 
-When the issue shows a confirmed High or Critical finding, or a lead that touches `.github/workflows` or names a secret, the attack path is already public. Open the fix pull request the same day. If the review cannot run, merge it with the bypass and say why on the pull request:
-
-```bash
-gh pr merge <number> --merge --admin
-```
+When the issue shows a confirmed High or Critical finding, or a lead that touches `.github/workflows` or names a secret, the attack path is already public. Open the fix pull request the same day. If the review cannot run, the owner merges it with "The bypass merge" in the maintainer runbook, and says why on the pull request. The bypass is the owner's alone: `AGENTS.md` forbids the agent to use it.
 
 #### Reviewing the model choice
 
