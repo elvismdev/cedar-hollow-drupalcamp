@@ -18,14 +18,15 @@
 #
 # An update that only merged main into the branch is not new work. The base is
 # the newest main commit the head contains, M = merge-base(head, origin/main),
-# not main at run time. Main is named refs/remotes/origin/main in full: git
-# resolves a bare origin/main through refs/tags first, so a tag of that name
-# would replace main and turn new work into an already reviewed merge.
-# T = merge-tree --write-tree M <last reviewed> is what the head would be with
-# no new work. When T is the head's tree there is
+# not main at run time, and T = merge-tree --write-tree M <last reviewed> is
+# what the head would be with no new work. When T is the head's tree there is
 # nothing to review. Otherwise the diff is taken from T, which holds the
 # branch's new work and any conflict resolution but not what main brought in.
 # A merge-tree that conflicts has no T, so the whole change is reviewed.
+#
+# Main is named refs/remotes/origin/main in full: git resolves a bare
+# origin/main through refs/tags first, so a tag of that name would replace
+# main and turn new work into an already reviewed merge.
 #
 # Three states, printed as lines for $GITHUB_OUTPUT with since and diff_from:
 #   full         no usable prior round, so review the whole change

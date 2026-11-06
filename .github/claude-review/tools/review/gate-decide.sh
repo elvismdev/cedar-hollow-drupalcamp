@@ -34,9 +34,11 @@
 # deleted comment leaves no trace in the feed and is not detected.
 #
 # The checkout must hold main with full history as origin/main and the head
-# commit. Main is read as refs/remotes/origin/main in full: git resolves a bare
-# origin/main through refs/tags first, so a tag of that name would change the
-# base and let an old acknowledgement cover new work. `git merge-tree --write-tree` needs git 2.38 or later.
+# commit. Main is read as refs/remotes/origin/main in full: git resolves a
+# bare origin/main through refs/tags first, so a tag of that name would change
+# the base and let an old acknowledgement cover new work.
+#
+# `git merge-tree --write-tree` needs git 2.38 or later.
 #
 # Test hooks: REVIEW_THREADS_CMD reaches findings-gate.sh, and
 # REVIEW_COMMENTS_CMD replaces the comments query, printing what its --jq
