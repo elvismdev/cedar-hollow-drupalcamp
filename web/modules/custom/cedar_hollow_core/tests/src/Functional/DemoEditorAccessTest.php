@@ -27,7 +27,12 @@ use PHPUnit\Framework\Attributes\RunTestsInSeparateProcesses;
 #[RunTestsInSeparateProcesses]
 final class DemoEditorAccessTest extends SessionTestBase {
 
-  private const ROLE_CONFIG = '/../config/user.role.demo_editor.yml';
+  /**
+   * The exported configuration directory, relative to the web root.
+   */
+  private const CONFIG_DIR = '/../config/';
+
+  private const ROLE_CONFIG = self::CONFIG_DIR . 'user.role.demo_editor.yml';
 
   /**
    * The media form's "Authored by" input.
@@ -172,13 +177,13 @@ final class DemoEditorAccessTest extends SessionTestBase {
   public function testRegistrationBlocksAreNotInThePalette(): void {
     foreach (['manage_registrations', 'user_registrations'] as $view_id) {
       if (!View::load($view_id)) {
-        $data = Yaml::decode(file_get_contents($this->root . '/../config/views.view.' . $view_id . '.yml'));
+        $data = Yaml::decode(file_get_contents($this->root . self::CONFIG_DIR . 'views.view.' . $view_id . '.yml'));
         unset($data['uuid'], $data['_core']);
         View::create($data)->save();
       }
       $component_id = 'block.views_block.' . $view_id . '-block_1';
       Component::load($component_id)?->delete();
-      $data = Yaml::decode(file_get_contents($this->root . '/../config/canvas.component.' . $component_id . '.yml'));
+      $data = Yaml::decode(file_get_contents($this->root . self::CONFIG_DIR . 'canvas.component.' . $component_id . '.yml'));
       unset($data['uuid']);
       Component::create($data)->save();
     }
@@ -186,12 +191,37 @@ final class DemoEditorAccessTest extends SessionTestBase {
     $editor = $this->drupalCreateUser();
     $editor->addRole('demo_editor')->save();
     $this->drupalLogin($editor);
+    $blocks = [
+      'block.views_block.manage_registrations-block_1',
+      'block.views_block.user_registrations-block_1',
+    ];
+
+    $listed = $this->listedComponents();
+    $this->assertContains('block.system_branding_block', $listed, 'An ordinary block component is listed.');
+    foreach ($blocks as $component_id) {
+      $this->assertNotContains($component_id, $listed);
+    }
+
+    // Enabling the components lists them, so the status is what hides them.
+    foreach ($blocks as $component_id) {
+      Component::load($component_id)->enable()->save();
+    }
+    $listed = $this->listedComponents();
+    foreach ($blocks as $component_id) {
+      $this->assertContains($component_id, $listed, 'An enabled registration block is listed.');
+    }
+  }
+
+  /**
+   * Returns the component ids the Canvas API lists for the current account.
+   *
+   * @return list<string>
+   *   The component ids.
+   */
+  private function listedComponents(): array {
     $this->drupalGet('/canvas/api/v0/config/component');
     $this->assertSession()->statusCodeEquals(200);
-    $listed = array_keys(json_decode($this->getSession()->getPage()->getContent(), TRUE));
-    $this->assertContains('block.system_branding_block', $listed, 'An ordinary block component is listed.');
-    $this->assertNotContains('block.views_block.manage_registrations-block_1', $listed);
-    $this->assertNotContains('block.views_block.user_registrations-block_1', $listed);
+    return array_keys(json_decode($this->getSession()->getPage()->getContent(), TRUE));
   }
 
   /**
