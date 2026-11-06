@@ -322,6 +322,23 @@ assert_exit 1 "$hij" "and not the tag's"
 git -C "$r" tag -d origin/main >/dev/null
 git -C "$r" update-ref -d refs/remotes/origin/main
 
+# A --base given by hand is read the same way. A branch name is read as
+# refs/remotes/origin/<name>, then refs/heads/<name>, never as a tag of that
+# name; a full ref or sha is used as given; any other form is refused.
+git -C "$r" tag main "$hijack" 2>/dev/null
+[ "$(git -C "$r" rev-parse --verify --quiet refs/tags/main)" = "$hijack" ] || { echo "FAIL: the tag fixture named main was not created" >&2; exit 1; }
+: > "$tmp/prompt.log"
+assert_eq "0" "$(run REVIEW_JSON='[]' PROMPT_LOG="$tmp/prompt.log" -- full-cases --base main --no-verify)" "--base main runs beside a tag named main"
+assert_contains "$(cat "$tmp/out")" "standard from refs/heads/main" "and reads the branch"
+case "$(cat "$tmp/prompt.log")" in *HIJACKED*) hij=0;; *) hij=1;; esac
+assert_exit 1 "$hij" "so the prompt does not hold the tag's REVIEW.md"
+assert_eq "0" "$(run REVIEW_JSON='[]' -- full-cases --base refs/heads/main --no-verify)" "a full ref is used as given"
+assert_eq "0" "$(run REVIEW_JSON='[]' -- full-cases --base "$first" --no-verify)" "and so is a full sha"
+assert_eq "2" "$(run REVIEW_JSON='[]' -- full-cases --base 'main~0' --no-verify)" "any other form is refused"
+assert_contains "$(cat "$tmp/out")" "is not a branch name, a full ref or a full sha" "with the reason"
+assert_eq "2" "$(run REVIEW_JSON='[]' -- full-cases --base no-such-branch --no-verify)" "and a branch with no REVIEW.md has no standard"
+git -C "$r" tag -d main >/dev/null
+
 # The repository's own cases all name their commits by full sha.
 for f in "$ROOT"/evals/cases/*.json; do
   bad=$(F="$f" node --input-type=module -e "import { readFileSync } from 'node:fs'; import { caseKind, validate } from '$E'; const c = JSON.parse(readFileSync(process.env.F, 'utf8')); const k = caseKind(c); console.log(k ? (validate(c, k) || '') : '');")

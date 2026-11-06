@@ -47,7 +47,7 @@
 // while another is newly missed. A case that newly passes, and a case with no
 // baseline entry, are reported so the baseline can be brought up to date.
 //
-// Usage: review-eval.mjs <cases-dir> [--base <ref>] [--only <name>] [--no-verify]
+// Usage: review-eval.mjs <cases-dir> [--base <branch | refs/... | sha>] [--only <name>] [--no-verify]
 //                        [--out <results.json>] [--baseline <baseline.json>]
 //   baseline  {"cases": {"<case name>": "pass" | "fail"}}, the last measured result
 //   Run from the root of the repository whose history the cases name. The
@@ -161,19 +161,32 @@ function sh(cmd, args, opts = {}) {
   return spawnSync(cmd, args, { encoding: 'utf8', ...opts });
 }
 
-// The default base is named by full ref: git resolves a bare origin/main or
-// main through refs/tags first, so a tag of that name would supply the standard.
+// The base is read by full ref or full sha. Git resolves a bare origin/main or
+// main through refs/tags first, so a tag of that name would supply the
+// standard. A --base given as a full ref (refs/...) or 40 hex digits is used
+// as given; a branch name is read as refs/remotes/origin/<name>, then
+// refs/heads/<name>; any other form, such as main~1, is refused.
+// Returns { ref } or { error }.
 function resolveBase(repo, given) {
-  const tried = given ? [given] : [];
-  if (!given) {
+  let tried;
+  if (given === undefined || given === '') {
+    tried = [];
     const head = sh('git', ['symbolic-ref', '--quiet', 'refs/remotes/origin/HEAD'], { cwd: repo }).stdout.trim();
     if (head) tried.push(head);
     tried.push('refs/remotes/origin/main', 'refs/remotes/origin/master', 'refs/heads/main', 'refs/heads/master');
+  } else if (FULL_SHA.test(given)) {
+    tried = [given.toLowerCase()];
+  } else if (/^refs\/[A-Za-z0-9._\/-]+$/.test(given) && !given.includes('..')) {
+    tried = [given];
+  } else if (/^[A-Za-z0-9._-]+(\/[A-Za-z0-9._-]+)*$/.test(given) && !given.includes('..')) {
+    tried = [`refs/remotes/origin/${given}`, `refs/heads/${given}`];
+  } else {
+    return { error: `--base ${JSON.stringify(given)} is not a branch name, a full ref or a full sha, so which commit it names is not certain` };
   }
   for (const ref of tried) {
-    if (sh('git', ['cat-file', '-e', `${ref}:REVIEW.md`], { cwd: repo }).status === 0) return ref;
+    if (sh('git', ['cat-file', '-e', `${ref}:REVIEW.md`], { cwd: repo }).status === 0) return { ref };
   }
-  return null;
+  return { error: `no base ref with a REVIEW.md among ${tried.join(', ')}, so there is no standard to judge against` };
 }
 
 /**
@@ -411,8 +424,9 @@ function main(argv) {
   }
   if (cases.length === 0) { console.error(`review-eval: no incident or clean cases in ${dir}, so nothing was measured`); return 2; }
 
-  const base = resolveBase(repo, opts.base);
-  if (!base) { console.error('review-eval: no base ref with a REVIEW.md, so there is no standard to judge against'); return 2; }
+  const resolved = resolveBase(repo, opts.base);
+  if (resolved.error) { console.error(`review-eval: ${resolved.error}`); return 2; }
+  const base = resolved.ref;
 
   const self = process.env.CLAUDE_REVIEW_REF
     || sh('git', ['-C', TOOLS, 'rev-parse', '--short', 'HEAD']).stdout.trim() || 'unknown';
