@@ -1,6 +1,6 @@
 uuid: 1fbceba5-9529-41b6-8b71-e650c1faad79
 langcode: en
-status: true
+status: false
 dependencies:
   config:
     - views.view.user_registrations
