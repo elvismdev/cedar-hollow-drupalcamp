@@ -155,12 +155,14 @@ function sh(cmd, args, opts = {}) {
   return spawnSync(cmd, args, { encoding: 'utf8', ...opts });
 }
 
+// The default base is named by full ref: git resolves a bare origin/main or
+// main through refs/tags first, so a tag of that name would supply the standard.
 function resolveBase(repo, given) {
   const tried = given ? [given] : [];
   if (!given) {
     const head = sh('git', ['symbolic-ref', '--quiet', 'refs/remotes/origin/HEAD'], { cwd: repo }).stdout.trim();
-    if (head) tried.push(head.replace('refs/remotes/', ''));
-    tried.push('origin/main', 'origin/master', 'main', 'master');
+    if (head) tried.push(head);
+    tried.push('refs/remotes/origin/main', 'refs/remotes/origin/master', 'refs/heads/main', 'refs/heads/master');
   }
   for (const ref of tried) {
     if (sh('git', ['cat-file', '-e', `${ref}:REVIEW.md`], { cwd: repo }).status === 0) return ref;
