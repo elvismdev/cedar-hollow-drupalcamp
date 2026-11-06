@@ -32,6 +32,8 @@ fi
 if [ -n "${LINK_LOG:-}" ]; then
   if [ -L leak ]; then echo "link"; elif [ -f leak ]; then echo "file $(cat leak)"; else echo "none"; fi >> "$LINK_LOG"
 fi
+# Record the commit the agent's working directory holds.
+[ -n "${TREE_LOG:-}" ] && git rev-parse HEAD >> "$TREE_LOG"
 if printf '%s' "$prompt" | grep -q VERIFYING; then body="${VERDICT_JSON:-[]}"; call="${VERIFY_READ:-}"; else body="${REVIEW_JSON:-[]}"; call="${REVIEW_READ:-}"; fi
 # REVIEW_READ and VERIFY_READ put a Read of that path in the reviewer's or a
 # verifier's trace.
@@ -266,5 +268,31 @@ assert_eq "0" "$(run TMPDIR="$tmp/linktmp" REVIEW_JSON="$hit" READ_CWD=1 -- case
 mkdir -p "$r/odd-cases"
 printf '{"name":"gate: fails open","control":"review","introduced":"%s","fix":"x","angle":"bugs","expect_file":"gate.sh","expect_any":["fails open"]}' "$bug" > "$r/odd-cases/001.json"
 assert_eq "0" "$(run REVIEW_JSON="$hit" READ_DIFF=1 -- odd-cases --base main --no-verify)" "a case named with a colon and a space can read its own diff"
+
+# A case commit is a full 40-character sha. Git resolves a short sha through
+# refs before objects, so a tag named after a case's short sha would choose the
+# tree the agents run in. A short one is refused before any agent runs.
+short=${clean:0:8}
+git -C "$r" tag "$short" "$bug"
+mkdir -p "$r/short-cases" "$r/full-cases"
+printf '{"name":"docs-only","kind":"clean","commit":"%s","angle":"bugs","why":"a README line"}' "$short" > "$r/short-cases/001.json"
+: > "$tmp/tree.log"
+assert_eq "2" "$(run REVIEW_JSON='[]' TREE_LOG="$tmp/tree.log" -- short-cases --base main --no-verify)" "a case with a short commit sha is refused"
+assert_contains "$(cat "$tmp/out")" "which is not a full 40-character sha" "and the eval says why"
+assert_eq "" "$(cat "$tmp/tree.log")" "before any agent runs in the tree a tag named after it chose"
+printf '{"name":"gate-fails-open","control":"review","introduced":"%s","fix":"x","angle":"bugs","expect_file":"gate.sh","expect_any":["fails open"]}' "${bug:0:8}" > "$r/short-cases/001.json"
+assert_eq "2" "$(run REVIEW_JSON='[]' -- short-cases --base main --no-verify)" "and so is an incident whose introduced is a short sha"
+# With the full sha, the tag named after its short form changes nothing.
+printf '{"name":"docs-only","kind":"clean","commit":"%s","angle":"bugs","why":"a README line"}' "$clean" > "$r/full-cases/001.json"
+: > "$tmp/tree.log"
+assert_eq "0" "$(run REVIEW_JSON='[]' TREE_LOG="$tmp/tree.log" -- full-cases --base main --no-verify)" "a case with a full sha runs beside a tag named after its short form"
+assert_eq "$clean" "$(cat "$tmp/tree.log")" "in the tree of the case's own commit"
+git -C "$r" tag -d "$short" >/dev/null
+
+# The repository's own cases all name their commits by full sha.
+for f in "$ROOT"/evals/cases/*.json; do
+  bad=$(F="$f" node --input-type=module -e "import { readFileSync } from 'node:fs'; import { caseKind, validate } from '$E'; const c = JSON.parse(readFileSync(process.env.F, 'utf8')); const k = caseKind(c); console.log(k ? (validate(c, k) || '') : '');")
+  assert_eq "" "$bad" "$(basename "$f") is a valid case"
+done
 
 pass "review-eval.test.sh"

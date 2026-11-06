@@ -29,6 +29,9 @@
 //             that it was fine). Passes when the reviewer reports nothing
 //             important: a false important finding is what leads an author,
 //             above all an agent author, to make a harmful change.
+// "introduced" and "commit" are full 40-character shas. Git resolves a shorter
+// name through refs before objects, so a tag named like a short sha would
+// choose the tree the agents run in; 40 hex digits always name the object.
 // Any other case in the directory belongs to a deterministic control and is
 // skipped here.
 //
@@ -73,6 +76,10 @@ export function validate(c, kind) {
     : ['name', 'commit', 'angle', 'why'];
   for (const field of need) {
     if (!c[field]) return `has no ${field}`;
+  }
+  const commit = caseCommit(c, kind);
+  if (typeof commit !== 'string' || !/^[0-9a-f]{40}$/.test(commit)) {
+    return `has ${kind === 'incident' ? 'introduced' : 'commit'} ${JSON.stringify(commit)}, which is not a full 40-character sha`;
   }
   if (kind === 'incident' && (!Array.isArray(c.expect_any) || c.expect_any.length === 0)) {
     return 'has an empty expect_any';
