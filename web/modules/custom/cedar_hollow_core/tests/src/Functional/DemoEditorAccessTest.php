@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Drupal\Tests\cedar_hollow_core\Functional;
 
+use Drupal\canvas\Entity\Component;
 use Drupal\canvas\Entity\Page;
 use Drupal\cedar_hollow_core\Hook\MediaFieldAccessHooks;
 use Drupal\Component\Serialization\Yaml;
@@ -11,6 +12,7 @@ use Drupal\Core\Session\AccountInterface;
 use Drupal\file\Entity\File;
 use Drupal\media\Entity\Media;
 use Drupal\user\Entity\Role;
+use Drupal\views\Entity\View;
 use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\Attributes\RunTestsInSeparateProcesses;
 
@@ -25,7 +27,12 @@ use PHPUnit\Framework\Attributes\RunTestsInSeparateProcesses;
 #[RunTestsInSeparateProcesses]
 final class DemoEditorAccessTest extends SessionTestBase {
 
-  private const ROLE_CONFIG = '/../config/user.role.demo_editor.yml';
+  /**
+   * The exported configuration directory, relative to the web root.
+   */
+  private const CONFIG_DIR = '/../config/';
+
+  private const ROLE_CONFIG = self::CONFIG_DIR . 'user.role.demo_editor.yml';
 
   /**
    * The media form's "Authored by" input.
@@ -156,6 +163,65 @@ final class DemoEditorAccessTest extends SessionTestBase {
       $this->assertTrue($media->get($field_name)->access('view', $editor), "A demo editor may still view the $field_name field of another account's image.");
       $this->assertTrue($own->get($field_name)->access('view', $editor), "A demo editor may still view the $field_name field of their own image.");
     }
+  }
+
+  /**
+   * Tests the registration views blocks are absent from the editor's palette.
+   *
+   * The views need the administer registration permission, so they render
+   * nothing for a demo editor. The components are created from the exported
+   * configuration, because discovery alone would enable them.
+   * The branding block is the positive control: the theme's own components
+   * need the theme, which this site does not install.
+   */
+  public function testRegistrationBlocksAreNotInThePalette(): void {
+    foreach (['manage_registrations', 'user_registrations'] as $view_id) {
+      if (!View::load($view_id)) {
+        $data = Yaml::decode(file_get_contents($this->root . self::CONFIG_DIR . 'views.view.' . $view_id . '.yml'));
+        unset($data['uuid'], $data['_core']);
+        View::create($data)->save();
+      }
+      $component_id = 'block.views_block.' . $view_id . '-block_1';
+      Component::load($component_id)?->delete();
+      $data = Yaml::decode(file_get_contents($this->root . self::CONFIG_DIR . 'canvas.component.' . $component_id . '.yml'));
+      unset($data['uuid']);
+      Component::create($data)->save();
+    }
+
+    $editor = $this->drupalCreateUser();
+    $editor->addRole('demo_editor')->save();
+    $this->drupalLogin($editor);
+    $blocks = [
+      'block.views_block.manage_registrations-block_1',
+      'block.views_block.user_registrations-block_1',
+    ];
+
+    $listed = $this->listedComponents();
+    $this->assertContains('block.system_branding_block', $listed, 'An ordinary block component is listed.');
+    foreach ($blocks as $component_id) {
+      $this->assertNotContains($component_id, $listed);
+    }
+
+    // Enabling the components lists them, so the status is what hides them.
+    foreach ($blocks as $component_id) {
+      Component::load($component_id)->enable()->save();
+    }
+    $listed = $this->listedComponents();
+    foreach ($blocks as $component_id) {
+      $this->assertContains($component_id, $listed, 'An enabled registration block is listed.');
+    }
+  }
+
+  /**
+   * Returns the component ids the Canvas API lists for the current account.
+   *
+   * @return list<string>
+   *   The component ids.
+   */
+  private function listedComponents(): array {
+    $this->drupalGet('/canvas/api/v0/config/component');
+    $this->assertSession()->statusCodeEquals(200);
+    return array_keys(json_decode($this->getSession()->getPage()->getContent(), TRUE));
   }
 
   /**
