@@ -329,5 +329,5 @@ Subagent invocations used against each job's cap:
 *   **Disputes.** The cross-check disputed none of the records: 0 of 4, 0 of 3 and 0 of 2. With no tie-break, there are no tie-break sides to review.
 *   **Refusals.** The safety classifier stopped no subagent.
 *   **Before these runs.** The first ten runs failed or stopped when the run check refused the search patterns agents used. Pull requests #54, #58, #59 and #60 fixed the check; it now warns on the patterns it keeps whole, 2, 9 and 4 times in these runs.
-*   **What the leads changed.** Leads from the runs were fixed in #47 to #53, #55 to #57 and #62 to #66. Two were accepted instead: deleted finding comments and the shared `github-actions` identity, both of which need a collaborator with write access, and the yes or no answer anonymous sign-up gives on a duplicate registration.
+*   **What the leads changed.** Leads from the runs were fixed in pull requests #47, #48, #49, #50, #52, #53, #55, #56, #57, #62, #63, #64, #65 and #66. Three were accepted instead: deleted finding comments and the shared `github-actions` identity, both of which need a collaborator with write access, and the yes or no answer anonymous sign-up gives on a duplicate registration.
 *   **Caps.** The caps stay as they are: source 60, poc-write 12, poc-decide 6, cross-check 30, tie-breaks 3. The highest use was 40, 8, 4 and 4.
