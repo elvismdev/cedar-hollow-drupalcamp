@@ -27,6 +27,12 @@ TOOLS_READ="Read,Glob,Grep"
 # otherwise read .claude/settings.json out of the checkout under review.
 BASE="--setting-sources user"
 
+# --strict-mcp-config. With no --mcp-config it leaves the session with no MCP
+# server at all, so a .mcp.json in the tree under review (a pull request's head
+# or an eval case) starts nothing. It sits right after BASE, before the
+# variadic --add-dir.
+STRICT_MCP="--strict-mcp-config"
+
 # `--model X ` with a trailing space, or nothing at all. Empty means the action's
 # default, which is what every run so far used.
 model_flag() { # env-value
@@ -140,8 +146,8 @@ review_roots_clear() {
 # The deny list is single-quoted, so claude-code-action keeps its rules, which
 # hold ( ) and *, in one argument.
 args() { # model turns tools
-  printf "%s %s%s%s--max-turns %s --allowedTools %s --disallowedTools '%s,%s,%s'" \
-    "$BASE" "$(model_flag "$1")" "$(dir_flag "${REVIEW_HEAD_DIR:-}")" \
+  printf "%s %s %s%s%s--max-turns %s --allowedTools %s --disallowedTools '%s,%s,%s'" \
+    "$BASE" "$STRICT_MCP" "$(model_flag "$1")" "$(dir_flag "${REVIEW_HEAD_DIR:-}")" \
     "$(dir_flag "${REVIEW_INPUT_DIR:-}")" "$2" "$3" "$NO_HUMAN" "$NO_WRITE" "$(review_rules)"
 }
 
