@@ -24,15 +24,17 @@ PY
 step_run head > "$tmp/head.sh" || { echo "FAIL: the action has no head step" >&2; exit 1; }
 step_run pr > "$tmp/pr.sh" || { echo "FAIL: the action has no pr step" >&2; exit 1; }
 
-# An origin with main and a pull request head that changes one file, and the
-# job's clone of it with a tag named origin/main on the head itself.
+# An origin with main and a pull request head two commits past it, I and then
+# H, and the job's clone of it with a tag named origin/main on the head itself.
 o="$tmp/origin.git"; w="$tmp/work"
 git init -q --bare -b main "$o"
 git clone -q "$o" "$tmp/seed" 2>/dev/null
 (cd "$tmp/seed" && git config user.email t@example.invalid && git config user.name T \
  && printf 'base\n' > a && git add a && git commit -q -m base && git push -q origin HEAD:refs/heads/main \
+ && printf 'first\n' > i && git add i && git commit -q -m first \
  && printf 'change\n' > b && git add b && git commit -q -m change && git push -q origin HEAD:refs/pull/1/head)
 B=$(git -C "$o" rev-parse refs/heads/main); H=$(git -C "$o" rev-parse refs/pull/1/head)
+I=$(git -C "$o" rev-parse "$H^")
 git clone -q "$o" "$w"
 git -C "$w" tag origin/main "$H"
 
@@ -49,6 +51,18 @@ case "\$*" in
 esac
 SH
 chmod +x "$tmp/bin/gh"
+# A git that, when MB_LOG is set, records what each merge-base call printed.
+real_git=$(command -v git)
+cat > "$tmp/bin/git" <<SH
+#!/usr/bin/env bash
+if [ "\$1" = merge-base ] && [ -n "\${MB_LOG:-}" ]; then
+  out=\$("$real_git" "\$@"); rc=\$?
+  printf '%s\\n' "\$out" | tee -a "\$MB_LOG"
+  exit "\$rc"
+fi
+exec "$real_git" "\$@"
+SH
+chmod +x "$tmp/bin/git"
 
 # step <script> <env...>: runs a step's script in the clone; its outputs land in $tmp/out.
 step () {
@@ -62,6 +76,14 @@ assert_eq "0" "$(step "$tmp/head.sh" IN_PR=1)" "the head step passes with a tag 
 assert_contains "$(cat "$tmp/out")" "sha=$H" "and fetches the head"
 case "$(cat "$tmp/out")" in *empty_diff*) empty=0;; *) empty=1;; esac
 assert_exit 1 "$empty" "the tag does not make the head's diff from main empty"
+git -C "$w" worktree remove --force "$tmp/runner/head"
+
+# The tag on a commit between main and the head leaves a diff that is not
+# empty, so only the merge base the step takes shows the tag was not used.
+git -C "$w" tag -f origin/main "$I" >/dev/null
+: > "$tmp/mb.log"
+assert_eq "0" "$(step "$tmp/head.sh" IN_PR=1 MB_LOG="$tmp/mb.log")" "the head step passes with a tag named origin/main between main and the head"
+assert_eq "$B" "$(cat "$tmp/mb.log")" "and takes its merge base with main, not with the tag"
 git -C "$w" worktree remove --force "$tmp/runner/head"
 
 assert_eq "0" "$(step "$tmp/pr.sh" IN_PR=1 HEAD_SHA="$H")" "the pr step passes with a tag named origin/main"
