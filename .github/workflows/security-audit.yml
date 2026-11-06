@@ -249,8 +249,9 @@ jobs:
           echo "started=$(date +%s)" >> "$GITHUB_OUTPUT"
 
       # github_token is passed so the action uses it instead of exchanging an
-      # OIDC token for its app token. show_full_output and display_report stay
-      # false: either would put agent output in the public log or summary.
+      # OIDC token for its app token. show_full_output and display_report are
+      # pinned off on every agent step: either would publish agent output to
+      # the public log or summary.
       - name: Source agent
         id: agent-source
         if: steps.plan.outputs.agent == 'true'
