@@ -5,7 +5,8 @@ fails the whole review if one breaks these rules, so keep to them:
 
 - A `file_path` or `path` uses only letters, digits and `. _ / @ + -`, and
   never `..`, `~` or `.git`.
-- A Glob `pattern` uses only those characters plus `* { } ,`. A relative
+- A Glob `pattern` uses only those characters plus `* { } ,`, with no quote
+  marks (a stray `"` or `'` fails the run). A relative
   pattern is searched from the `path`. An absolute pattern ignores the `path`
   and is searched from its folder before the first `*` or `{`, so it is
   judged like a path: no `//`, `.` or `..` segment and no trailing `/`, that
