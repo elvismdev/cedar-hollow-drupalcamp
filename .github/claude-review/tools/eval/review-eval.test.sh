@@ -32,6 +32,10 @@ fi
 if [ -n "${LINK_LOG:-}" ]; then
   if [ -L leak ]; then echo "link"; elif [ -f leak ]; then echo "file $(cat leak)"; else echo "none"; fi >> "$LINK_LOG"
 fi
+# Record the prompt the agent was given.
+[ -n "${PROMPT_LOG:-}" ] && printf '%s\n' "$prompt" >> "$PROMPT_LOG"
+# Record the commit the agent's working directory holds.
+[ -n "${TREE_LOG:-}" ] && git rev-parse HEAD >> "$TREE_LOG"
 if printf '%s' "$prompt" | grep -q VERIFYING; then body="${VERDICT_JSON:-[]}"; call="${VERIFY_READ:-}"; else body="${REVIEW_JSON:-[]}"; call="${REVIEW_READ:-}"; fi
 # REVIEW_READ and VERIFY_READ put a Read of that path in the reviewer's or a
 # verifier's trace.
@@ -56,7 +60,7 @@ r="$tmp/repo"; mkdir -p "$r/cases"
  printf 'exit 0 # fails open\n' > gate.sh && git commit -q -am "introduce the bug"
  printf 'docs\n' > README && git add README && git commit -q -m "a clean change")
 bug=$(git -C "$r" rev-parse HEAD~1); clean=$(git -C "$r" rev-parse HEAD)
-printf '{"name":"gate-fails-open","control":"review","introduced":"%s","fix":"x","angle":"bugs","expect_file":"gate.sh","expect_any":["fails open"]}' "$bug" > "$r/cases/001.json"
+printf '{"name":"gate-fails-open","control":"review","introduced":"%s","fix":"%s","angle":"bugs","expect_file":"gate.sh","expect_any":["fails open"]}' "$bug" "$clean" > "$r/cases/001.json"
 printf '{"name":"docs-only","kind":"clean","commit":"%s","angle":"bugs","why":"a README line"}' "$clean" > "$r/cases/002.json"
 printf '{"name":"deterministic","control":"bash lint.sh {file}","fix":"x","file":"a"}' > "$r/cases/003.json"
 
@@ -264,7 +268,81 @@ assert_eq "0" "$(run TMPDIR="$tmp/linktmp" REVIEW_JSON="$hit" READ_CWD=1 -- case
 
 # A case name outside the path allowlist does not make its own paths refused.
 mkdir -p "$r/odd-cases"
-printf '{"name":"gate: fails open","control":"review","introduced":"%s","fix":"x","angle":"bugs","expect_file":"gate.sh","expect_any":["fails open"]}' "$bug" > "$r/odd-cases/001.json"
+printf '{"name":"gate: fails open","control":"review","introduced":"%s","fix":"%s","angle":"bugs","expect_file":"gate.sh","expect_any":["fails open"]}' "$bug" "$clean" > "$r/odd-cases/001.json"
 assert_eq "0" "$(run REVIEW_JSON="$hit" READ_DIFF=1 -- odd-cases --base main --no-verify)" "a case named with a colon and a space can read its own diff"
+
+# A case commit is a full 40-character sha. Git resolves a short sha through
+# refs before objects, so a tag named after a case's short sha would choose the
+# tree the agents run in. A short one is refused before any agent runs.
+short=${clean:0:8}
+git -C "$r" tag "$short" "$bug"
+mkdir -p "$r/short-cases" "$r/full-cases"
+printf '{"name":"docs-only","kind":"clean","commit":"%s","angle":"bugs","why":"a README line"}' "$short" > "$r/short-cases/001.json"
+: > "$tmp/tree.log"
+assert_eq "2" "$(run REVIEW_JSON='[]' TREE_LOG="$tmp/tree.log" -- short-cases --base main --no-verify)" "a case with a short commit sha is refused"
+assert_contains "$(cat "$tmp/out")" "which is not a full 40-character sha" "and the eval says why"
+assert_eq "" "$(cat "$tmp/tree.log")" "before any agent runs in the tree a tag named after it chose"
+printf '{"name":"gate-fails-open","control":"review","introduced":"%s","fix":"%s","angle":"bugs","expect_file":"gate.sh","expect_any":["fails open"]}' "${bug:0:8}" "$clean" > "$r/short-cases/001.json"
+assert_eq "2" "$(run REVIEW_JSON='[]' -- short-cases --base main --no-verify)" "and so is an incident whose introduced is a short sha"
+# An incident's fix is a full sha too.
+for fix in x "${clean:0:8}"; do
+  printf '{"name":"gate-fails-open","control":"review","introduced":"%s","fix":"%s","angle":"bugs","expect_file":"gate.sh","expect_any":["fails open"]}' "$bug" "$fix" > "$r/short-cases/001.json"
+  assert_eq "2" "$(run REVIEW_JSON='[]' -- short-cases --base main --no-verify)" "an incident whose fix is $fix is refused"
+  assert_contains "$(cat "$tmp/out")" "has fix" "naming the fix field"
+done
+# A full sha in upper case is the same object, and runs in that commit.
+upper=$(printf '%s' "$clean" | tr 'a-f' 'A-F')
+printf '{"name":"docs-only","kind":"clean","commit":"%s","angle":"bugs","why":"a README line"}' "$upper" > "$r/short-cases/001.json"
+: > "$tmp/tree.log"
+assert_eq "0" "$(run REVIEW_JSON='[]' TREE_LOG="$tmp/tree.log" -- short-cases --base main --no-verify)" "a full sha in upper case is accepted"
+assert_eq "$clean" "$(cat "$tmp/tree.log")" "and runs in that commit's tree"
+# With the full sha, the tag named after its short form changes nothing.
+printf '{"name":"docs-only","kind":"clean","commit":"%s","angle":"bugs","why":"a README line"}' "$clean" > "$r/full-cases/001.json"
+: > "$tmp/tree.log"
+assert_eq "0" "$(run REVIEW_JSON='[]' TREE_LOG="$tmp/tree.log" -- full-cases --base main --no-verify)" "a case with a full sha runs beside a tag named after its short form"
+assert_eq "$clean" "$(cat "$tmp/tree.log")" "in the tree of the case's own commit"
+git -C "$r" tag -d "$short" >/dev/null
+
+# With no --base, main is read by full ref. Git resolves a bare origin/main
+# through refs/tags first, so a tag of that name on a commit with another
+# REVIEW.md would supply the standard the reviewer judges by.
+first=$(git -C "$r" rev-list --max-parents=0 main)
+git -C "$r" update-ref refs/remotes/origin/main "$first"
+blob=$(printf '# HIJACKED standard\n' | git -C "$r" hash-object -w --stdin)
+GIT_INDEX_FILE="$tmp/hijack.idx" git -C "$r" read-tree "$first"
+GIT_INDEX_FILE="$tmp/hijack.idx" git -C "$r" update-index --cacheinfo "100644,$blob,REVIEW.md"
+hijack=$(git -C "$r" commit-tree "$(GIT_INDEX_FILE="$tmp/hijack.idx" git -C "$r" write-tree)" -p "$first" -m hijack)
+git -C "$r" tag origin/main "$hijack"
+: > "$tmp/prompt.log"
+assert_eq "0" "$(run REVIEW_JSON='[]' PROMPT_LOG="$tmp/prompt.log" -- full-cases --no-verify)" "a case runs with the default base beside a tag named origin/main"
+assert_contains "$(cat "$tmp/out")" "standard from refs/remotes/origin/main" "and the standard comes from the remote-tracking ref"
+assert_contains "$(cat "$tmp/prompt.log")" "# standard" "so the prompt holds main's REVIEW.md"
+case "$(cat "$tmp/prompt.log")" in *HIJACKED*) hij=0;; *) hij=1;; esac
+assert_exit 1 "$hij" "and not the tag's"
+git -C "$r" tag -d origin/main >/dev/null
+git -C "$r" update-ref -d refs/remotes/origin/main
+
+# A --base given by hand is read the same way. A branch name is read as
+# refs/remotes/origin/<name>, then refs/heads/<name>, never as a tag of that
+# name; a full ref or sha is used as given; any other form is refused.
+git -C "$r" tag main "$hijack" 2>/dev/null
+[ "$(git -C "$r" rev-parse --verify --quiet refs/tags/main)" = "$hijack" ] || { echo "FAIL: the tag fixture named main was not created" >&2; exit 1; }
+: > "$tmp/prompt.log"
+assert_eq "0" "$(run REVIEW_JSON='[]' PROMPT_LOG="$tmp/prompt.log" -- full-cases --base main --no-verify)" "--base main runs beside a tag named main"
+assert_contains "$(cat "$tmp/out")" "standard from refs/heads/main" "and reads the branch"
+case "$(cat "$tmp/prompt.log")" in *HIJACKED*) hij=0;; *) hij=1;; esac
+assert_exit 1 "$hij" "so the prompt does not hold the tag's REVIEW.md"
+assert_eq "0" "$(run REVIEW_JSON='[]' -- full-cases --base refs/heads/main --no-verify)" "a full ref is used as given"
+assert_eq "0" "$(run REVIEW_JSON='[]' -- full-cases --base "$first" --no-verify)" "and so is a full sha"
+assert_eq "2" "$(run REVIEW_JSON='[]' -- full-cases --base 'main~0' --no-verify)" "any other form is refused"
+assert_contains "$(cat "$tmp/out")" "is not a branch name, a full ref or a full sha" "with the reason"
+assert_eq "2" "$(run REVIEW_JSON='[]' -- full-cases --base no-such-branch --no-verify)" "and a branch with no REVIEW.md has no standard"
+git -C "$r" tag -d main >/dev/null
+
+# The repository's own cases all name their commits by full sha.
+for f in "$ROOT"/evals/cases/*.json; do
+  bad=$(F="$f" node --input-type=module -e "import { readFileSync } from 'node:fs'; import { caseKind, validate } from '$E'; const c = JSON.parse(readFileSync(process.env.F, 'utf8')); const k = caseKind(c); console.log(k ? (validate(c, k) || '') : '');")
+  assert_eq "" "$bad" "$(basename "$f") is a valid case"
+done
 
 pass "review-eval.test.sh"

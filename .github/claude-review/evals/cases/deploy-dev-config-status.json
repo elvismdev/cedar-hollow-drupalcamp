@@ -1,8 +1,8 @@
 {
   "name": "deploy-dev-config-status",
   "control": "review",
-  "introduced": "747849ee",
-  "fix": "66741ad2",
+  "introduced": "747849ee2222ee603bc3b1543df5d82059f302d8",
+  "fix": "66741ad2743935721c4524ad1e4784cd7bd8ba51",
   "file": ".github/workflows/deploy-dev.yml",
   "angle": "bugs",
   "expect_file": ".github/workflows/deploy-dev.yml",

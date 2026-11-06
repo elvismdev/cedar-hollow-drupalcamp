@@ -177,4 +177,15 @@ out=$(run "$(feed "$P")" bugs "$H3")
 assert_contains "$out" "state=full" "a merge that conflicts falls back to a full review"
 assert_contains "$out" "diff_from=" "with no diff_from"
 
+# A tag named origin/main does not replace main. Git resolves a bare origin/main
+# through refs/tags before refs/remotes, so with the tag on a commit holding the
+# head's new work, that work would read as a merge from main already reviewed.
+B0=$(git rev-parse "$M1^")
+git update-ref refs/remotes/origin/main "$B0"
+git tag origin/main "$M1"
+out=$(run "$(feed "$P")" bugs "$H1")
+assert_contains "$out" "state=incremental" "a tag named origin/main does not make new work current"
+assert_contains "$out" "diff_from=$(git rev-parse "$P^{tree}")" "and the diff is taken against the real main"
+git tag -d origin/main >/dev/null
+
 pass "reviewed-through.test.sh"
