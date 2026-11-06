@@ -1,7 +1,8 @@
 name: Security audit
 
-# The monthly security audit (docs/designs/security-audit.md), dispatched by
-# hand until the schedule is added. Each job lists prepare in needs and runs
+# The monthly security audit (docs/designs/security-audit.md). The schedule
+# wakes every Saturday and prepare lets only the first Saturday of the month
+# through; it can also be dispatched by hand. Each job lists prepare in needs and runs
 # only when prepare says go, on main, and when prepare's run_jobs names it, so
 # a canary run starts only the jobs its row needs.
 #
@@ -10,6 +11,8 @@ name: Security audit
 # as an audit only when its job named report succeeded.
 
 on:
+  schedule:
+    - cron: "0 6 * * 6"
   workflow_dispatch:
     inputs:
       publish:
