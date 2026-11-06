@@ -153,7 +153,7 @@ Rename of the private helper folder, its variable prefix and a private-name comm
 The eval's calling workflow and cases are this repository's own:
 
 - `.github/workflows/review-eval.yml`: new; runs `eval/action.yml` on a push to main that changes `.github/claude-review/**`, `REVIEW.md` or `review.yml`, weekly and by hand, in the `claude-agents` environment, with the baseline only when `evals/eval-baseline.json` exists; on failure it opens or comments on the open `reviewer-eval` issue, naming a regression, a failure with no baseline yet, or a case that could not run.
-- `evals/cases/`: new; the incident `deploy-dev-config-status` and three clean cases from merged commits.
+- `evals/cases/`: new; the incident `deploy-dev-config-status` and three clean cases from merged commits, each commit a full 40-character sha.
 
 Test steps, ported from upstream's `test.yml` into `.github/workflows/ci.yml` as job `reviewer-tools` (paths changed to `.github/claude-review/tools` and `.claude/hooks`):
 
