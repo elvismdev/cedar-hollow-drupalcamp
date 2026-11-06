@@ -275,3 +275,30 @@ gh pr merge <number> --merge --admin
 
 The source and proof-of-concept agents run on `claude-opus-5-5`, the cross-check on `claude-fable-5-1`, and the tie-break on `claude-sonnet-5-5`. Each issue header records the dispute rate and the side each tie-break took. After three runs, the owner reads those figures and decides whether to keep the three models.
 
+### First audit run
+
+Three runs dispatched on `main` by the owner, all with `publish=false`. All three concluded success and every job's run check passed.
+
+| Run | Commit | Total | source | poc-write | poc-run | poc-decide | cross-check |
+|---|---|---|---|---|---|---|---|
+| 41933116212 | `25a4e328` | 2h24m | 1h36m | 37m | 1m | 4m | 5m |
+| 42088385640 | `d10fd3c0` | 2h30m | 1h41m | 38m | 1m | 3m | 6m |
+| 42131892831 | `5763a678` | 1h41m | 1h18m | 14m | 1m | 4m | 3m |
+
+The second run's validators failed after the source agent, so a repair pass ran; it started no subagent.
+
+Subagent invocations used against each job's cap:
+
+| Run | source | poc-write | poc-decide | cross-check |
+|---|---|---|---|---|
+| 41933116212 | 40 of 60 | 8 of 12 | 4 of 6 | 4 of 30 |
+| 42088385640 | 40 of 60 | 6 of 12 | 3 of 6 | 3 of 30 |
+| 42131892831 | 35 of 60 | 4 of 12 | 2 of 6 | 2 of 30 |
+
+*   **Models.** Source and poc-decide ran on `claude-opus-5-5`, and cross-check step 1 on `claude-fable-5-1`. Poc-write ran on the refusal fallback `claude-opus-4-8` in all three runs; that model is on the allowlist and the report header names it. The cross-check and tie-break run with the refusal fallback turned off. No tie-break was needed, so `claude-sonnet-5-5` never ran.
+*   **Results.** No finding was confirmed. The runs reported 4, 3 and 2 leads, and rejected 3, 3 and 2 candidates.
+*   **Disputes.** The cross-check disputed none of the records: 0 of 4, 0 of 3 and 0 of 2. With no tie-break, there are no tie-break sides to review.
+*   **Refusals.** The safety classifier stopped no subagent.
+*   **Before these runs.** The first ten runs failed or stopped when the run check refused the search patterns agents used. Pull requests #54, #58, #59 and #60 fixed the check; it now warns on the patterns it keeps whole, 2, 9 and 4 times in these runs.
+*   **What the leads changed.** Leads from the runs were fixed in #47 to #53, #55 to #57 and #62 to #66. Two were accepted instead: deleted finding comments and the shared `github-actions` identity, both of which need a collaborator with write access, and the yes or no answer anonymous sign-up gives on a duplicate registration.
+*   **Caps.** The caps stay as they are: source 60, poc-write 12, poc-decide 6, cross-check 30, tie-breaks 3. The highest use was 40, 8, 4 and 4.
