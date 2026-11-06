@@ -60,7 +60,7 @@ r="$tmp/repo"; mkdir -p "$r/cases"
  printf 'exit 0 # fails open\n' > gate.sh && git commit -q -am "introduce the bug"
  printf 'docs\n' > README && git add README && git commit -q -m "a clean change")
 bug=$(git -C "$r" rev-parse HEAD~1); clean=$(git -C "$r" rev-parse HEAD)
-printf '{"name":"gate-fails-open","control":"review","introduced":"%s","fix":"x","angle":"bugs","expect_file":"gate.sh","expect_any":["fails open"]}' "$bug" > "$r/cases/001.json"
+printf '{"name":"gate-fails-open","control":"review","introduced":"%s","fix":"%s","angle":"bugs","expect_file":"gate.sh","expect_any":["fails open"]}' "$bug" "$clean" > "$r/cases/001.json"
 printf '{"name":"docs-only","kind":"clean","commit":"%s","angle":"bugs","why":"a README line"}' "$clean" > "$r/cases/002.json"
 printf '{"name":"deterministic","control":"bash lint.sh {file}","fix":"x","file":"a"}' > "$r/cases/003.json"
 
@@ -268,7 +268,7 @@ assert_eq "0" "$(run TMPDIR="$tmp/linktmp" REVIEW_JSON="$hit" READ_CWD=1 -- case
 
 # A case name outside the path allowlist does not make its own paths refused.
 mkdir -p "$r/odd-cases"
-printf '{"name":"gate: fails open","control":"review","introduced":"%s","fix":"x","angle":"bugs","expect_file":"gate.sh","expect_any":["fails open"]}' "$bug" > "$r/odd-cases/001.json"
+printf '{"name":"gate: fails open","control":"review","introduced":"%s","fix":"%s","angle":"bugs","expect_file":"gate.sh","expect_any":["fails open"]}' "$bug" "$clean" > "$r/odd-cases/001.json"
 assert_eq "0" "$(run REVIEW_JSON="$hit" READ_DIFF=1 -- odd-cases --base main --no-verify)" "a case named with a colon and a space can read its own diff"
 
 # A case commit is a full 40-character sha. Git resolves a short sha through
@@ -282,8 +282,20 @@ printf '{"name":"docs-only","kind":"clean","commit":"%s","angle":"bugs","why":"a
 assert_eq "2" "$(run REVIEW_JSON='[]' TREE_LOG="$tmp/tree.log" -- short-cases --base main --no-verify)" "a case with a short commit sha is refused"
 assert_contains "$(cat "$tmp/out")" "which is not a full 40-character sha" "and the eval says why"
 assert_eq "" "$(cat "$tmp/tree.log")" "before any agent runs in the tree a tag named after it chose"
-printf '{"name":"gate-fails-open","control":"review","introduced":"%s","fix":"x","angle":"bugs","expect_file":"gate.sh","expect_any":["fails open"]}' "${bug:0:8}" > "$r/short-cases/001.json"
+printf '{"name":"gate-fails-open","control":"review","introduced":"%s","fix":"%s","angle":"bugs","expect_file":"gate.sh","expect_any":["fails open"]}' "${bug:0:8}" "$clean" > "$r/short-cases/001.json"
 assert_eq "2" "$(run REVIEW_JSON='[]' -- short-cases --base main --no-verify)" "and so is an incident whose introduced is a short sha"
+# An incident's fix is a full sha too.
+for fix in x "${clean:0:8}"; do
+  printf '{"name":"gate-fails-open","control":"review","introduced":"%s","fix":"%s","angle":"bugs","expect_file":"gate.sh","expect_any":["fails open"]}' "$bug" "$fix" > "$r/short-cases/001.json"
+  assert_eq "2" "$(run REVIEW_JSON='[]' -- short-cases --base main --no-verify)" "an incident whose fix is $fix is refused"
+  assert_contains "$(cat "$tmp/out")" "has fix" "naming the fix field"
+done
+# A full sha in upper case is the same object, and runs in that commit.
+upper=$(printf '%s' "$clean" | tr 'a-f' 'A-F')
+printf '{"name":"docs-only","kind":"clean","commit":"%s","angle":"bugs","why":"a README line"}' "$upper" > "$r/short-cases/001.json"
+: > "$tmp/tree.log"
+assert_eq "0" "$(run REVIEW_JSON='[]' TREE_LOG="$tmp/tree.log" -- short-cases --base main --no-verify)" "a full sha in upper case is accepted"
+assert_eq "$clean" "$(cat "$tmp/tree.log")" "and runs in that commit's tree"
 # With the full sha, the tag named after its short form changes nothing.
 printf '{"name":"docs-only","kind":"clean","commit":"%s","angle":"bugs","why":"a README line"}' "$clean" > "$r/full-cases/001.json"
 : > "$tmp/tree.log"

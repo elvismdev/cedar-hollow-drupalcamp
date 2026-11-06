@@ -29,7 +29,7 @@
 //             that it was fine). Passes when the reviewer reports nothing
 //             important: a false important finding is what leads an author,
 //             above all an agent author, to make a harmful change.
-// "introduced" and "commit" are full 40-character shas. Git resolves a shorter
+// "introduced", "commit" and an incident's "fix" are full 40-character shas. Git resolves a shorter
 // name through refs before objects, so a tag named like a short sha would
 // choose the tree the agents run in; 40 hex digits always name the object.
 // Any other case in the directory belongs to a deterministic control and is
@@ -63,6 +63,9 @@ import { fileURLToPath } from 'node:url';
 
 const TOOLS = join(dirname(fileURLToPath(import.meta.url)), '..');
 const VERIFIERS = 3;
+// A case's commits: 40 hex digits in either case, which git always reads as
+// an object id.
+const FULL_SHA = /^[0-9a-f]{40}$/i;
 
 export function caseKind(c) {
   if (c?.control === 'review') return 'incident';
@@ -77,9 +80,12 @@ export function validate(c, kind) {
   for (const field of need) {
     if (!c[field]) return `has no ${field}`;
   }
-  const commit = caseCommit(c, kind);
-  if (typeof commit !== 'string' || !/^[0-9a-f]{40}$/.test(commit)) {
-    return `has ${kind === 'incident' ? 'introduced' : 'commit'} ${JSON.stringify(commit)}, which is not a full 40-character sha`;
+  const shaFields = kind === 'incident' ? ['introduced'] : ['commit'];
+  if (kind === 'incident' && 'fix' in c) shaFields.push('fix');
+  for (const field of shaFields) {
+    if (typeof c[field] !== 'string' || !FULL_SHA.test(c[field])) {
+      return `has ${field} ${JSON.stringify(c[field])}, which is not a full 40-character sha`;
+    }
   }
   if (kind === 'incident' && (!Array.isArray(c.expect_any) || c.expect_any.length === 0)) {
     return 'has an empty expect_any';
@@ -225,8 +231,9 @@ function extract(trace, out) {
   return r.status === 0 && existsSync(out);
 }
 
+// Lower case, as git prints it, whatever case the file holds.
 function caseCommit(c, kind) {
-  return kind === 'incident' ? c.introduced : c.commit;
+  return String(kind === 'incident' ? c.introduced : c.commit).toLowerCase();
 }
 
 /**
