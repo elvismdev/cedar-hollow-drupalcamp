@@ -20,7 +20,12 @@ final class CanvasFoldersTest extends UnitTestCase {
   private const CONFIG_DIR = '/../../../../config/';
 
   /**
-   * Tests that every folder holds at least one enabled component.
+   * Tests that every component folder holds at least one enabled component.
+   *
+   * This checks the exported configuration only. Canvas creates a component's
+   * folder whenever the component is newly created (Component::postSave()), so
+   * a fresh install from configuration brings a deleted folder back; the
+   * deletion holds on an existing site.
    */
   public function testNoFolderIsEmptyInThePalette(): void {
     $dir = dirname(__DIR__, 3) . self::CONFIG_DIR;
@@ -30,10 +35,15 @@ final class CanvasFoldersTest extends UnitTestCase {
     $empty = [];
     foreach ($folders as $file) {
       $folder = Yaml::decode(file_get_contents($file));
+      if (($folder['configEntityTypeId'] ?? NULL) !== 'component') {
+        continue;
+      }
       $enabled = FALSE;
-      foreach ($folder['items'] as $component_id) {
-        $component = Yaml::decode(file_get_contents($dir . 'canvas.component.' . $component_id . '.yml'));
-        $enabled = $enabled || $component['status'];
+      foreach ($folder['items'] ?? [] as $component_id) {
+        $component_file = $dir . 'canvas.component.' . $component_id . '.yml';
+        $this->assertFileExists($component_file, sprintf('Folder %s lists component %s, which is exported.', $folder['name'], $component_id));
+        $component = Yaml::decode(file_get_contents($component_file));
+        $enabled = $enabled || !empty($component['status']);
       }
       if (!$enabled) {
         $empty[] = $folder['name'] . ' (' . basename($file, '.yml') . ')';
