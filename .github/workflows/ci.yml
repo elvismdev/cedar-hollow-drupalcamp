@@ -234,9 +234,9 @@ jobs:
           find .github/claude-review .claude/hooks -name '*.sh' -print0 | xargs -0 shellcheck -S warning
           shellcheck -S warning .github/security-audit/*.sh .github/security-audit/tests/*.sh scripts/rebuild.sh scripts/pantheon-build.test.sh
       - name: Workflow and action checks
-        run: |
-          bash .github/claude-review/tools/check-actions.sh
-          bash .github/claude-review/tools/check-agent-output.sh
+        run: bash .github/claude-review/tools/check-actions.sh
+      - name: Agent output inputs are pinned off
+        run: bash .github/claude-review/tools/check-agent-output.sh
       - name: Pinned Claude Code version matches the review action
         run: bash .github/claude-review/tools/check-cli-version.sh
         env:

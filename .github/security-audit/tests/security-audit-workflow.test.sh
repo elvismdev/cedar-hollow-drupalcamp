@@ -32,6 +32,11 @@ def read(rel):
     with open(root + "/" + rel) as f:
         return f.read()
 
+r = subprocess.run(["bash", root + "/.github/claude-review/tools/check-agent-output.sh", path],
+                   capture_output=True, text=True)
+if r.returncode != 0:
+    err("check-agent-output.sh: " + (r.stdout + r.stderr).strip())
+
 SA = ".github/security-audit"
 CR = ".github/claude-review"
 prepare_src = read(SA + "/prepare.sh")
@@ -197,8 +202,6 @@ for name, job in jobs.items():
                 err("%s step %d: an agent step needs continue-on-error: true" % (name, i))
             if not isinstance(st.get("timeout-minutes"), int):
                 err("%s step %d: an agent step needs its own timeout-minutes" % (name, i))
-            if str(w.get("show_full_output")) != "false" or str(w.get("display_report")) != "false":
-                err("%s step %d: show_full_output and display_report must be 'false'" % (name, i))
             if norm(w.get("claude_code_oauth_token")) != "${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}":
                 err("%s step %d: the agent's token must be secrets.CLAUDE_CODE_OAUTH_TOKEN" % (name, i))
             want_env = MODEL_VARS | ({NO_FALLBACK} if st.get("id") in NO_FALLBACK_AGENTS else set())
