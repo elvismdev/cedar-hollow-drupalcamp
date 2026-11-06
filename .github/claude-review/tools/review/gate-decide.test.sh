@@ -234,6 +234,20 @@ assert_eq "1" "$(rc TIER=High REVIEW_COMMENTS_CMD="$limited")" "and is red"
 assert_eq "1" "$(rc TIER=High REVIEW_COMMENTS_CMD='printf "not json"')" "and is red"
 assert_eq "0" "$(rc REVIEW_COMMENTS_CMD='exit 4')" "but is not read when nothing needs an acknowledgement"
 
+# A tag named origin/main does not replace main. Git resolves a bare
+# origin/main through refs/tags before refs/remotes, so with the tag on a
+# commit holding new work, the acknowledged commit merged with it would match
+# a head that adds that work.
+git checkout -q -b tagged-main "$B1"
+printf 'unreviewed\n' > x; git add x; git commit -q -m unreviewed; MX=$(git rev-parse HEAD)
+git checkout -q -b tagged-head "$A1"
+git merge -q --no-edit "$MX" >/dev/null; HX=$(git rev-parse HEAD)
+git checkout -q topic
+git tag origin/main "$MX"
+assert_eq "1" "$(rc TIER=High HEAD_SHA="$HX" REVIEW_COMMENTS_CMD="$ack_head")" "a tag named origin/main does not let an old acknowledgement cover new work"
+git tag -d origin/main >/dev/null
+assert_eq "1" "$(rc TIER=High HEAD_SHA="$HX" REVIEW_COMMENTS_CMD="$ack_head")" "nor does the head without the tag"
+
 # A head this checkout lacks cannot be acknowledged.
 assert_contains "$(run TIER=High HEAD_SHA=deadbeefdeadbeefdeadbeefdeadbeefdeadbeef REVIEW_COMMENTS_CMD="$ack_head")" "is not in this checkout" "a missing head is named"
 
