@@ -320,6 +320,8 @@ runs:
         github_token: ${{ inputs.github_token }}
         prompt: ${{ steps.prompt.outputs.prompt }}
         claude_args: ${{ steps.args.outputs.claude_args }}
+        show_full_output: 'false'
+        display_report: 'false'
 
     # The agent step can exit success having run no agent. The trace is the
     # only evidence one ran. always(), so a failed agent step that left no
@@ -420,6 +422,8 @@ runs:
         github_token: ${{ inputs.github_token }}
         prompt: ${{ steps.verify-prompt.outputs.prompt }}
         claude_args: ${{ steps.args.outputs.claude_args }}
+        show_full_output: 'false'
+        display_report: 'false'
 
     - name: Verifier 1 used only Read, Glob and Grep
       id: tools-verify1
@@ -446,6 +450,8 @@ runs:
         github_token: ${{ inputs.github_token }}
         prompt: ${{ steps.verify-prompt.outputs.prompt }}
         claude_args: ${{ steps.args.outputs.claude_args }}
+        show_full_output: 'false'
+        display_report: 'false'
 
     - name: Verifier 2 used only Read, Glob and Grep
       id: tools-verify2
@@ -472,6 +478,8 @@ runs:
         github_token: ${{ inputs.github_token }}
         prompt: ${{ steps.verify-prompt.outputs.prompt }}
         claude_args: ${{ steps.args.outputs.claude_args }}
+        show_full_output: 'false'
+        display_report: 'false'
 
     - name: Verifier 3 used only Read, Glob and Grep
       id: tools-verify3
