@@ -178,7 +178,7 @@ Pantheon Dev holds demo content and one demo editor account whose credentials ar
 
 #### Dispatching a run
 
-The workflow has no schedule yet. Dispatch it on `main`; every job after prepare is skipped on any other ref.
+The workflow runs on a schedule (`0 6 * * 6`): it wakes every Saturday at 06:00 UTC, and `prepare.sh` lets only the first Saturday of the month through. It can also be dispatched on `main`; every job after prepare is skipped on any other ref.
 
 ```bash
 gh workflow run security-audit.yml --ref main -f publish=false

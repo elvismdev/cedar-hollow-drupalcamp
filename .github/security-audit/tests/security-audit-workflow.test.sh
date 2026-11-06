@@ -43,9 +43,11 @@ prepare_src = read(SA + "/prepare.sh")
 
 # ---------------------------------------------------------------- trigger
 trigger = wf.get(True, wf.get("on"))
-if not isinstance(trigger, dict) or list(trigger) != ["workflow_dispatch"]:
-    err("the trigger must be workflow_dispatch only, got %r" % (list(trigger) if isinstance(trigger, dict) else trigger,))
+if not isinstance(trigger, dict) or list(trigger) != ["schedule", "workflow_dispatch"]:
+    err("the trigger must be schedule and workflow_dispatch, got %r" % (list(trigger) if isinstance(trigger, dict) else trigger,))
     trigger = {"workflow_dispatch": {}}
+elif trigger.get("schedule") != [{"cron": "0 6 * * 6"}]:
+    err("the schedule must be the single cron \"0 6 * * 6\", got %r" % (trigger.get("schedule"),))
 inputs = (trigger.get("workflow_dispatch") or {}).get("inputs") or {}
 if set(inputs) != {"publish", "canary"}:
     err("the dispatch inputs must be publish and canary, got %r" % sorted(inputs))
@@ -752,7 +754,8 @@ MOVE
   grep -q "upload audit-state, and only then publish" "$tmp/out" \
     || { echo "FAIL: moving the upload after publishing failed for another reason: $(head -c 200 "$tmp/out")" >&2; exit 1; }
 }
-mutate "a schedule trigger" '("on:\n  workflow_dispatch:", "on:\n  schedule:\n    - cron: \"0 6 * * 6\"\n  workflow_dispatch:", 1)'
+mutate "no schedule" '("on:\n  schedule:\n    - cron: \"0 6 * * 6\"\n  workflow_dispatch:", "on:\n  workflow_dispatch:", 1)'
+mutate "a daily schedule" '("cron: \"0 6 * * 6\"", "cron: \"0 6 * * *\"", 1)'
 mutate "a checkout keeping credentials" '("persist-credentials: false", "persist-credentials: true", 1)'
 mutate "an expression inside run:" '("run: bash .github/security-audit/sqlite-config.sh", "run: echo ${{ github.event_name }} && bash .github/security-audit/sqlite-config.sh", 1)'
 mutate "audit-state kept 30 days" '("retention-days: 90", "retention-days: 30", 1)'
