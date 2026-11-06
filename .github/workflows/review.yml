@@ -129,7 +129,7 @@ jobs:
       cause: ${{ steps.review.outputs.cause }}
     steps:
       # Main, full history: the working directory and the only source of the
-      # scripts, the prompts and REVIEW.md, with origin/main for the base.
+      # scripts, the prompts and REVIEW.md, with refs/remotes/origin/main for the base.
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0
@@ -158,7 +158,7 @@ jobs:
       cause: ${{ steps.review.outputs.cause }}
     steps:
       # Main, full history: the working directory and the only source of the
-      # scripts, the prompts and REVIEW.md, with origin/main for the base.
+      # scripts, the prompts and REVIEW.md, with refs/remotes/origin/main for the base.
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0
@@ -188,7 +188,7 @@ jobs:
       pull-requests: read
     steps:
       # Main with full history, then the head, because the acknowledgement
-      # check compares the head with commits on origin/main.
+      # check compares the head with commits on refs/remotes/origin/main.
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0

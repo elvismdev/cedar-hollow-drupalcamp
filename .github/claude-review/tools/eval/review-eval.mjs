@@ -29,6 +29,9 @@
 //             that it was fine). Passes when the reviewer reports nothing
 //             important: a false important finding is what leads an author,
 //             above all an agent author, to make a harmful change.
+// "introduced", "commit" and an incident's "fix" are full 40-character shas. Git resolves a shorter
+// name through refs before objects, so a tag named like a short sha would
+// choose the tree the agents run in; 40 hex digits always name the object.
 // Any other case in the directory belongs to a deterministic control and is
 // skipped here.
 //
@@ -44,7 +47,7 @@
 // while another is newly missed. A case that newly passes, and a case with no
 // baseline entry, are reported so the baseline can be brought up to date.
 //
-// Usage: review-eval.mjs <cases-dir> [--base <ref>] [--only <name>] [--no-verify]
+// Usage: review-eval.mjs <cases-dir> [--base <branch | refs/... | sha>] [--only <name>] [--no-verify]
 //                        [--out <results.json>] [--baseline <baseline.json>]
 //   baseline  {"cases": {"<case name>": "pass" | "fail"}}, the last measured result
 //   Run from the root of the repository whose history the cases name. The
@@ -60,6 +63,9 @@ import { fileURLToPath } from 'node:url';
 
 const TOOLS = join(dirname(fileURLToPath(import.meta.url)), '..');
 const VERIFIERS = 3;
+// A case's commits: 40 hex digits in either case, which git always reads as
+// an object id.
+const FULL_SHA = /^[0-9a-f]{40}$/i;
 
 export function caseKind(c) {
   if (c?.control === 'review') return 'incident';
@@ -73,6 +79,13 @@ export function validate(c, kind) {
     : ['name', 'commit', 'angle', 'why'];
   for (const field of need) {
     if (!c[field]) return `has no ${field}`;
+  }
+  const shaFields = kind === 'incident' ? ['introduced'] : ['commit'];
+  if (kind === 'incident' && 'fix' in c) shaFields.push('fix');
+  for (const field of shaFields) {
+    if (typeof c[field] !== 'string' || !FULL_SHA.test(c[field])) {
+      return `has ${field} ${JSON.stringify(c[field])}, which is not a full 40-character sha`;
+    }
   }
   if (kind === 'incident' && (!Array.isArray(c.expect_any) || c.expect_any.length === 0)) {
     return 'has an empty expect_any';
@@ -148,17 +161,32 @@ function sh(cmd, args, opts = {}) {
   return spawnSync(cmd, args, { encoding: 'utf8', ...opts });
 }
 
+// The base is read by full ref or full sha. Git resolves a bare origin/main or
+// main through refs/tags first, so a tag of that name would supply the
+// standard. A --base given as a full ref (refs/...) or 40 hex digits is used
+// as given; a branch name is read as refs/remotes/origin/<name>, then
+// refs/heads/<name>; any other form, such as main~1, is refused.
+// Returns { ref } or { error }.
 function resolveBase(repo, given) {
-  const tried = given ? [given] : [];
-  if (!given) {
+  let tried;
+  if (given === undefined || given === '') {
+    tried = [];
     const head = sh('git', ['symbolic-ref', '--quiet', 'refs/remotes/origin/HEAD'], { cwd: repo }).stdout.trim();
-    if (head) tried.push(head.replace('refs/remotes/', ''));
-    tried.push('origin/main', 'origin/master', 'main', 'master');
+    if (head) tried.push(head);
+    tried.push('refs/remotes/origin/main', 'refs/remotes/origin/master', 'refs/heads/main', 'refs/heads/master');
+  } else if (FULL_SHA.test(given)) {
+    tried = [given.toLowerCase()];
+  } else if (/^refs\/[A-Za-z0-9._\/-]+$/.test(given) && !given.includes('..')) {
+    tried = [given];
+  } else if (/^[A-Za-z0-9._-]+(\/[A-Za-z0-9._-]+)*$/.test(given) && !given.includes('..')) {
+    tried = [`refs/remotes/origin/${given}`, `refs/heads/${given}`];
+  } else {
+    return { error: `--base ${JSON.stringify(given)} is not a branch name, a full ref or a full sha, so which commit it names is not certain` };
   }
   for (const ref of tried) {
-    if (sh('git', ['cat-file', '-e', `${ref}:REVIEW.md`], { cwd: repo }).status === 0) return ref;
+    if (sh('git', ['cat-file', '-e', `${ref}:REVIEW.md`], { cwd: repo }).status === 0) return { ref };
   }
-  return null;
+  return { error: `no base ref with a REVIEW.md among ${tried.join(', ')}, so there is no standard to judge against` };
 }
 
 /**
@@ -216,8 +244,9 @@ function extract(trace, out) {
   return r.status === 0 && existsSync(out);
 }
 
+// Lower case, as git prints it, whatever case the file holds.
 function caseCommit(c, kind) {
-  return kind === 'incident' ? c.introduced : c.commit;
+  return String(kind === 'incident' ? c.introduced : c.commit).toLowerCase();
 }
 
 /**
@@ -395,8 +424,9 @@ function main(argv) {
   }
   if (cases.length === 0) { console.error(`review-eval: no incident or clean cases in ${dir}, so nothing was measured`); return 2; }
 
-  const base = resolveBase(repo, opts.base);
-  if (!base) { console.error('review-eval: no base ref with a REVIEW.md, so there is no standard to judge against'); return 2; }
+  const resolved = resolveBase(repo, opts.base);
+  if (resolved.error) { console.error(`review-eval: ${resolved.error}`); return 2; }
+  const base = resolved.ref;
 
   const self = process.env.CLAUDE_REVIEW_REF
     || sh('git', ['-C', TOOLS, 'rev-parse', '--short', 'HEAD']).stdout.trim() || 'unknown';

@@ -24,6 +24,10 @@
 # branch's new work and any conflict resolution but not what main brought in.
 # A merge-tree that conflicts has no T, so the whole change is reviewed.
 #
+# Main is named refs/remotes/origin/main in full: git resolves a bare
+# origin/main through refs/tags first, so a tag of that name would replace
+# main and turn new work into an already reviewed merge.
+#
 # Three states, printed as lines for $GITHUB_OUTPUT with since and diff_from:
 #   full         no usable prior round, so review the whole change
 #   incremental  review since-sha..head, with the diff taken from diff_from
@@ -142,8 +146,8 @@ if [ "$(git rev-parse "$prior")" = "$(git rev-parse "$HEAD_SHA")" ]; then
   exit 0
 fi
 
-M=$(git merge-base "$HEAD_SHA" origin/main) || {
-  echo "reviewed-through: ${HEAD_SHA} has no merge base with origin/main" >&2; exit 1; }
+M=$(git merge-base "$HEAD_SHA" refs/remotes/origin/main) || {
+  echo "reviewed-through: ${HEAD_SHA} has no merge base with refs/remotes/origin/main" >&2; exit 1; }
 set +e
 T=$(git merge-tree --write-tree "$M" "$prior"); mrc=$?
 set -e

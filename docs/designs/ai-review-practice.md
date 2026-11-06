@@ -766,7 +766,8 @@ Stage 4 lands in this order:
     *   **Checkout.** The `actions/checkout` step is removed. The calling job's full-history checkout of `main` is the only checkout.
     *   **Head.**
         *   A new first step runs `git fetch --no-tags origin +refs/pull/$PR/head` and `git worktree add --detach "$RUNNER_TEMP/head" FETCH_HEAD`.
-        *   It asserts the sha equals the pulls API's `head.sha`, and that `git diff --name-only $(git merge-base FETCH_HEAD origin/main) FETCH_HEAD` is not empty when the API's `changed_files` is above 0 (otherwise cause `empty_diff`).
+        *   It asserts the sha equals the pulls API's `head.sha`, and that `git diff --name-only $(git merge-base FETCH_HEAD refs/remotes/origin/main) FETCH_HEAD` is not empty when the API's `changed_files` is above 0 (otherwise cause `empty_diff`).
+        *   Main is named `refs/remotes/origin/main` in full here, in the base the next step outputs (`refs/remotes/origin/<base branch>`), in `reviewed-through.sh` and in `gate-decide.sh`. Git resolves a bare `origin/main` through `refs/tags` before `refs/remotes`, so a tag of that name would replace main.
         *   It exports `REVIEW_HEAD_DIR` and creates `REVIEW_INPUT_DIR="$RUNNER_TEMP/review-input"`.
     *   **Paths.**
         *   Script paths are `$GITHUB_WORKSPACE/.github/claude-review/tools`.
@@ -802,7 +803,7 @@ Stage 4 lands in this order:
     *   **`gate-decide.sh`** takes the inputs as environment variables and implements the decision order in Technical Plan section 3, item 4. It calls `findings-gate.sh` for decision steps 5 to 7, prints the gate messages listed there, and writes the cause and the per-thread list to `$GITHUB_STEP_SUMMARY`.
     *   **Acknowledgement check.**
         *   It finds owner comments matching `^Accepted at ([0-9a-f]{40}):` and resolves each sha with `git rev-parse --verify "<sha>^{commit}"`.
-        *   A comment is valid when the sha is the head, or when `git merge-tree --write-tree $(git merge-base <head> origin/main) <sha>` equals `git rev-parse <head>^{tree}`.
+        *   A comment is valid when the sha is the head, or when `git merge-tree --write-tree $(git merge-base <head> refs/remotes/origin/main) <sha>` equals `git rev-parse <head>^{tree}`.
     *   **Tests** cover:
         *   every decision step, and the order between them;
         *   "bugs and security";
@@ -812,7 +813,8 @@ Stage 4 lands in this order:
         *   an acknowledgement for the head;
         *   a short sha of the head, which is invalid, and a tag named after an acknowledged sha, short or full, pointing at another head, which is invalid;
         *   an acknowledgement for an earlier commit followed by a merge from `main`, which is valid;
-        *   the same followed by an edit, which is invalid.
+        *   the same followed by an edit, which is invalid;
+        *   an acknowledgement for an earlier commit with a tag named `origin/main` on a commit holding new work, which is invalid.
 
 #### 16. `CR/eval/action.yml` (Create, adapted)
 
@@ -849,13 +851,14 @@ Stage 4 lands in this order:
         *   `reviewed-through.sh`
             *   **Change:**
                 *   It outputs `state`, `since` and a new `diff_from`.
-                *   With `M=$(git merge-base <head> origin/main)` and `T=$(git merge-tree --write-tree M <last reviewed>)`, it reports `current` when `T` equals the head's tree.
+                *   With `M=$(git merge-base <head> refs/remotes/origin/main)` and `T=$(git merge-tree --write-tree M <last reviewed>)`, it reports `current` when `T` equals the head's tree.
                 *   When they differ, it reports an incremental review with `diff_from=T`.
                 *   When `merge-tree` reports a conflict, it reports a full review.
             *   **Test cases:**
                 *   a merge from `main` with no edits;
                 *   a hand-edited merge;
-                *   `main` advancing after the branch's merge.
+                *   `main` advancing after the branch's merge;
+                *   a tag named `origin/main` on a commit holding new work, which stays incremental.
         *   `findings-gate.sh`
             *   **Change:**
                 *   A thread is answered when a comment by `REVIEW_OWNER_LOGIN` follows the first comment. The query is `comments(first:100){nodes{author{login} body url}}`, aligned with `prior-findings.sh`'s query, and `isResolved` and `isOutdated` no longer answer a thread.
@@ -964,11 +967,11 @@ Stage 4 lands in this order:
 #### 26. `CR/evals/cases/deploy-dev-config-status.json` (Create)
 
 *   **Type / Scope**: Incident case in upstream's schema.
-*   **Proposed Changes**: `{"name": "deploy-dev-config-status", "control": "review", "introduced": "747849ee", "fix": "66741ad2", "file": ".github/workflows/deploy-dev.yml", "angle": "bugs", "expect_file": ".github/workflows/deploy-dev.yml", "expect_any": ["log line", "stdout", "[notice]", "not valid json"]}`.
+*   **Proposed Changes**: `{"name": "deploy-dev-config-status", "control": "review", "introduced": "747849ee2222ee603bc3b1543df5d82059f302d8", "fix": "66741ad2743935721c4524ad1e4784cd7bd8ba51", "file": ".github/workflows/deploy-dev.yml", "angle": "bugs", "expect_file": ".github/workflows/deploy-dev.yml", "expect_any": ["log line", "stdout", "[notice]", "not valid json"]}`.
 
 #### 27. `CR/evals/cases/clean-*.json` (Create, three files)
 
-*   **Type / Scope**: Clean cases in upstream's schema: `{"name", "kind": "clean", "commit", "angle", "why"}`.
+*   **Type / Scope**: Clean cases in upstream's schema: `{"name", "kind": "clean", "commit", "angle", "why"}`. `commit`, like an incident's `introduced`, is a full 40-character sha, and `review-eval.mjs` refuses a shorter one: git resolves a short sha through refs first, so a tag named like it would choose the tree the eval checks out.
 *   **Proposed Changes**:
     *   **Candidates**, all angle `bugs`:
         *   `6c4fbf3f`: PHP render cache keys.

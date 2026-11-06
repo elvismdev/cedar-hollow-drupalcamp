@@ -98,7 +98,10 @@ runs:
     # its instruction files. Its commit must be the one the API reports, and an
     # empty file list while the API reports changed files is a failure, never
     # "no issues". The caller's checkout of main has no stored credentials, so
-    # the fetch is anonymous, which works on a public repository.
+    # the fetch is anonymous, which works on a public repository. Main is
+    # refs/remotes/origin/main in full here and in the next steps: git resolves
+    # a bare origin/main through refs/tags first, so a tag of that name would
+    # replace main.
     - name: Fetch the head as data
       id: head
       shell: bash
@@ -121,7 +124,7 @@ runs:
         fi
         git worktree add --detach "$RUNNER_TEMP/head" "$fetched"
         if [ "$changed" -gt 0 ]; then
-          merge_base=$(git merge-base "$fetched" origin/main)
+          merge_base=$(git merge-base "$fetched" refs/remotes/origin/main)
           files=$(git diff --name-only "$merge_base" "$fetched")
           if [ -z "$files" ]; then
             echo "cause=empty_diff" >> "$GITHUB_OUTPUT"
@@ -185,8 +188,8 @@ runs:
         read -r base base_sha < <(gh pr view "$IN_PR" \
           --json baseRefName,baseRefOid \
           --jq '"\(.baseRefName) \(.baseRefOid)"')
-        git rev-parse --verify --quiet "origin/$base" >/dev/null || {
-          echo "::error::origin/$base is not present in this checkout, so the base cannot be read."
+        git rev-parse --verify --quiet "refs/remotes/origin/$base" >/dev/null || {
+          echo "::error::refs/remotes/origin/$base is not present in this checkout, so the base cannot be read."
           exit 1
         }
         if ! printf '%s' "$base_sha" | grep -qE '^[0-9a-f]{40}$'; then
@@ -200,11 +203,11 @@ runs:
           > "$RUNNER_TEMP/pr-intent.md"
         {
           echo "number=$IN_PR"
-          echo "base=origin/$base"
+          echo "base=refs/remotes/origin/$base"
           echo "head=$HEAD_SHA"
           echo "base_sha=$base_sha"
         } >> "$GITHUB_OUTPUT"
-        echo "reviewing #$IN_PR: origin/$base..$HEAD_SHA"
+        echo "reviewing #$IN_PR: refs/remotes/origin/$base..$HEAD_SHA"
 
     # Three rounds, then stop: past it a reviewer finds a few more old things
     # each pass rather than new ones. Only the bot's reviews, by exact login,

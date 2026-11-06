@@ -21,7 +21,7 @@ inputs:
     description: secrets.CLAUDE_CODE_OAUTH_TOKEN
     required: true
   base:
-    description: Ref whose REVIEW.md is the standard. Empty uses the default branch.
+    description: Commit whose REVIEW.md is the standard, as a branch name (read as refs/remotes/origin/<name>, then refs/heads/<name>), a full ref or a full sha. Empty uses the default branch.
     required: false
     default: ''
   baseline:
