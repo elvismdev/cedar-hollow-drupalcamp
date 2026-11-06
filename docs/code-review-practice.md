@@ -142,3 +142,136 @@ Measured on the first gate canary, 2026-10-31, on GitHub-hosted `ubuntu-24.04` r
 *   **The gate** takes about 6 seconds and starts no agent.
 
 Token counts are not shown in the job log, because the action's full output stays hidden on a public repository.
+
+## Audit
+
+The pull request review reads one change at a time. The security audit reads the whole custom codebase. It runs as `.github/workflows/security-audit.yml`, uses Cloudflare's `security-audit` skill (MIT, vendored under `.github/security-audit/skill/`), and posts what it verified to one rolling issue labelled `security-audit`.
+
+### What it does
+
+*   **Reads the project's own code.** The scope is the custom modules and theme, configuration, recipes, scripts, workflows and tests. Drupal core, contributed modules, vendor code and the vendored skill are out of scope; `composer audit` and `npm audit` in CI cover known advisories in dependencies.
+*   **Proves what it can.** For each lead that needs a running site, two agents each write a proof-of-concept script without seeing the other's. A job with no token runs both against a throwaway copy of the site: Drupal on SQLite, built from this repository's configuration and demo content, inside a sandbox with no network, with one test account per role.
+*   **Reports and stops there.** It updates the issue with the commit it read, the agent invocations each job used against its cap, the counts, and each published finding with its attack path, both scripts' results and a proposed fix. Attack paths are public by the owner's choice, and the issue says so.
+
+### What it does not do
+
+*   **It blocks nothing.** It is never a required check.
+*   **It fixes nothing.** A fix goes through a normal pull request.
+*   **It never contacts Pantheon Dev** or any deployed site. Every reproduction targets the throwaway site.
+*   **It never gives an agent a shell.** Agents can read, search and write only into their own output folder. Project code runs only in the two jobs that hold no token.
+*   **It publishes nothing unverified.** Rejected, disputed and unvalidated candidates appear only as counts.
+
+### How a finding is verified
+
+1.  **The skill's own verifiers.** A fresh subagent that did not find a candidate checks it, and a second fresh subagent checks every final record. The skill's two validators then run as trusted steps.
+2.  **Two independent scripts.** Both proof-of-concept scripts run in the sandbox, and a fresh agent reads both results.
+3.  **A cross-check on another model.** One more fresh verifier per final record, on a model none of the earlier jobs ran on, re-reads the record, both scripts and their output.
+4.  **A tie-break on a third model.** When the cross-check disagrees, one tie-break verifier decides, at most three per run. If it also disagrees, the finding is removed from the run and kept, with both reasons, in `disputed.json` in the saved state.
+
+**Confirmed** means both scripts showed the claimed result in this run, as the test account of the lower-trust role, over HTTP for a web boundary. Only a confirmed finding carries a severity. A finding confirmed last month is proven again by two new scripts, never carried over. A cross-check can lower, demote or reject a confirmed finding, never raise it. Anything else is a lead, with no severity and a stated blocker.
+
+### Dev's data
+
+Pantheon Dev holds demo content and one demo editor account whose credentials are shared with reviewers, so anything an editor can do, any visitor can do. Its only other data is what visitors type into the public sign-up form. It holds no production data. A published attack path against Dev reaches that and nothing more.
+
+### Audit runbook
+
+#### Dispatching a run
+
+The workflow has no schedule yet. Dispatch it on `main`; every job after prepare is skipped on any other ref.
+
+```bash
+gh workflow run security-audit.yml --ref main -f publish=false
+gh workflow run security-audit.yml --ref main -f canary=denied-read
+```
+
+With `publish=false` the whole audit runs, but the rendered issue body is sealed as the `audit-report` artifact instead of posted, and no `audit-state` is saved. A canary also forces `publish` to false and runs only the jobs it needs. The job log prints `<canary>: pass` or `<canary>: fail`.
+
+| `canary` | Jobs run | What it checks |
+|---|---|---|
+| `denied-read` | prepare, source | Reads of runner files, credentials and `/proc` are refused by a permission rule, and a read in the checkout works |
+| `denied-write` | prepare, source | Writes to the runner's command files, agent settings and the checkout are refused |
+| `subagent-bash` | prepare, source | A subagent asked to run Bash has no Bash |
+| `subagent-findings-write` | prepare, source | A subagent's write to `findings.json` fails the run check |
+| `script-isolation` | prepare, source, build-site, poc-write | One script writer's read of the other's scratch fails the run check |
+| `sandbox-secrets` | prepare, source, build-site, poc-write, poc-run | A script in the sandbox finds none of the tokens or keys |
+| `reopen-records` | prepare, source, build-site, poc-write, poc-run | The sandbox key cannot open the run records it sealed |
+
+#### Re-enabling the schedule
+
+GitHub disables a scheduled workflow after a period with no repository activity, and emails a warning first. Push events are not disabled that way, so the CI job "Security audit schedule health" runs `.github/security-audit/check-audit-health.sh` on every push to `main`. It warns when the audit workflow is not active, when none of its last 10 completed runs on `main` has a successful report job, or when the newest that does started more than 40 days ago. While the workflow has no schedule it only notes that and skips the age check. It always exits 0, so it never stops a deploy.
+
+When the email or the warning arrives:
+
+```bash
+gh workflow enable security-audit.yml
+```
+
+#### Rotating and storing the keys
+
+Two `age` key pairs seal everything the jobs hand on. The agents' private key, `AUDIT_AGENTS_AGE_KEY`, is in the `claude-agents` environment. The sandbox's, `AUDIT_SANDBOX_AGE_KEY`, is in `audit-sandbox`. The public halves are `.github/security-audit/keys/agents.pub` and `sandbox.pub`. To rotate one, on the owner's machine:
+
+```bash
+age-keygen -o agents.key
+grep '^AGE-SECRET-KEY-' agents.key | gh secret set AUDIT_AGENTS_AGE_KEY --env claude-agents
+age-keygen -y agents.key > .github/security-audit/keys/agents.pub
+```
+
+1.  Copy the `AGE-SECRET-KEY-` line into the password manager before setting the secret. A secret cannot be read back, and the owner's copy is the only way to open sealed files locally.
+2.  Commit the new public key through a pull request. Every run checks that its private key opens what is sealed to its own public key and not the other one, so runs fail at that check until the pull request merges.
+3.  Delete `agents.key`.
+
+For the sandbox key, use `sandbox.key`, `AUDIT_SANDBOX_AGE_KEY`, `--env audit-sandbox` and `sandbox.pub`. The sandbox key opens only the scripts sent to the sandbox, so its rotation needs no reset.
+
+#### Resetting state after rotating the agents' key
+
+The saved state is sealed to the old key, so the next run cannot open it and fails. There is no reset input. Instead, delete the `audit-state` artifact that the issue's state marker names; the next run then finds no prior state, starts a fresh ledger, and lists the old findings as "not re-checked this run".
+
+```bash
+run=$(gh issue view <issue> --json body --jq .body | sed -n 's/^<!-- security-audit-state \(.*\) -->$/\1/p' | jq -r .run_id)
+id=$(gh api "repos/{owner}/{repo}/actions/runs/$run/artifacts?name=audit-state" --jq '.artifacts[0].id')
+gh api -X DELETE "repos/{owner}/{repo}/actions/artifacts/$id"
+```
+
+#### Opening a sealed file locally
+
+Each sealed artifact is a tar archive encrypted with `age`. All are kept for one day, except `audit-state`, which is kept for 90.
+
+| Artifact | Sealed to | Holds |
+|---|---|---|
+| `audit-source`, `audit-poc-write`, `audit-poc`, `audit-final` | agents | The state after each phase |
+| `poc-scripts` | agents | The proof-of-concept scripts |
+| `poc-scripts-sandbox` | sandbox | The same scripts, for the sandbox |
+| `poc-run-records` | agents | One sealed file per script run |
+| `audit-report` | agents | The rendered body of a run that did not publish |
+| `audit-state` | agents | `findings.json`, `coverage-ledger.json`, `disputed.json`, `audit-history.json` |
+
+```bash
+gh run download <run-id> -n audit-state -D sealed
+sha256sum sealed/audit-state.age
+mkdir opened
+age -d -i agents.key sealed/audit-state.age | tar -x -C opened
+```
+
+`agents.key` holds the `AGE-SECRET-KEY-` line from the password manager. Compare the sha256 with the one in the issue's state marker before opening, and delete `agents.key` afterwards.
+
+#### Retracting a wrong issue edit
+
+When a run publishes something that should not be public:
+
+1.  Edit the issue body to remove it. Keep the `<!-- security-audit-state ... -->` line exactly as it is: the next run finds its prior state through it.
+2.  Delete the earlier revision from the issue's edit history, or the text stays readable there.
+3.  Rotate any secret it showed. For the token, `claude setup-token`, then `gh secret set CLAUDE_CODE_OAUTH_TOKEN --env claude-agents`. For the agents' key, rotate it and reset the state.
+
+#### A published High or Critical finding
+
+When the issue shows a confirmed High or Critical finding, or a lead that touches `.github/workflows` or names a secret, the attack path is already public. Open the fix pull request the same day. If the review cannot run, merge it with the bypass and say why on the pull request:
+
+```bash
+gh pr merge <number> --merge --admin
+```
+
+#### Reviewing the model choice
+
+The source and proof-of-concept agents run on `claude-opus-5-5`, the cross-check on `claude-fable-5-1`, and the tie-break on `claude-sonnet-5-5`. Each issue header records the dispute rate and the side each tie-break took. After three runs, the owner reads those figures and decides whether to keep the three models.
+
