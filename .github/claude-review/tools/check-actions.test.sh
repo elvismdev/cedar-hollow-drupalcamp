@@ -46,6 +46,13 @@ printf 'name: not-an-action\n' > "$tmp/broken/action.yml"
 printf '#!/usr/bin/env bash\nmb=$(git merge-base HEAD origin/main)\n' > "$tmp/bare.sh"
 out=$(cd "$ROOT" && bash "$C" "$tmp/bare.sh" 2>&1); assert_exit 1 "$?" "a script naming a bare origin/main fails"
 assert_contains "$out" "bare.sh:2 names a bare origin/ revision" "and names the file and line"
+# A name after a range or a negation is resolved the same way.
+for rev in 'HEAD..origin/main' 'a...origin/main' '^origin/main' 'HEAD:origin/main'; do
+  printf '#!/usr/bin/env bash\ngit rev-list %s\n' "$rev" > "$tmp/range.sh"
+  (cd "$ROOT" && bash "$C" "$tmp/range.sh" >/dev/null 2>&1); assert_exit 1 "$?" "a bare origin/main in $rev fails"
+done
+printf '#!/usr/bin/env bash\ngit rev-list HEAD..refs/remotes/origin/main ^refs/remotes/origin/main\ncat ./origin/x a.origin/y\n' > "$tmp/range.sh"
+(cd "$ROOT" && bash "$C" "$tmp/range.sh" >/dev/null 2>&1); assert_exit 0 "$?" "a full ref after a range or ^, and a path, pass"
 printf "const base = 'origin/main';\n" > "$tmp/bare.mjs"
 (cd "$ROOT" && bash "$C" "$tmp/bare.mjs" >/dev/null 2>&1); assert_exit 1 "$?" "so does a module naming one"
 cat > "$tmp/broken/action.yml" <<'YML'

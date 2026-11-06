@@ -12,7 +12,8 @@
 # revision, such as origin/main. Git resolves that name through refs/tags
 # before refs/remotes, so a tag named origin/main would stand in for main;
 # refs/remotes/origin/<branch> names the remote-tracking ref alone. Comment
-# lines are skipped, and a name after a slash, as in a refspec, is not bare.
+# lines are skipped, and a name after a slash, as in a refspec, is not bare;
+# one after a range's .. or ... is.
 #
 # Usage: check-actions.sh [action.yml | script ...]
 #   default: every .github/claude-review/*/action.yml, and every .sh, .mjs,
@@ -38,7 +39,10 @@ bare_origin() {
   python3 - "$1" "$2" <<'PY'
 import re, sys
 label, path = sys.argv[1], sys.argv[2]
-bare = re.compile(r"(?<![A-Za-z0-9_./-])origin[/]")
+# Bare: at the start, after a character no name or path holds (a space, a
+# quote, ^ or :), or after a range's .. or ..., which git also resolves on its
+# own. After a slash or a single dot it is part of a longer name.
+bare = re.compile(r"(?:(?<![A-Za-z0-9_./-])|(?<=\.\.))origin[/]")
 hit = False
 for n, line in enumerate(open(path, encoding="utf-8"), 1):
     if line.lstrip().startswith(("#", "//")):
