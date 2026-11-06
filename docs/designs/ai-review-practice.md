@@ -903,6 +903,7 @@ Stage 4 lands in this order:
         *   `--disallowedTools` gets upstream's no-human list plus Bash, Edit, Write, MultiEdit, NotebookEdit, WebFetch, WebSearch and Skill.
         *   The same single-quoted list carries Read, Glob and Grep deny rules on `/proc`, `/sys`, `$GITHUB_WORKSPACE/.git`, `$HOME`'s dot-files and the runner's `_actions`, `runners` and `actions-runner` directories, each as itself and `/**`, and none on `$RUNNER_TEMP`, which holds the head and input directories; the line is not printed when `HOME`, `RUNNER_TEMP` or `GITHUB_WORKSPACE` fails the audit's path check.
         *   `--setting-sources user` is kept.
+        *   `--strict-mcp-config` follows it, so a `.mcp.json` in the head under review or an eval case tree starts no MCP server.
         *   `--add-dir "$REVIEW_HEAD_DIR"` and `--add-dir "$REVIEW_INPUT_DIR"` are emitted only when each is set, and placed before `--max-turns`.
     *   **`compose-agent-args.test.sh`** is rewritten. It asserts both tool lists, the `--add-dir` behaviour with each variable set and unset, and that no `--add-dir` swallows the next flag.
     *   **`emit-block.sh`**: the wording about the Sentry error tracker, used only by the owner's private fix pipeline, is removed.

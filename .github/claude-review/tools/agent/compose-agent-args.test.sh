@@ -39,10 +39,19 @@ check_tool_lists() { # line ; prints a failure per line, nothing when sound
 
 # Default: no model, no directories. Both tool lists are asserted exactly.
 out=$(env -u REVIEW_HEAD_DIR -u REVIEW_INPUT_DIR "${RUNNER_ENV[@]}" AGENT_TURNS_REVIEW=60 AGENT_MODEL_REVIEW='' bash "$R")
-assert_contains "$out" "AGENT_ARGS_REVIEW=--setting-sources user --max-turns 60 --allowedTools " "default review args shape"
+assert_contains "$out" "AGENT_ARGS_REVIEW=--setting-sources user --strict-mcp-config --max-turns 60 --allowedTools " "default review args shape"
 assert_eq "1" "$(printf '%s\n' "$out" | grep -c .)" "exactly one env line"
 case "$out" in *"--model"*) echo "FAIL: an empty model still emitted --model" >&2; exit 1 ;; esac
 case "$out" in *"--add-dir"*) echo "FAIL: unset directories still emitted --add-dir" >&2; exit 1 ;; esac
+
+# The review, its verifiers and the eval run in a tree that can hold a
+# .mcp.json, so no project MCP server may start: the flag is one whole token,
+# present once, in every composed variant (default, model, directories).
+for setup in "AGENT_MODEL_REVIEW=" "AGENT_MODEL_REVIEW=claude-opus-5" "REVIEW_HEAD_DIR=/a REVIEW_INPUT_DIR=/b"; do
+  o=$(env "${RUNNER_ENV[@]}" $setup bash "$R")
+  assert_eq "1" "$(printf '%s\n' "$o" | tr ' ' '\n' | grep -cxF -- --strict-mcp-config)" \
+    "the review line holds --strict-mcp-config once ($setup)"
+done
 
 # Both lists, checked by whole token.
 problems=$(check_tool_lists "$out")
@@ -61,7 +70,7 @@ bad=$(check_tool_lists "x --allowedTools Read,Glob,Grep,Bash --disallowedTools $
 
 # A pinned model appears once.
 out=$(env "${RUNNER_ENV[@]}" AGENT_MODEL_REVIEW=claude-opus-5 AGENT_TURNS_REVIEW=60 bash "$R")
-assert_contains "$out" "AGENT_ARGS_REVIEW=--setting-sources user --model claude-opus-5 --max-turns 60" \
+assert_contains "$out" "AGENT_ARGS_REVIEW=--setting-sources user --strict-mcp-config --model claude-opus-5 --max-turns 60" \
   "the pinned model lands in the args"
 assert_eq "1" "$(printf '%s' "$out" | grep -c -- '--model')" "the flag appears once"
 
