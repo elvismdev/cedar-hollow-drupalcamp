@@ -189,7 +189,7 @@ AUDIT_DENY="$(printf '%s\n' "${NO_HUMAN//,/$'\n'}" "${NO_WRITE//,/$'\n'}" | grep
 # step  job  model  max-turns  subagents
 AUDIT_STEPS="source source claude-opus-5-5 400 yes
 repair source claude-opus-5-5 40 no
-poc_write poc-write claude-opus-5-5 120 yes
+poc_write poc-write claude-opus-4-8 120 yes
 poc_decide poc-decide claude-opus-5-5 80 yes
 cross_check cross-check claude-fable-5-1 150 yes
 tie_break cross-check claude-sonnet-5-5 40 yes"

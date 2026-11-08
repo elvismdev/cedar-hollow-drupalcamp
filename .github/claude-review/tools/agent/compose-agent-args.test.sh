@@ -220,7 +220,7 @@ assert_eq "AGENT_ARGS_AUDIT_SOURCE AGENT_ARGS_AUDIT_REPAIR AGENT_ARGS_AUDIT_POC_
 audit_line() { printf '%s\n' "$audit" | grep "^$1="; }
 for spec in "AGENT_ARGS_AUDIT_SOURCE claude-opus-5-5 source 400 yes" \
             "AGENT_ARGS_AUDIT_REPAIR claude-opus-5-5 source 40 no" \
-            "AGENT_ARGS_AUDIT_POC_WRITE claude-opus-5-5 poc-write 120 yes" \
+            "AGENT_ARGS_AUDIT_POC_WRITE claude-opus-4-8 poc-write 120 yes" \
             "AGENT_ARGS_AUDIT_POC_DECIDE claude-opus-5-5 poc-decide 80 yes" \
             "AGENT_ARGS_AUDIT_CROSS_CHECK claude-fable-5-1 cross-check 150 yes" \
             "AGENT_ARGS_AUDIT_TIE_BREAK claude-sonnet-5-5 cross-check 40 yes"; do
@@ -300,7 +300,7 @@ assert_exit 1 $? "--audit refuses an unset RUNNER_TEMP"
 # --audit-models: the step's model three times, read as the runner reads $GITHUB_ENV.
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp" "$tmp_err"' EXIT
-for spec in "source claude-opus-5-5" "repair claude-opus-5-5" "poc_write claude-opus-5-5" \
+for spec in "source claude-opus-5-5" "repair claude-opus-5-5" "poc_write claude-opus-4-8" \
             "poc_decide claude-opus-5-5" "cross_check claude-fable-5-1" "tie_break claude-sonnet-5-5"; do
   # shellcheck disable=SC2086
   set -- $spec
@@ -309,6 +309,17 @@ for spec in "source claude-opus-5-5" "repair claude-opus-5-5" "poc_write claude-
   assert_eq "{\"ANTHROPIC_DEFAULT_SONNET_MODEL\": \"$2\", \"ANTHROPIC_DEFAULT_HAIKU_MODEL\": \"$2\", \"CLAUDE_CODE_SUBAGENT_MODEL\": \"$2\"}" \
     "$(python3 -I "$PARSE_ENV" "$tmp/env")" "--audit-models $1 sets the three model variables to $2"
 done
+# The cross-check and the tie-break each run on a model that none of the jobs
+# they judge runs on (D24): source, its repair, poc-write and poc-decide.
+audit_model() { bash "$R" --audit-models "$1" | sed -n 's/^CLAUDE_CODE_SUBAGENT_MODEL=//p'; }
+for judge in cross_check tie_break; do
+  for judged in source repair poc_write poc_decide; do
+    [ "$(audit_model "$judge")" != "$(audit_model "$judged")" ] \
+      || { echo "FAIL: $judge runs on the model $judged runs on" >&2; exit 1; }
+  done
+done
+[ "$(audit_model tie_break)" != "$(audit_model cross_check)" ] \
+  || { echo "FAIL: the tie-break runs on the cross-check's model" >&2; exit 1; }
 bash "$R" --audit-models nope >/dev/null 2>&1
 assert_exit 2 $? "--audit-models refuses an unknown step"
 bash "$R" --audit-models >/dev/null 2>&1
