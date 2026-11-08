@@ -48,12 +48,25 @@ jobs:
       - run: npm ci && npx playwright install --with-deps chromium
         timeout-minutes: 10
         working-directory: tests
-      # Only this step reads the bot-bypass token, not the npm install above.
+      # Only this step and the scrub below read the bot-bypass token, not the
+      # npm install above.
       - run: npx playwright test --project=smoke --project=a11y
         working-directory: tests
         env:
           PANTHEON_BOT_BYPASS_TOKEN: ${{ secrets.PANTHEON_BOT_BYPASS_TOKEN }}
-      - if: failure()
+      # A failed API request writes its call log, the x-pantheon-bot-bypass
+      # header value included, into test-results/*/error-context.md. GitHub
+      # masks secrets in logs but not in artifacts, and this artifact is
+      # public, so the token is removed from the files first. The upload runs
+      # only when the scrub succeeded: a file that still holds the token, or
+      # one it could not rewrite, fails this step and nothing is uploaded.
+      - name: Remove the bot-bypass token from the files to upload
+        id: scrub
+        if: failure()
+        run: python3 scripts/scrub-secret.py --env PANTHEON_BOT_BYPASS_TOKEN tests/test-results tests/a11y-results
+        env:
+          PANTHEON_BOT_BYPASS_TOKEN: ${{ secrets.PANTHEON_BOT_BYPASS_TOKEN }}
+      - if: failure() && steps.scrub.outcome == 'success'
         uses: actions/upload-artifact@v7
         with:
           name: pantheon-smoke
