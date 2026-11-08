@@ -232,7 +232,7 @@ jobs:
       - name: Shellcheck
         run: |
           find .github/claude-review .claude/hooks -name '*.sh' -print0 | xargs -0 shellcheck -S warning
-          shellcheck -S warning .github/security-audit/*.sh .github/security-audit/tests/*.sh scripts/rebuild.sh scripts/pantheon-build.test.sh
+          shellcheck -S warning .github/security-audit/*.sh .github/security-audit/tests/*.sh scripts/rebuild.sh scripts/pantheon-build.test.sh scripts/scrub-secret.test.sh
       - name: Workflow and action checks
         run: bash .github/claude-review/tools/check-actions.sh
       - name: Agent output inputs are pinned off
@@ -258,7 +258,7 @@ jobs:
       - name: Run the security audit tests
         run: |
           shopt -s nullglob
-          suites=(.github/security-audit/tests/*.test.sh scripts/rebuild.test.sh scripts/pantheon-build.test.sh)
+          suites=(.github/security-audit/tests/*.test.sh scripts/rebuild.test.sh scripts/pantheon-build.test.sh scripts/scrub-secret.test.sh)
           for suite in "${suites[@]}"; do
             echo "::group::$suite"
             bash "$suite" || failed+=("$suite")
