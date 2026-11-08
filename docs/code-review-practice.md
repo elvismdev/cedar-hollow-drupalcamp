@@ -302,7 +302,7 @@ When the issue shows a confirmed High or Critical finding, or a lead that touche
 
 #### Reviewing the model choice
 
-The source and proof-of-concept agents run on `claude-opus-5-5`, the cross-check on `claude-fable-5-1`, and the tie-break on `claude-sonnet-5-5`. Each issue header records the dispute rate and the side each tie-break took. After three runs, the owner reads those figures and decides whether to keep the three models.
+The source and poc-decide agents run on `claude-opus-5-5`, the poc-write agent and its subagents on `claude-opus-4-8`, the cross-check on `claude-fable-5-1`, and the tie-break on `claude-sonnet-5-5`. Poc-write moved to `claude-opus-4-8` because `claude-opus-5-5` refuses its first request: the lead already ran on that refusal fallback while its subagents stayed on `claude-opus-5-5`, and in run 42370662243 one of those subagents' searches was interrupted by the safety classifier and refused by the run check, failing the step. Each issue header records the dispute rate and the side each tie-break took. After three runs, the owner reads those figures and decides whether to keep the three models.
 
 ### First audit run
 

@@ -149,7 +149,7 @@ This table is a project addition to the design template. The decision ids are sh
 | D15 | The skill is vendored with its MIT licence at `c1c8a8c1471069fb0e188eeaff69b8e8db6564a8` | Owner, 2026-10-30 | The audit runs from `main`'s copy; readers can see what ran |
 | D22 | Verification is the skill's own two fresh verifiers plus one cross-model verifier per final finding; the temporary database is the throwaway site findings are reproduced against | Owner, 2026-10-30 | The skill already verifies each finding twice with fresh agents (note #701) |
 | D23 | Files passed between jobs that hold candidates, findings, scripts or results are sealed, kept one day | Owner, 2026-10-30 | Unverified and rejected claims never sit readable on the public record |
-| D24 | Source and proof-of-concept agents run on `claude-opus-5-5`, the cross-check on `claude-fable-5-1`, and the tie-break on `claude-sonnet-5-5`; the dispute rate and each tie-break's side are recorded every run, and the choice is reviewed after three runs | Owner, 2026-10-30 | Three different models, so a dispute is not settled by the model that raised it |
+| D24 | The source and poc-decide agents run on `claude-opus-5-5`, the poc-write agent and its subagents on `claude-opus-4-8`, the cross-check on `claude-fable-5-1`, and the tie-break on `claude-sonnet-5-5`; the dispute rate and each tie-break's side are recorded every run, and the choice is reviewed after three runs | Owner, 2026-10-30; poc-write's model, 2026-11-08 | The cross-check and the tie-break each run on a model none of the jobs they judge runs on, so a dispute is not settled by the model that raised it. `claude-opus-5-5` refuses poc-write's first request, so the lead already ran on the refusal fallback `claude-opus-4-8` while `CLAUDE_CODE_SUBAGENT_MODEL` kept its subagents on `claude-opus-5-5`; in run 42370662243 a `claude-opus-5-5` subagent's search was interrupted by the safety classifier and refused by the run check, failing the step, while every `claude-opus-4-8` call in that run passed |
 | D25 | No agent executes anything; scripts run in a trusted job | Owner, 2026-10-30 | A shell probably reaches the job's secrets |
 | D26 | The skill runs with its `standard` profile | Owner, 2026-10-30 | D22 relies on the skill's two separate verifier passes |
 | D27 | Proof-of-concept scripts run in a separate job with no token | Owner, 2026-10-30 | A sandbox escape or wrapper bug reaches no token |
@@ -484,7 +484,7 @@ Subagents write only into their own `agents/<agent_id>/scratch/`. Top-level agen
 
     Items beyond six stay leads, listed as "not tried this run". A confirmed finding that could not get a slot is listed as "not re-checked this run" and carries no severity in this run's issue.
 *   **poc-write.**
-    *   **Job settings:** `needs: [prepare, source, build-site]`, `claude-agents`, `permissions: {contents: read}`, `timeout-minutes: 90`, agent step `timeout-minutes: 75`, `--max-turns 120`, model `claude-opus-5-5`, cap 12 subagents.
+    *   **Job settings:** `needs: [prepare, source, build-site]`, `claude-agents`, `permissions: {contents: read}`, `timeout-minutes: 90`, agent step `timeout-minutes: 75`, `--max-turns 120`, model `claude-opus-4-8` for the agent and its subagents (D24), cap 12 subagents.
     *   **The agent:** for each item in `select.json`, two subagents receive the record, the site layout, `accounts.json` and the proof-of-concept contract. Each writes a script, and optionally a fixture, into its own scratch directory. Neither sees the other, and the run check enforces it. The top-level agent writes `poc-manifest.json`.
     *   **The contract:**
         *   Web boundaries (access, cross-site request forgery, cross-site scripting through a route) use `http` mode. The script sends HTTP requests to the site on loopback, logged in through `/user/login` as the test account of the lower-trust role, or as no one for anonymous access.
@@ -1249,7 +1249,7 @@ Stage 2 lands as pull requests in this order: item 12's CI wiring with the first
 
     2.  **A run with `publish: false`:**
         *   every job and agent step ends within its limit, and the validators pass after each merge;
-        *   `modelUsage` shows `claude-opus-5-5` for every agent, subagent and helper in source, poc-write and poc-decide; `claude-fable-5-1` in cross-check step 1; and `claude-sonnet-5-5` in the tie-break, or an allowlisted helper named in the header;
+        *   `modelUsage` shows `claude-opus-5-5` for every agent, subagent and helper in source and poc-decide; `claude-opus-4-8` in poc-write; `claude-fable-5-1` in cross-check step 1; and `claude-sonnet-5-5` in the tie-break, or an allowlisted helper named in the header;
         *   whether claude-code-action changed `~/.claude/settings.json` in the agent step, and that the run check still passed;
         *   the public job logs contain no finding titles;
         *   each sealed hand-off opens locally with the password-manager copy;

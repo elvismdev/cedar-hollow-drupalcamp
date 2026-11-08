@@ -506,6 +506,28 @@ case "$(run poc-write "$tmp/t.json")" in *"ran on the refusal fallback"*) echo "
 fb_trace "$FB" "$(fb_event "$FB")" "$(top Bash '{"command":"id"}')"
 assert_eq "1" "$(rc poc-write "$tmp/t.json")" "every other rule still applies on a fallback run"
 
+# poc-write's lead and subagents run on the model compose-agent-args.sh pins
+# for the step, claude-opus-4-8, so a claude-opus-5-5 message there is a model
+# the step does not use: a subagent search on it fails the run check, with or
+# without a fallback event.
+POC_MODEL=$(bash "$(dirname "$0")/../../claude-review/tools/agent/compose-agent-args.sh" --audit-models poc_write \
+  | sed -n 's/^CLAUDE_CODE_SUBAGENT_MODEL=//p')
+assert_eq "claude-opus-4-8" "$POC_MODEL" "poc-write's composed subagent model is claude-opus-4-8"
+poc_rc () { bash "$C" poc-write "$tmp/t.json" "$TOOLS" "$OUT" "$FP" "$POC_MODEL" >/dev/null 2>&1; echo $?; }
+poc_trace () { # subagent-model [message...]
+  local use="$1"; shift
+  trace "$tmp/t.json" "$INIT" "$@" "$(as_model "$POC_MODEL" "$(top Read "{\"file_path\":\"$WS/tracked.txt\"}")")" \
+    "$(as_model "$POC_MODEL" "$(agent ta2 "agent-id: h02 hunt")")" \
+    "$(as_model "$use" "$(sub ta2 Grep "{\"pattern\":\"x\",\"path\":\"$WS\"}")")" \
+    "$(result "$POC_MODEL" "$use")"
+}
+poc_trace "$POC_MODEL"
+assert_eq "0" "$(poc_rc)" "a poc-write run with the lead and its subagent on the pinned model passes"
+poc_trace claude-opus-5-5
+assert_eq "1" "$(poc_rc)" "a poc-write subagent search on claude-opus-5-5 fails"
+poc_trace claude-opus-5-5 "$(fb_event "$FB")"
+assert_eq "1" "$(poc_rc)" "a poc-write subagent search on claude-opus-5-5 fails beside a fallback event"
+
 # Automatic compaction: a model only in modelUsage is accepted when it is on
 # the compaction allowlist, no assistant message is from it, and a top-level
 # compact_boundary event has trigger "auto".
